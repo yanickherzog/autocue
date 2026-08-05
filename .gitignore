@@ -1,0 +1,22 @@
+# macOS
+.DS_Store
+
+# Xcode
+*.xcodeproj/*
+!*.xcodeproj/project.pbxproj
+!*.xcodeproj/xcshareddata/
+*.xcworkspace/xcuserdata/
+xcuserdata/
+DerivedData/
+*.hmap
+*.ipa
+*.dSYM
+*.dSYM.zip
+
+# Swift Package Manager
+.build/
+Packages/*/.build/
+.swiftpm/
+
+# Claude Code local (personal, machine-specific — not shared project config)
+.claude/settings.local.json
