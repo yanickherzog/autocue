@@ -66,3 +66,17 @@ Not a `ROADMAP.md` Deliverable in the normal sense — this entry documents the 
 **Refactoring suggestions:** None.
 
 **Follow-ups filed:** `docs/DECISIONS.md` gets a new entry for this second fix, plus a correction appended to the previous entry's over-claimed "confirmed against the actual failing CI run" line. `SPEC.md` §6 updated to describe both failures and to stop claiming "closed" until a subsequent run is actually observed green.
+
+---
+
+## 2026-08-08 — Deliverable D1 — Workspace, CI, Lint & Core Value Types
+
+**Architecture observations:** Matched `CLAUDE.md`/`ROADMAP.md` closely, with one real gap found and fixed along the way: `ROADMAP.md` T1.1 listed `AppState.swift` as an App-target placeholder file, which directly contradicts `CLAUDE.md`'s Folder/Package Structure section (`AppState` lives in `ACFeatures`, built for real at D6). Resolved in favor of `CLAUDE.md` — `ACFeatures` got a generic placeholder instead, `ROADMAP.md` corrected in the same change. Separately, `SPEC.md` §4.5's literal `Party` definition (`case person(Person.ID)`) looked like a real ordering conflict against `Person`/`Label` not existing until D2, but resolved cleanly without touching the Deliverable split: `Person.ID`/`Label.ID` both resolve to `UUID`, so `Party` built with `UUID`-typed cases today is byte-for-byte what it'd be once D2 lands. The `ACCore`/`ACExport` spike-package merge was a non-event — both already matched the target package shape exactly; only their "not the real thing yet" header comments needed removing.
+
+**Code quality observations:** Hand-authoring `AutoCue.xcodeproj/project.pbxproj` (rather than a generator like XcodeGen) worked, but was the highest-effort, highest-attention part of this Deliverable by a wide margin — every object (`PBXFileReference`, `PBXBuildFile`, `XCSwiftPackageProductDependency`, etc.) needed a hand-tracked unique ID and correct cross-references. `plutil -lint` catches plist syntax errors but not semantic ones (wrong `isa`, dangling ID reference, missing build-phase entry) — the only real confirmation was a genuine `xcodebuild build`/`test` run. Worth noting for whoever hand-edits this file next: treat it the same way, don't assume `plutil -lint` passing means it's correct.
+
+**Technical debt:** None deliberately deferred within D1's own scope. The App target is intentionally minimal (no entitlements, no `Assets.xcassets`, placeholder `AutoCueApp.swift`/`DependencyContainer.swift`) — that's D6/T6.1's job, not debt.
+
+**Refactoring suggestions:** None yet — five of the seven packages are still pure scaffolding (one placeholder type + one placeholder test each), nothing to refactor until real Deliverable work lands in them.
+
+**Follow-ups filed:** `docs/DECISIONS.md` gets two new entries: `Party`'s `UUID`-typed-cases resolution, and the hand-authored-`pbxproj` tooling choice (including a real, since-resolved local-environment blocker — a broken Xcode 26.3 install missing `DVTDownloads.framework`, fixed via `sudo xcodebuild -runFirstLaunch` run by the user in their own terminal, not from an unattended session). `ROADMAP.md` D1 marked complete, with its T1.1 `AppState.swift` cross-reference corrected in the same change. CI run against the actual Xcode-15.4-pinned runner is still pending at the time of this entry — push/watch happens after user review, per this project's own established practice of treating a real CI run, not local success, as the final bar.

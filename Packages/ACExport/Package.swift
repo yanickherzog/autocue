@@ -1,13 +1,6 @@
 // swift-tools-version: 5.10
 import PackageDescription
 
-/// NOTE: this is a minimal scaffold, not the full M28 XLSX export feature (that's
-/// XLSXCueSheetWriter/ExportRepositoryImpl, taking a real Project/Setup/[Cue] and
-/// producing the SUISA-shaped output — real feature work, not done here). This
-/// exists solely to validate the ONE locked-in architectural dependency decision
-/// (CLAUDE.md rule 4: libxlsxwriter as the XLSX writer) with a real, runnable
-/// smoke test, ahead of the 27 milestones of downstream work that assume it's
-/// viable — see SPEC.md §7 and docs/DECISIONS.md for the full writeup.
 let package = Package(
     name: "ACExport",
     platforms: [.macOS(.v14)],
@@ -15,6 +8,7 @@ let package = Package(
         .library(name: "ACExport", targets: ["ACExport"]),
     ],
     dependencies: [
+        .package(path: "../ACCore"),
         // Pinned via SPM's normal semver range, resolved at build/resolve time by
         // Xcode/the developer's machine — this is a build-time dependency fetch,
         // not a runtime network call, so it doesn't conflict with CLAUDE.md's
@@ -26,6 +20,7 @@ let package = Package(
         .target(
             name: "ACExport",
             dependencies: [
+                "ACCore",
                 .product(name: "libxlsxwriter", package: "libxlsxwriter"),
             ],
             path: "Sources/ACExport"

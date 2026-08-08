@@ -1,0 +1,443 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		C79B3CDB97F8430CA7104108 /* ACCore in Frameworks */ = {isa = PBXBuildFile; productRef = 681C33E9A51A4E7697A875E5 /* ACCore */; };
+		B18DC3D935BC402382734736 /* ACDesignSystem in Frameworks */ = {isa = PBXBuildFile; productRef = 02B01F01EAE54AB4992C17A4 /* ACDesignSystem */; };
+		2B0EDCD24BA646F5997E60F6 /* ACFeatures in Frameworks */ = {isa = PBXBuildFile; productRef = 07D347D5413A4996948DD5CD /* ACFeatures */; };
+		5CD618313BC74D15BC04275B /* ACAudioKit in Frameworks */ = {isa = PBXBuildFile; productRef = 78813E349DC1489FAE2B74CC /* ACAudioKit */; };
+		9E1D57E43E544DA9AEC16FCF /* ACExport in Frameworks */ = {isa = PBXBuildFile; productRef = D30A8003E3A442ED91A5FB98 /* ACExport */; };
+		133E7AAE282B40A0B8E6504E /* ACPersistence in Frameworks */ = {isa = PBXBuildFile; productRef = 9CAF729976154D94AB987F0B /* ACPersistence */; };
+		D1A5BE3D77CC437198EF6980 /* AutoCueApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1803CA150ED4478BBF815C3 /* AutoCueApp.swift */; };
+		F8BE39284CA94C879D3FE6C2 /* DependencyContainer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6A3F033C49E94C098AD70991 /* DependencyContainer.swift */; };
+		1500D5C218BB4D8A9F48D79B /* AutoCueTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1D5CC5A2D264932A71CAA50 /* AutoCueTests.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		CF67D65CACF0434E8483BA08 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 5979F11C93824E649D6A015F /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 091E1BD0FB0145549F63DE70;
+			remoteInfo = AutoCue;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		76A7D420F3B7451CB83D3987 /* AutoCue.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = AutoCue.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		4F5E7DBFF073441EBF3E1724 /* AutoCueTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = AutoCueTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		F1803CA150ED4478BBF815C3 /* AutoCueApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutoCueApp.swift; sourceTree = "<group>"; };
+		6A3F033C49E94C098AD70991 /* DependencyContainer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DependencyContainer.swift; sourceTree = "<group>"; };
+		E1D5CC5A2D264932A71CAA50 /* AutoCueTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutoCueTests.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		7698470FB00247DA825FD423 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				C79B3CDB97F8430CA7104108 /* ACCore in Frameworks */,
+				B18DC3D935BC402382734736 /* ACDesignSystem in Frameworks */,
+				2B0EDCD24BA646F5997E60F6 /* ACFeatures in Frameworks */,
+				5CD618313BC74D15BC04275B /* ACAudioKit in Frameworks */,
+				9E1D57E43E544DA9AEC16FCF /* ACExport in Frameworks */,
+				133E7AAE282B40A0B8E6504E /* ACPersistence in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A845F5DE57D74FA3B1817DEA /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		645286D0A9394FD980FFBD2A = {
+			isa = PBXGroup;
+			children = (
+				B7021AB51BCE4BF3948687D1 /* AutoCue */,
+				D38138F7DF554771812F8F6E /* AutoCueTests */,
+				44434633912949C9AA51EDF1 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		44434633912949C9AA51EDF1 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				76A7D420F3B7451CB83D3987 /* AutoCue.app */,
+				4F5E7DBFF073441EBF3E1724 /* AutoCueTests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		B7021AB51BCE4BF3948687D1 /* AutoCue */ = {
+			isa = PBXGroup;
+			children = (
+				F1803CA150ED4478BBF815C3 /* AutoCueApp.swift */,
+				6A3F033C49E94C098AD70991 /* DependencyContainer.swift */,
+			);
+			path = AutoCue;
+			sourceTree = "<group>";
+		};
+		D38138F7DF554771812F8F6E /* AutoCueTests */ = {
+			isa = PBXGroup;
+			children = (
+				E1D5CC5A2D264932A71CAA50 /* AutoCueTests.swift */,
+			);
+			path = AutoCueTests;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		091E1BD0FB0145549F63DE70 /* AutoCue */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 89C46F59C58B4AE29EF47651 /* Build configuration list for PBXNativeTarget "AutoCue" */;
+			buildPhases = (
+				4A1D603ADD464BD99F4A6A7E /* Sources */,
+				7698470FB00247DA825FD423 /* Frameworks */,
+				468564821ECA48329ED56CD5 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = AutoCue;
+			packageProductDependencies = (
+				681C33E9A51A4E7697A875E5 /* ACCore */,
+				02B01F01EAE54AB4992C17A4 /* ACDesignSystem */,
+				07D347D5413A4996948DD5CD /* ACFeatures */,
+				78813E349DC1489FAE2B74CC /* ACAudioKit */,
+				D30A8003E3A442ED91A5FB98 /* ACExport */,
+				9CAF729976154D94AB987F0B /* ACPersistence */,
+			);
+			productName = AutoCue;
+			productReference = 76A7D420F3B7451CB83D3987 /* AutoCue.app */;
+			productType = "com.apple.product-type.application";
+		};
+		2589EE5C9AE5490785992AC2 /* AutoCueTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = CDE2511ACDF84BEFAF9953B6 /* Build configuration list for PBXNativeTarget "AutoCueTests" */;
+			buildPhases = (
+				E5868121F709486FAFE1EC5B /* Sources */,
+				A845F5DE57D74FA3B1817DEA /* Frameworks */,
+				57C6C0661F414C4489733800 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				EAACD33A0C65497E960F7C7D /* PBXTargetDependency */,
+			);
+			name = AutoCueTests;
+			productName = AutoCueTests;
+			productReference = 4F5E7DBFF073441EBF3E1724 /* AutoCueTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		5979F11C93824E649D6A015F /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1540;
+				TargetAttributes = {
+					091E1BD0FB0145549F63DE70 = {
+						CreatedOnToolsVersion = 15.4;
+					};
+					2589EE5C9AE5490785992AC2 = {
+						CreatedOnToolsVersion = 15.4;
+						TestTargetID = 091E1BD0FB0145549F63DE70;
+					};
+				};
+			};
+			buildConfigurationList = C88821A8C13D4491A7A810D3 /* Build configuration list for PBXProject "AutoCue" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = 645286D0A9394FD980FFBD2A;
+			packageReferences = (
+				E891B897D1E342C685E5895A /* XCLocalSwiftPackageReference "Packages/ACCore" */,
+				6D676968DA394F59BCB4A5F5 /* XCLocalSwiftPackageReference "Packages/ACDesignSystem" */,
+				781C7129612748A7838A3874 /* XCLocalSwiftPackageReference "Packages/ACFeatures" */,
+				D74D4ADD9837498FA13D28EF /* XCLocalSwiftPackageReference "Packages/ACAudioKit" */,
+				A46FDDAEEDC347A082C5D9B2 /* XCLocalSwiftPackageReference "Packages/ACExport" */,
+				45D42A73107548D98F021BD3 /* XCLocalSwiftPackageReference "Packages/ACPersistence" */,
+			);
+			productRefGroup = 44434633912949C9AA51EDF1 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				091E1BD0FB0145549F63DE70 /* AutoCue */,
+				2589EE5C9AE5490785992AC2 /* AutoCueTests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		468564821ECA48329ED56CD5 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		57C6C0661F414C4489733800 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		4A1D603ADD464BD99F4A6A7E /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				D1A5BE3D77CC437198EF6980 /* AutoCueApp.swift in Sources */,
+				F8BE39284CA94C879D3FE6C2 /* DependencyContainer.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		E5868121F709486FAFE1EC5B /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				1500D5C218BB4D8A9F48D79B /* AutoCueTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		EAACD33A0C65497E960F7C7D /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 091E1BD0FB0145549F63DE70 /* AutoCue */;
+			targetProxy = CF67D65CACF0434E8483BA08 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		2F9AD9DD74B7420FAA061429 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		F518CC66D3234ECB90299433 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		12BF3E12F2C44742A1AB459C /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.autocue.AutoCue;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		A68A2B8F452449D391AAFBEA /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.autocue.AutoCue;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		F7804C703EF14AB8BD7DB6EE /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.autocue.AutoCueTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/AutoCue.app/Contents/MacOS/AutoCue";
+			};
+			name = Debug;
+		};
+		1F2407259EFC4F15916CD61B /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.autocue.AutoCueTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/AutoCue.app/Contents/MacOS/AutoCue";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		C88821A8C13D4491A7A810D3 /* Build configuration list for PBXProject "AutoCue" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				2F9AD9DD74B7420FAA061429 /* Debug */,
+				F518CC66D3234ECB90299433 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		89C46F59C58B4AE29EF47651 /* Build configuration list for PBXNativeTarget "AutoCue" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				12BF3E12F2C44742A1AB459C /* Debug */,
+				A68A2B8F452449D391AAFBEA /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		CDE2511ACDF84BEFAF9953B6 /* Build configuration list for PBXNativeTarget "AutoCueTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				F7804C703EF14AB8BD7DB6EE /* Debug */,
+				1F2407259EFC4F15916CD61B /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		E891B897D1E342C685E5895A /* XCLocalSwiftPackageReference "Packages/ACCore" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/ACCore;
+		};
+		6D676968DA394F59BCB4A5F5 /* XCLocalSwiftPackageReference "Packages/ACDesignSystem" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/ACDesignSystem;
+		};
+		781C7129612748A7838A3874 /* XCLocalSwiftPackageReference "Packages/ACFeatures" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/ACFeatures;
+		};
+		D74D4ADD9837498FA13D28EF /* XCLocalSwiftPackageReference "Packages/ACAudioKit" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/ACAudioKit;
+		};
+		A46FDDAEEDC347A082C5D9B2 /* XCLocalSwiftPackageReference "Packages/ACExport" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/ACExport;
+		};
+		45D42A73107548D98F021BD3 /* XCLocalSwiftPackageReference "Packages/ACPersistence" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Packages/ACPersistence;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		681C33E9A51A4E7697A875E5 /* ACCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = E891B897D1E342C685E5895A /* XCLocalSwiftPackageReference "Packages/ACCore" */;
+			productName = ACCore;
+		};
+		02B01F01EAE54AB4992C17A4 /* ACDesignSystem */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 6D676968DA394F59BCB4A5F5 /* XCLocalSwiftPackageReference "Packages/ACDesignSystem" */;
+			productName = ACDesignSystem;
+		};
+		07D347D5413A4996948DD5CD /* ACFeatures */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 781C7129612748A7838A3874 /* XCLocalSwiftPackageReference "Packages/ACFeatures" */;
+			productName = ACFeatures;
+		};
+		78813E349DC1489FAE2B74CC /* ACAudioKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = D74D4ADD9837498FA13D28EF /* XCLocalSwiftPackageReference "Packages/ACAudioKit" */;
+			productName = ACAudioKit;
+		};
+		D30A8003E3A442ED91A5FB98 /* ACExport */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A46FDDAEEDC347A082C5D9B2 /* XCLocalSwiftPackageReference "Packages/ACExport" */;
+			productName = ACExport;
+		};
+		9CAF729976154D94AB987F0B /* ACPersistence */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 45D42A73107548D98F021BD3 /* XCLocalSwiftPackageReference "Packages/ACPersistence" */;
+			productName = ACPersistence;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = 5979F11C93824E649D6A015F /* Project object */;
+}

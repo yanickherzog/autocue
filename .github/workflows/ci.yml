@@ -1,18 +1,13 @@
 name: CI
 
 # Minimal foundation, deliberately: format/lint + the two import-boundary/
-# color-literal scripts, plus `swift test` per existing package. This exists
+# color-literal scripts, plus `swift test` per existing package, plus
+# `xcodebuild build`/`test` against the real AutoCue.xcworkspace. This exists
 # to close a gap flagged in CLAUDE.md/SPEC.md's review history — every
 # architecture rule that matters was previously checked manually, once, as a
 # milestone acceptance criterion, and never re-verified again. See
 # ROADMAP.md, Deliverable D1, and docs/DECISIONS.md for why this is
 # introduced now rather than at the old M28 position.
-#
-# TODO(D1 follow-up, once AutoCue.xcworkspace + the App target exist): add a
-# job running `xcodebuild test -scheme AutoCue`. Not added yet because
-# neither the workspace nor the App target exists in the repo yet — this
-# workflow only covers what's actually buildable today (the standalone SPM
-# packages under Packages/).
 
 on:
   push:
@@ -66,12 +61,11 @@ jobs:
     runs-on: macos-14
     strategy:
       matrix:
-        # Explicit list, not an auto-discovered glob: a milestone that adds a
-        # new package (ACAudioKit, ACPersistence, ACDesignSystem, ACFeatures,
-        # ACTestSupport — see ROADMAP.md) must add it here in the same
-        # change. An explicit list makes a forgotten package visible at PR
-        # review time; a wildcard would silently skip testing it instead.
-        package: [ACCore, ACExport]
+        # Explicit list, not an auto-discovered glob: a Deliverable that adds
+        # a new package must add it here in the same change. An explicit
+        # list makes a forgotten package visible at PR review time; a
+        # wildcard would silently skip testing it instead.
+        package: [ACCore, ACAudioKit, ACExport, ACPersistence, ACDesignSystem, ACFeatures, ACTestSupport]
     steps:
       - uses: actions/checkout@v4
 
@@ -83,3 +77,20 @@ jobs:
       - name: swift test
         working-directory: Packages/${{ matrix.package }}
         run: swift test
+
+  xcodebuild-app:
+    name: xcodebuild build/test — AutoCue
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: "15.4"
+
+      - name: xcodebuild build
+        run: xcodebuild -workspace AutoCue.xcworkspace -scheme AutoCue -destination "platform=macOS" build
+
+      - name: xcodebuild test
+        run: xcodebuild -workspace AutoCue.xcworkspace -scheme AutoCue -destination "platform=macOS" test
