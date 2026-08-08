@@ -71,14 +71,16 @@ The original plan was 34 fine-grained milestones across 12 phases, each scoped t
 
 ## D2 — Domain Identity, Setup & Cue Models
 
+**Status: Complete (2026-08-08).** Verified locally (`swift test` — ACCore, 99 tests, 0 failures; `swiftformat --lint`; `swiftlint lint --strict`; `Scripts/check-import-boundaries.sh`) against the real Xcode 26.3 toolchain (the sandboxed `swift` CLI's Command Line Tools install lacks `XCTest` wiring, same limitation D1's `docs/DECISIONS.md` pbxproj entry already recorded — not a new gap). CI run pending user push/review, same practice as D1. See `docs/DECISIONS.md` and `docs/REVIEW.md` for two real gaps found and fixed during this Deliverable: `MediaDuration` was missing despite D1 claiming it was done, and `SPEC.md` had no field backing `arrangementAuthorizationAttached`'s "still copyright-protected" condition (`Cue.isArrangementOfProtectedOriginal` added to close it).
+
 **Goal:** Build the identity, production-header, and per-work domain types — the bulk of the SUISA-mapped schema.
 
 **Dependencies:** D1.
 
 **Tasks:**
-- **T2.1 — Person and Label models** *(was M3)*. `Models/{Person,Label}.swift` + tests.
-- **T2.2 — Setup model** *(was M4)*. `Models/Setup.swift`, `Models/ProductionType.swift`, `Models/AttachmentType.swift` + tests, per `SPEC.md` §4.2.
-- **T2.3 — Cue, CueRightHolder, and share validation** *(was M5)*. `Models/Cue.swift`, `Models/CueRightHolder.swift`, `UseCases/ValidateCueRightHolderSharesUseCase.swift` + tests, per `SPEC.md` §4.3–4.6.
+- **T2.1 — Person and Label models** *(was M3)*. `Models/{Person,Label}.swift` + tests. **Complete.**
+- **T2.2 — Setup model** *(was M4)*. `Models/Setup.swift`, `Models/ProductionType.swift`, `Models/AttachmentType.swift` + tests, per `SPEC.md` §4.2. **Complete.**
+- **T2.3 — Cue, CueRightHolder, and share validation** *(was M5)*. `Models/Cue.swift`, `Models/CueRightHolder.swift`, `UseCases/ValidateCueRightHolderSharesUseCase.swift` + tests, per `SPEC.md` §4.3–4.6. **Complete.** Also added `Cue.isArrangementOfProtectedOriginal` (not originally listed — closes the §4.4/§4.6 schema gap noted above; see `docs/DECISIONS.md` and `docs/REVIEW.md`).
 
 **Acceptance Criteria:**
 - `Equatable`-based round-trip tests pass for `Person`/`Label`/`Setup`/`Cue` (not `Codable`); `Identifiable` conformance present on `Person`/`Label`.
