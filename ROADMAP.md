@@ -41,7 +41,7 @@ The original plan was 34 fine-grained milestones across 12 phases, each scoped t
 
 ## D1 — Workspace, CI, Lint & Core Value Types
 
-**Status: Complete (2026-08-08).** Verified locally (`swift test` × 7 packages, `swiftformat --lint`, `swiftlint lint --strict`, both architecture-boundary scripts, `xcodebuild build`/`test -scheme AutoCue`); CI run pending push/watch per this project's own established discipline (`docs/DECISIONS.md`).
+**Status: Complete (2026-08-08).** Verified locally (`swift test` × 7 packages, `swiftformat --lint`, `swiftlint lint --strict`, both architecture-boundary scripts, `xcodebuild build`/`test -scheme AutoCue`) **and** confirmed against a real, watched-to-completion CI run on PR #1 — all 9 jobs (lint + 7×`swift test` + `xcodebuild build`/`test`) passed on the actual Xcode-15.4-pinned runner. See `docs/DECISIONS.md`.
 
 **Goal:** Create a compiling, CI-verified, lint-enforced workspace before any domain logic is added, so every later Deliverable inherits automated enforcement from day one instead of 27+ milestones of unverified assumptions (see "Why this structure," above, and `docs/DECISIONS.md`).
 
