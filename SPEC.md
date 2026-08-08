@@ -379,7 +379,7 @@ As with every detected boundary, this is a starting point for the editor, not a 
 
 **Rule: deletion is blocked, never cascaded, never nulled, whenever a reference exists.**
 
-A dedicated Use Case — `DeletePersonUseCase`/`DeleteLabelUseCase` (or a shared `DeleteRightHolderUseCase` parameterized over `Party`) — is the *only* sanctioned way to remove a `Person`/`Label` from `Project.people`/`Project.labels`. Before deleting, it scans every `Party`-typed field reachable from the `Project`, plus `Settings.defaultDeclarant`:
+A dedicated Use Case — `DeleteRightHolderUseCase`, exposing `deletePerson`/`deleteLabel` methods (built at `ROADMAP.md` D3/T3.3, as the shared-Use-Case option this section originally left open) — is the *only* sanctioned way to remove a `Person`/`Label` from `Project.people`/`Project.labels`. Before deleting, it scans every `Party`-typed field reachable from the `Project`, plus `Settings.defaultDeclarant`:
 
 - `Setup.producer`
 - `Setup.directorOrPrincipal`
