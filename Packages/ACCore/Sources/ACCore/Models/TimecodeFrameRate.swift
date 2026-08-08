@@ -16,10 +16,10 @@ public enum TimecodeFrameRate: Equatable, Hashable, CaseIterable, Sendable {
     /// The modulus used for the `FF` field and for hour/minute/second decomposition.
     public var nominalFramesPerSecond: Int {
         switch self {
-        case .fps24: return 24
-        case .fps25: return 25
-        case .fps29_97NonDrop, .fps29_97Drop: return 30
-        case .fps30: return 30
+        case .fps24: 24
+        case .fps25: 25
+        case .fps29_97NonDrop, .fps29_97Drop: 30
+        case .fps30: 30
         }
     }
 
@@ -27,10 +27,10 @@ public enum TimecodeFrameRate: Equatable, Hashable, CaseIterable, Sendable {
     /// offset to a frame count.
     public var realFramesPerSecond: Double {
         switch self {
-        case .fps24: return 24.0
-        case .fps25: return 25.0
-        case .fps29_97NonDrop, .fps29_97Drop: return 29.97
-        case .fps30: return 30.0
+        case .fps24: 24.0
+        case .fps25: 25.0
+        case .fps29_97NonDrop, .fps29_97Drop: 29.97
+        case .fps30: 30.0
         }
     }
 

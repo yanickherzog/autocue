@@ -1,10 +1,9 @@
-import XCTest
 @testable import ACExport
+import XCTest
 
 /// Verifies the libxlsxwriter architectural dependency decision (SPEC.md §7),
 /// not any real export feature — see `XLSXFeasibilitySpike`.
 final class XLSXFeasibilitySpikeTests: XCTestCase {
-
     func test_writesAFileThatExistsAndIsNonEmpty() throws {
         let url = makeTemporaryXLSXURL()
         defer { try? FileManager.default.removeItem(at: url) }

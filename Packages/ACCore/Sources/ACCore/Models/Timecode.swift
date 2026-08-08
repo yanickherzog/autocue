@@ -38,8 +38,7 @@ public struct TimecodeComponents: Equatable, Hashable, Sendable {
     }
 }
 
-extension Timecode {
-
+public extension Timecode {
     /// Decomposes this position into `HH:MM:SS:FF` fields under `frameRate`.
     ///
     /// Non-drop-frame rates: `totalFrames = round(offsetSeconds × realFPS)`,
@@ -51,7 +50,7 @@ extension Timecode {
     /// minute — and *that* is what gets decomposed. This is what keeps drop-frame
     /// timecode aligned with wall-clock time at hour boundaries despite 29.97fps
     /// running slightly slower than nominal 30fps.
-    public func components(at frameRate: TimecodeFrameRate) -> TimecodeComponents {
+    func components(at frameRate: TimecodeFrameRate) -> TimecodeComponents {
         let realFrameCount = Int((offsetSeconds * frameRate.realFramesPerSecond).rounded())
         let displayFrameNumber = frameRate.isDropFrame
             ? Self.dropFrameDisplayNumber(realFrameCount: realFrameCount, frameRate: frameRate)
@@ -70,10 +69,13 @@ extension Timecode {
 
     /// `HH:MM:SS:FF`, zero-padded. Drop-frame timecode conventionally uses a
     /// `;` separator before the frame field instead of `:` — applied here.
-    public func formatted(at frameRate: TimecodeFrameRate) -> String {
-        let c = components(at: frameRate)
+    func formatted(at frameRate: TimecodeFrameRate) -> String {
+        let parts = components(at: frameRate)
         let frameSeparator = frameRate.isDropFrame ? ";" : ":"
-        return String(format: "%02d:%02d:%02d%@%02d", c.hours, c.minutes, c.seconds, frameSeparator, c.frames)
+        return String(
+            format: "%02d:%02d:%02d%@%02d",
+            parts.hours, parts.minutes, parts.seconds, frameSeparator, parts.frames,
+        )
     }
 
     /// Reconstructs the underlying offset from `HH:MM:SS:FF` components under
@@ -84,7 +86,7 @@ extension Timecode {
     /// `SS == 0` of a non-exempt minute (SPEC.md §4.9). Silently accepting those
     /// would produce a `Timecode` that round-trips to a *different* displayed
     /// string than what was typed in, which is worse than rejecting it outright.
-    public init?(components: TimecodeComponents, frameRate: TimecodeFrameRate) {
+    init?(components: TimecodeComponents, frameRate: TimecodeFrameRate) {
         let nominal = frameRate.nominalFramesPerSecond
         guard components.frames >= 0, components.frames < nominal,
               components.seconds >= 0, components.seconds < 60,
@@ -125,10 +127,10 @@ extension Timecode {
     /// except every 10th, so the subsequent plain base-`nominalFPS` decomposition
     /// lands on the correct drop-frame reading.
     private static func dropFrameDisplayNumber(realFrameCount: Int, frameRate: TimecodeFrameRate) -> Int {
-        let dropped = frameRate.dropFramesPerNonExemptMinute            // 2, for 30fps-nominal
-        let framesPerMinuteNominal = frameRate.nominalFramesPerSecond * 60   // 1800
-        let framesPerMinuteDropAdjusted = framesPerMinuteNominal - dropped  // 1798
-        let framesPer10MinDropAdjusted = framesPerMinuteNominal * 10 - dropped * 9  // 17982
+        let dropped = frameRate.dropFramesPerNonExemptMinute // 2, for 30fps-nominal
+        let framesPerMinuteNominal = frameRate.nominalFramesPerSecond * 60 // 1800
+        let framesPerMinuteDropAdjusted = framesPerMinuteNominal - dropped // 1798
+        let framesPer10MinDropAdjusted = framesPerMinuteNominal * 10 - dropped * 9 // 17982
 
         let tenMinuteBlocks = realFrameCount / framesPer10MinDropAdjusted
         let remainder = realFrameCount % framesPer10MinDropAdjusted

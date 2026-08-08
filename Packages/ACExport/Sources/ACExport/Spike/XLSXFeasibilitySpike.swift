@@ -10,7 +10,6 @@ import libxlsxwriter
 /// workbook when integrated via SPM the way `ACExport` is meant to consume it —
 /// see `ACExportTests/XLSXFeasibilitySpikeTests.swift` for the verification.
 public enum XLSXFeasibilitySpike {
-
     public enum Failure: Error, Equatable {
         case libxlsxwriterError(code: UInt32)
     }

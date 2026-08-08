@@ -1,0 +1,11 @@
+# AutoCue SwiftFormat configuration.
+# Minimal on purpose — consistency and a few high-value defaults, not an
+# exhaustive style rulebook. See CONTRIBUTING.md, "Formatting and Linting."
+
+--swiftversion 6.1
+--indent 4
+--maxwidth 120
+--self remove
+--importgrouping alphabetized
+--trimwhitespace always
+--voidtype void

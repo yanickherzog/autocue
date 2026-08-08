@@ -1,0 +1,35 @@
+# AutoCue SwiftLint configuration.
+# Minimal on purpose — catches common mistakes CONTRIBUTING.md already calls
+# out in prose (force-unwraps chief among them), not an exhaustive rulebook.
+# See CONTRIBUTING.md, "Formatting and Linting."
+
+included:
+  - Packages
+
+excluded:
+  - "Packages/*/.build"
+  - "Packages/*/.swiftpm"
+
+opt_in_rules:
+  - force_unwrapping
+
+disabled_rules:
+  - todo # CONTRIBUTING.md allows traceable `// TODO(M25): ...` comments; don't flag them
+
+line_length:
+  warning: 120
+  error: 160
+
+identifier_name:
+  min_length: 2
+  excluded:
+    - id
+  allowed_symbols:
+    - "_" # e.g. TimecodeFrameRate.fps29_97Drop — deliberate, matches the real frame-rate number
+
+force_unwrapping: error
+force_cast: error
+force_try: error
+
+trailing_comma:
+  mandatory_comma: true # matches SwiftFormat's default for wrapped collections — keep both tools in agreement
