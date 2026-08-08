@@ -40,4 +40,31 @@ final class PostalAddressTests: XCTestCase {
         XCTAssertEqual(address.city, "Lugano")
         XCTAssertEqual(address.country, "Switzerland")
     }
+
+    func test_isComplete_allFourPartsFilledIn_isTrue() {
+        let address = PostalAddress(street: "Via Nassa 1", postalCode: "6900", city: "Lugano", country: "Switzerland")
+        XCTAssertTrue(address.isComplete)
+    }
+
+    func test_isComplete_blankStreet_isFalse() {
+        let address = PostalAddress(street: "", postalCode: "6900", city: "Lugano", country: "Switzerland")
+        XCTAssertFalse(address.isComplete)
+    }
+
+    func test_isComplete_whitespaceOnlyPostalCode_isFalse() {
+        // Whitespace-only counts as blank, not as "present" — a real address
+        // part, not just a non-empty string.
+        let address = PostalAddress(street: "Via Nassa 1", postalCode: "   ", city: "Lugano", country: "Switzerland")
+        XCTAssertFalse(address.isComplete)
+    }
+
+    func test_isComplete_blankCity_isFalse() {
+        let address = PostalAddress(street: "Via Nassa 1", postalCode: "6900", city: "", country: "Switzerland")
+        XCTAssertFalse(address.isComplete)
+    }
+
+    func test_isComplete_blankCountry_isFalse() {
+        let address = PostalAddress(street: "Via Nassa 1", postalCode: "6900", city: "Lugano", country: "")
+        XCTAssertFalse(address.isComplete)
+    }
 }
