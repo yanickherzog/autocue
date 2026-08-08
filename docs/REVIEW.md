@@ -38,3 +38,17 @@ Not a `ROADMAP.md` Deliverable in the normal sense — this entry documents the 
 **Refactoring suggestions:** None yet — no feature code exists to refactor. The two spike packages (`ACCore`, `ACExport`) will need to be merged into the real Deliverable D1–D3 / D11 package structure rather than treated as separate, permanent scaffolds; that merge is Deliverable D1's job, not a follow-up refactor after the fact.
 
 **Follow-ups filed:** `docs/DECISIONS.md` — full set of entries covering the `MediaDuration` rename, `ACFeatures` package split, drop-frame timecode, `libxlsxwriter` validation, progress/cancellation contract, waveform architecture, deployment target, Views/`@Query` resolution, module dependency graph, navigation model, and document/window model (including its single-window-then-multi-window reversal). See that file directly rather than duplicating its content here.
+
+---
+
+## 2026-08-08 — CI's first real run (not a Deliverable — a same-day follow-up to the entry above)
+
+**Architecture observations:** The CI Xcode-pin risk flagged in the entry above as "unverified against a live runner" was real, not theoretical caution — the very first push after CI was added failed both `swift test` matrix jobs with an identical, unambiguous error (`Package.swift` declared `swift-tools-version: 6.1`, the pinned Xcode 15.4's Swift toolchain is 5.10). Diagnosed directly from `gh run view --log-failed`, not guessed at from symptoms.
+
+**Code quality observations:** N/A — fix was a one-line manifest change in each `Package.swift` (`6.1` → `5.10`), not a code change.
+
+**Technical debt:** None added. If anything, this closes debt: `swift-tools-version` in both packages now reflects an actually-considered floor (matching `CLAUDE.md`'s documented minimum Xcode) instead of whatever the authoring sandbox happened to have installed.
+
+**Refactoring suggestions:** None.
+
+**Follow-ups filed:** `docs/DECISIONS.md` gets a new entry for this fix. `SPEC.md` §6's "CI... hasn't been confirmed against a live runner" gap is updated to reflect that it has now been confirmed, and genuinely failed once before the fix.

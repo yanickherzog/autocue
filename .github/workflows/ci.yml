@@ -30,9 +30,17 @@ jobs:
       # Pin a specific Xcode version rather than whatever the runner image
       # defaults to, so this job's result doesn't silently change out from
       # under CI when GitHub updates the macos-14 image's default toolchain.
-      # Confirm/adjust this version against the runner image in use the first
-      # time this workflow actually executes — it wasn't possible to verify
-      # against a live GitHub-hosted runner while writing this file.
+      # 15.4 was tried first (the macos-14 image's default) and genuinely
+      # failed on a real run: its Swift toolchain (5.10) is older than the
+      # Package.swift-declared tools-version at the time (6.1), which was
+      # never validated against a live runner before that point. Fixed by
+      # lowering swift-tools-version to 5.10 in every Package.swift instead
+      # of chasing a newer Xcode pin (neither package's manifest used
+      # anything newer) — see docs/DECISIONS.md. 15.4 stays pinned
+      # deliberately: it's the actual minimum Xcode version CLAUDE.md's
+      # "Deployment Target" section documents as required, so CI now
+      # validates against that real floor instead of whatever happens to be
+      # newest on the runner image.
       - name: Select Xcode
         uses: maxim-lobanov/setup-xcode@v1
         with:

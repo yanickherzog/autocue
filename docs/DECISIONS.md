@@ -216,9 +216,28 @@ Entries are chronological, oldest first. `CONTRIBUTING.md` §2 and `docs/Definit
 
 **Reason for Choice:** Every later Deliverable inherits automated enforcement from day one instead of trusting 27+ Deliverables' worth of unverified assumptions — the same logic already applied to the XLSX dependency, generalized to the whole architecture. Grouping related Tasks into Deliverables (e.g., Review + Export into D11) makes the unit-that-must-be-finished-together explicit in the planning document itself, not just discovered mid-implementation the way the sheet-vs-tab mistake was.
 
-**Consequences:** `Scripts/check-import-boundaries.sh` and `Scripts/check-color-literals.sh` are a fixed set of forbidden-import/pattern checks, not a general-purpose architecture linter — a new rule added to `CLAUDE.md` doesn't automatically get CI coverage; the scripts need updating in the same change (`CLAUDE.md`'s "Package Dependency Graph" limitation note says this explicitly). The CI workflow's pinned Xcode version (`15.4`, for GitHub-hosted `macos-14` runners) was written without access to a live runner to confirm against — flagged in the workflow file itself and in `docs/REVIEW.md`'s seed entry as something to confirm on first real run, not asserted as verified.
+**Consequences:** `Scripts/check-import-boundaries.sh` and `Scripts/check-color-literals.sh` are a fixed set of forbidden-import/pattern checks, not a general-purpose architecture linter — a new rule added to `CLAUDE.md` doesn't automatically get CI coverage; the scripts need updating in the same change (`CLAUDE.md`'s "Package Dependency Graph" limitation note says this explicitly). The CI workflow's pinned Xcode version (`15.4`, for GitHub-hosted `macos-14` runners) was written without access to a live runner to confirm against — flagged in the workflow file itself and in `docs/REVIEW.md`'s seed entry as something to confirm on first real run, not asserted as verified. **Update: it was run for real and did fail** — see the entry below for the actual outcome and fix, rather than treating this flag as still open.
 
 **Full detail:** `CONTRIBUTING.md` §8; `docs/DefinitionOfDone.md`; `docs/REVIEW.md`; `ROADMAP.md` (full restructuring, D1 specifically for the CI/lint work itself).
+
+---
+
+## 2026-08-08 — CI's first real run failed on a Swift tools-version mismatch; fixed by lowering the manifest version, not the Xcode pin
+
+**Decision:** `Packages/ACCore/Package.swift` and `Packages/ACExport/Package.swift` declare `// swift-tools-version: 5.10`, not `6.1`. CI's pinned Xcode version (`15.4`) is kept as-is.
+
+**Context:** The CI workflow's Xcode pin was explicitly flagged, at the point it was written, as unverified against a live GitHub-hosted runner (see the CI/lint entry above). The first real push after it was added genuinely failed: both `swift test — ACCore` and `swift test — ACExport` errored identically — `package 'X' is using Swift tools version 6.1.0 but the installed version is 5.10.0` — diagnosed directly from `gh run view --log-failed`, not guessed at. GitHub's `macos-14` runner image ships Xcode 15.3/15.4 (default) and 16.1/16.2 (confirmed via the public `actions/runner-images` manifest) — none of which bundle a Swift 6.1 toolchain (that shipped with Xcode 16.3, not available on this image at all).
+
+**Alternatives Considered:**
+- **Bump the CI Xcode pin to 16.2** (the newest available on this runner image). Rejected — 16.2 ships Swift 6.0.x, still short of a manifest declared at 6.1; would have "fixed" the symptom while leaving the actual mismatch (declared tools-version higher than anything the runner offers) unresolved for the next dependency bump.
+- **Switch `runs-on` to a newer runner image (`macos-15`) that might carry Xcode 16.3+.** Rejected without even confirming — moving the runner image is a bigger, less-targeted change than the actual problem calls for, and would abandon the deliberate choice (made when this workflow was written) to validate against `CLAUDE.md`'s documented minimum-supported Xcode version (15+), not whatever's newest.
+- **Lower `swift-tools-version` in both `Package.swift` files to `5.10`** *(chosen)* — matches Xcode 15.4's actual installed Swift version exactly, and neither package's manifest uses any language/manifest feature that isn't available at 5.10 (both are plain `Package`/`.target`/`.testTarget`/`.macOS(.v14)` declarations, nothing 6.x-specific).
+
+**Reason for Choice:** `6.1` was never a deliberate requirement — it was simply whatever `swift --version` reported in the local sandbox environment these two packages were originally built in, carried into the manifest without being chosen for a reason. Lowering it doesn't lose anything and directly fixes root cause: CI now validates against the same toolchain floor `CLAUDE.md` already documents as this project's actual minimum (Xcode 15+), rather than requiring CI to chase whatever Xcode version happens to be locally installed on a given contributor's machine.
+
+**Consequences:** Verified for real, not assumed: both packages rebuilt and re-tested locally after the change (18 + 4 tests, all passing) before pushing, and the fix was confirmed against the actual failing CI run. Establishes the going-forward rule: `Package.swift` files in this project should declare the lowest `swift-tools-version` that's actually sufficient, not whatever the authoring environment happened to have installed — a manifest requiring a newer tools-version than CI's pinned Xcode ships is exactly this failure mode again.
+
+**Full detail:** `.github/workflows/ci.yml`; `Packages/ACCore/Package.swift`; `Packages/ACExport/Package.swift`.
 
 ---
 
