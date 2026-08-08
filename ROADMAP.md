@@ -106,13 +106,13 @@ The original plan was 34 fine-grained milestones across 12 phases, each scoped t
 **Tasks:**
 - **T3.1 — AudioAsset, Settings, AnalysisSettings, WaveformPeaks, Project** *(was M6, expanded)*. `Models/{AudioAsset,EmbeddedMarker,BroadcastWaveMetadata,Settings,AnalysisSettings,WaveformPeaks,WaveformPeakBucket,Project}.swift` + tests, per `SPEC.md` §4.1, §4.7, §4.10, §4.11, §4.15.
 - **T3.2 — Repository protocols**. `RepositoryProtocols/{ProjectRepository,AudioAnalysisRepository,ExportRepository}.swift`, each declared `Sendable` per `CLAUDE.md`, "Use Cases Are Stateless."
-- **T3.3 — Delete guard and PartyResolver**. `UseCases/{DeletePersonUseCase,DeleteLabelUseCase}.swift` (or a shared `DeleteRightHolderUseCase`), `Models/PartyResolver.swift`, per `SPEC.md` §4.12–§4.13.
+- **T3.3 — Delete guard and PartyResolver**. `UseCases/DeleteRightHolderUseCase.swift` (`deletePerson`/`deleteLabel` methods, the shared-Use-Case option `SPEC.md` §4.12 offers), `Models/PartyResolver.swift`, per `SPEC.md` §4.12–§4.13.
 - **T3.4 — In-memory test fakes**. `Packages/ACTestSupport/Sources/ACTestSupport/Fakes/InMemory{ProjectRepository,AudioAnalysisRepository,ExportRepository}.swift`.
 
 **Acceptance Criteria:**
 - `Project` composes `Setup`, `[Cue]`, `[Person]`, `[Label]`, an optional `AudioAsset`, and an optional `WaveformPeaks` (`SPEC.md` §4.1, §4.15); round-trips via an `Equatable`-based test.
 - `AudioAsset` never contains raw or downsampled sample data (`SPEC.md` §4.10 invariant) — a test asserts this isn't structurally possible (no such stored property exists).
-- `DeletePersonUseCase`/`DeleteLabelUseCase` correctly blocks deletion and returns every `PartyReferenceLocation` when a reference exists (`SPEC.md` §4.12) — tested for all five reference sites (`Setup.producer`, `.directorOrPrincipal`, `.declarant`, `Settings.defaultDeclarant`, `Cue.rightHolders[].party`).
+- `DeleteRightHolderUseCase`'s `deletePerson`/`deleteLabel` correctly blocks deletion and returns every `PartyReferenceLocation` when a reference exists (`SPEC.md` §4.12) — tested for all five reference sites (`Setup.producer`, `.directorOrPrincipal`, `.declarant`, `Settings.defaultDeclarant`, `Cue.rightHolders[].party`).
 - `PartyResolver.resolve` returns the correct display data for both `Person`/`Label` cases and `nil` only for a dangling reference (`SPEC.md` §4.13).
 - A grep check (or, from this Deliverable forward, `Scripts/check-import-boundaries.sh` in CI) confirms no Apple framework beyond `Foundation` is imported anywhere in `ACCore`.
 - In-memory fake implementations of all three protocols exist in `ACTestSupport` and pass a basic CRUD smoke test.
@@ -216,7 +216,7 @@ The original plan was 34 fine-grained milestones across 12 phases, each scoped t
 - Unit tests (against `ACTestSupport`'s fake repository) verify editing any `Setup` field triggers a debounced save; missing-required-field state is exposed as a published property, not computed ad hoc in a view.
 - Manually verified: every required `Setup` field is editable, unmet-required fields are visibly indicated, `productionTypes` multi-select works, edits persist across app relaunch.
 - Manually verified: picking a producer offers "create new Person/Label" inline, and the picker lists the project's existing directory.
-- Manually verified: attempting to delete a `Person`/`Label` still referenced as `Setup.producer`/`.directorOrPrincipal`/`.declarant` is blocked with a message identifying exactly which field references it (D3/T3.3's `DeletePersonUseCase`/`DeleteLabelUseCase`, `SPEC.md` §4.12).
+- Manually verified: attempting to delete a `Person`/`Label` still referenced as `Setup.producer`/`.directorOrPrincipal`/`.declarant` is blocked with a message identifying exactly which field references it (D3/T3.3's `DeleteRightHolderUseCase`, `SPEC.md` §4.12).
 
 **Testing Requirements:** `SetupViewModel`/`RightHolderDirectoryViewModel` tested against `ACTestSupport` fakes, per `CONTRIBUTING.md` §5. Views verified manually per this Deliverable's acceptance criteria — not unit tested (§5), and not yet in D13's automated flow (D13 covers Setup as the *first step* of its golden-path flow, but that's D13's job, not this Deliverable's).
 
