@@ -2,6 +2,10 @@
 
 Status: data model and compliance target finalized. No UI or business logic implemented yet.
 
+## 0. Platform Requirements
+
+Minimum supported macOS version: **14.0 (Sonoma)** — the floor required by `SwiftData` and `@Observable`, both already-committed architectural choices. Full reasoning and enforcement points: `CLAUDE.md`, "Deployment Target."
+
 ## 1. Purpose
 
 AutoCue is a native macOS application that generates Swiss film/TV cue sheets from WAV audio files. It analyzes a production's audio (embedded markers plus signal analysis) to identify the musical works it contains, and produces a cue sheet compliant with the format SUISA (Swiss authors'/publishers' rights society) requires for royalty distribution, exportable as PDF and XLSX.
@@ -22,9 +26,17 @@ SWISSPERFORM (Swiss neighboring-rights society for performers and producers) doe
 
 Consequently, AutoCue does not attempt to generate a "SWISSPERFORM cue sheet" — no such artifact exists in the same shape as SUISA's. What it does instead: the `Person` model carries an optional `swissPerformNumber`, and `Setup` carries the production-identity fields (series/season, director, country, language) that a performer would need when self-registering — so the data AutoCue already collects for SUISA can be reused/exported as reference information for SWISSPERFORM registration, without AutoCue claiming to produce an official SWISSPERFORM filing.
 
-### 2.3 Open item to verify before submission-critical use
+### 2.3 Revalidation checkpoint before PDF/export implementation
 
-The form was sourced directly from suisa.ch (`WA Film 2011-01`). Form revisions are infrequent but possible — before relying on this for a real SUISA submission, confirm with SUISA (`filmproduction@suisa.ch`) that this is still the current version. This does not affect the architecture; only individual field/label wording would change if SUISA revises the form.
+The form was sourced directly from suisa.ch (`WA Film 2011-01` main form + `WA Film II 2011-01` continuation). Form revisions are infrequent but possible, and previously nothing actually forced a re-check before the PDF layout was built against it — this section fixes that with a real, dated checkpoint rather than leaving it as a permanent "known gap" nobody revisits.
+
+**Checkpoint: before implementation of `ROADMAP.md` M27 (PDF export) begins**, re-verify the form is still `WA Film 2011-01`/`WA Film II 2011-01`:
+
+1. Re-fetch the current form directly from suisa.ch's Film Department declaration-forms page and diff it against the version this spec's field mapping (§4) was built from.
+2. If the published version differs, or reasonable doubt exists, email `filmproduction@suisa.ch` directly to confirm the current authoritative version before finalizing the PDF layout.
+3. Record the outcome — date checked, version confirmed, any differences found — in `docs/DECISIONS.md`, the same way every other architectural decision in this project is tracked, not just informally noted somewhere.
+
+This does not affect the architecture; only individual field/label wording would change if SUISA revises the form. `ROADMAP.md` M27's acceptance criteria references this checkpoint explicitly — it is a real gate on that milestone, not an aspirational note.
 
 ## 3. Functional Scope (data-model relevant)
 
@@ -39,7 +51,7 @@ UI flows and use-case logic are out of scope for this document — see `CLAUDE.m
 
 ## 4. Data Schema
 
-Types: `String`, `String?` (optional String), `Int`, `Decimal`, `Bool`, `Date`, `UUID`, `enum`, `Set<T>`, `[T]` (ordered array). `Duration` and `Timecode` are the value types already defined in the original architecture (frame/second-based, formatted `hh:mm:ss`).
+Types: `String`, `String?` (optional String), `Int`, `Decimal`, `Bool`, `Date`, `UUID`, `enum`, `Set<T>`, `[T]` (ordered array). `MediaDuration` and `Timecode` are value types fully defined in this document (§4.8, §4.9) — this document is the sole authoritative source for them; see §5.
 
 ### 4.1 `Project`
 
@@ -49,7 +61,8 @@ Types: `String`, `String?` (optional String), `Int`, `Decimal`, `Bool`, `Date`, 
 | `name` | `String` | required | internal working name; may differ from `setup.title` |
 | `createdAt` | `Date` | required | |
 | `updatedAt` | `Date` | required | |
-| `audioAsset` | `AudioAsset` | required | from original architecture, unchanged |
+| `audioAsset` | `AudioAsset?` | optional — absent until an audio file is imported | see §4.10 |
+| `waveformPeaks` | `WaveformPeaks?` | optional — absent until generated (automatically, immediately after import) | see §4.15; deliberately a sibling field to `audioAsset`, not nested inside it — keeps `AudioAsset`'s "metadata-only, no sample data" invariant unambiguous |
 | `setup` | `Setup` | required | 1:1 |
 | `cues` | `[Cue]` | required (may be empty pre-analysis) | ordered; order is display order, not a stored field on `Cue` |
 | `people` | `[Person]` | required (may be empty) | project-scoped right-holder directory |
@@ -65,8 +78,8 @@ One per `Project`. Mirrors the SUISA WA Film form header.
 | `subtitle` | `String?` | optional | "(and sub-title, if any)" | |
 | `producer` | `Party` | **required** | "Producer (complete address)" | |
 | `directorOrPrincipal` | `Party` | **required** | "Director / principal (commercials and Spots)" | form frames the label around commercials/spots but the field applies to all production types |
-| `productionRuntime` | `Duration` | **required** | "Playing time of film or production" | |
-| `totalMusicRuntime` | `Duration` | **required** | "Total music playing time" | default = sum of `cues[].duration`; user-overridable (see `Settings.autoComputeTotalMusicRuntime`) |
+| `productionRuntime` | `MediaDuration` | **required** | "Playing time of film or production" | |
+| `totalMusicRuntime` | `MediaDuration` | **required** | "Total music playing time" | source of truth and update rule fully defined in §4.14 |
 | `productionYear` | `Int` | **required** | "Production year" | |
 | `knownOrFutureBroadcasts` | `String?` | optional | "Already known or future broadcasts or screenings" | free text: countries, broadcasters, festivals, companies |
 | `containsAdditionalUndeclaredWorks` | `enum { yes, no, notKnown }` | **required** | "Does the film...contain any other musical works..." | |
@@ -80,6 +93,7 @@ One per `Project`. Mirrors the SUISA WA Film form header.
 | `episodeTitle` | `String?` | optional | — | not on the form |
 | `productionCountry` | `String?` | optional | — | not on the form; useful context for broadcasts + SWISSPERFORM reuse |
 | `language` | `String?` | optional | — | not on the form |
+| `timecodeFrameRate` | `TimecodeFrameRate` | **required, app-internal** | — | not on the form; the display frame rate used only to format `Cue.startTimecode`/`EmbeddedMarker.position` as `HH:MM:SS:FF` in the editor UI. Default `.fps25`. Never exported — SUISA durations are declared via `MediaDuration` (`HH:MM:SS`), not frame-accurate. See §4.9. |
 | `declarant` | `Party` | **required** | "Particulars of the declaring person or publisher" | |
 | `declarationDate` | `Date` | **required** | "Date and signature" | defaults to export date |
 | `attachmentTypes` | `Set<AttachmentType>` | optional | "Attachment(s)" | see 4.2.2; informational flags only — the app does not manage the physical attachments themselves |
@@ -106,10 +120,10 @@ Many per `Project`, ordered. One SUISA "musical work" entry.
 | `id` | `UUID` | required | — | |
 | `title` | `String` | **required** | "Title of Nth work" | |
 | `workNumber` | `String?` | optional | "Work No" | "where known" |
-| `duration` | `Duration` | **required** | "Playing time" / "Duration" | total duration this work is used in the production |
+| `duration` | `MediaDuration` | **required** | "Playing time" / "Duration" | total duration this work is used in the production |
 | `rightHolders` | `[CueRightHolder]` | **required, ≥1** | "Right-holder...with status" block | |
 | `source` | `enum { embeddedMarker, detectedFromAudio, manual }` | optional, app-internal | — | not exported to the SUISA document; drives editor UI provenance display |
-| `startTimecode` | `Timecode?` | optional, app-internal | — | not exported; SUISA wants usage duration, not on-screen position |
+| `startTimecode` | `Timecode?` | optional, app-internal | — | not exported; SUISA wants usage duration, not on-screen position. See §4.9 for why this is a distinct type from `duration`. |
 | `notes` | `String?` | optional, app-internal | — | not exported |
 
 ### 4.4 `CueRightHolder`
@@ -118,10 +132,10 @@ Sub-entity of `Cue`; one row per right-holder per work.
 
 | Field | Type | Required | SUISA form field | Notes |
 |---|---|---|---|---|
-| `party` | `Party` | **required** | "Name, first name or publishing company" | |
+| `party` | `Party` | **required** | "Name, first name or publishing company" | resolved to display data via `PartyResolver`, §4.13 |
 | `role` | `enum { composer, author, arranger, publisher }` | **required** | legend: C / A / AR / E | |
-| `performanceBroadcastShare` | `Decimal` (%) | **required** | "Performances Broadcasts (%)" | see 4.6 for cross-field validation |
-| `mechanicalRightsShare` | `Decimal` (%) | **required** | "Mechanical rights (%)" | |
+| `performanceBroadcastShare` | `Decimal` (%), scaled to 2 decimal places | **required** | "Performances Broadcasts (%)" | see §4.6 for the exact-equality sum validation this scale enables |
+| `mechanicalRightsShare` | `Decimal` (%), scaled to 2 decimal places | **required** | "Mechanical rights (%)" | see §4.6 |
 | `publishingContractAttached` | `Bool` | required iff `role == .publisher` | "(join copy of publishing contract)" | |
 | `arrangementAuthorizationAttached` | `Bool` | required iff `role == .arranger` and the original work is still copyright-protected | form footnote on arrangements | |
 
@@ -160,7 +174,7 @@ enum Party {
 }
 ```
 
-Used for: `Setup.producer`, `Setup.directorOrPrincipal`, `Setup.declarant`, `Settings.defaultDeclarant`, `CueRightHolder.party`.
+Used for: `Setup.producer`, `Setup.directorOrPrincipal`, `Setup.declarant`, `Settings.defaultDeclarant`, `CueRightHolder.party`. Deletion of a referenced `Person`/`Label` is guarded — see §4.12. Resolution to display data is centralized — see §4.13.
 
 **`PostalAddress`** (shared value type): `street`, `postalCode`, `city`, `country` — all `String`, all required whenever a `PostalAddress` is present at all (i.e., "complete address" per the form means all four parts, not a bare name).
 
@@ -168,6 +182,9 @@ Used for: `Setup.producer`, `Setup.directorOrPrincipal`, `Setup.declarant`, `Set
 
 - Per `Cue`: `Σ rightHolders[].performanceBroadcastShare == 100%`.
 - Per `Cue`: `Σ rightHolders[].mechanicalRightsShare == 100%`.
+
+  **Rounding/tolerance policy for both sums above:** `performanceBroadcastShare` and `mechanicalRightsShare` are `Decimal` values scaled to exactly 2 decimal places (hundredths of a percent — matching the precision the printed SUISA form supports). The 100%-sum check is **exact equality against `100.00`, with zero tolerance band** — deliberately, not approximately. This is precise specifically *because* `Decimal` performs exact base-10 arithmetic: unlike `Double`, summing `Decimal` values at a fixed scale never accumulates binary floating-point rounding error, so no epsilon/tolerance comparison is needed to absorb arithmetic noise the way it would be with a `Double`-based sum — this is the actual reason `Decimal` was chosen for these two fields in the first place (§4.4). A legitimate uneven split — e.g. three right-holders at `33.33`, `33.33`, `33.34` — sums to exactly `100.00` under `Decimal` arithmetic and passes with no special-casing. A sum of `99.99` or `100.01` is treated as a genuine data-entry error, not a rounding artifact to be tolerated, and is flagged (blocking or warning per `Settings.shareValidationStrictness`, below). The domain model does not enforce the 2-decimal-place scale as a hard, compiler-checked constraint — `Decimal` has no such type-level restriction, and a custom validator for it is unneeded complexity this rule doesn't call for. Constraining user input to 2 decimal places is a Presentation-layer concern (input field formatting), out of scope for this document per §3.
+
 - `Setup.productionTypes` must be non-empty.
 - `Setup.otherProductionTypeDescription` required iff `.other ∈ productionTypes`.
 - `Setup.otherAttachmentDescription` required iff `.other ∈ attachmentTypes`.
@@ -175,27 +192,327 @@ Used for: `Setup.producer`, `Setup.directorOrPrincipal`, `Setup.declarant`, `Set
 - `CueRightHolder.arrangementAuthorizationAttached` must be `true` before export iff `role == .arranger` and the work is flagged as based on a still-protected original.
 - Whether a failed rule **blocks** export or only **warns** is controlled by `Settings.shareValidationStrictness`.
 
+`Setup.totalMusicRuntime`'s auto-recompute (§4.14) and `Person`/`Label` deletion guarding (§4.12) are separate, non-optional domain rules — not part of this list because they aren't pass/fail validations checked before export; they're invariants enforced continuously as data changes.
+
 ### 4.7 `Settings`
 
 App-level only; not part of the SUISA document.
 
 | Field | Type | Notes |
 |---|---|---|
-| `defaultDeclarant` | `Party?` | pre-fills `Setup.declarant` on new projects |
+| `defaultDeclarant` | `Party?` | pre-fills `Setup.declarant` on new projects; also scanned by the delete guard, §4.12 |
 | `defaultProductionCountry` | `String?` | |
 | `exportLanguage` | `enum { de, fr, it, en }` | SUISA's form exists in all four Swiss/working languages |
-| `autoComputeTotalMusicRuntime` | `Bool` (default `true`) | sums `cues[].duration` into `Setup.totalMusicRuntime` unless manually overridden |
+| `autoComputeTotalMusicRuntime` | `Bool` (default `true`) | see §4.14 for the full update rule and owning Use Case |
 | `shareValidationStrictness` | `enum { warnOnly, blockExport }` | |
 | `defaultExportFormat` | `enum { pdf, xlsx, both }` | |
-| `silenceThresholdDb` | `Double` | audio-analysis default, carried from the original architecture's `AnalysisSettings` |
-| `minimumCueGapSeconds` | `Double` | audio-analysis default |
+| `audioAnalysisDefaults` | `AnalysisSettings` | app-wide defaults applied to new imports; see §4.11 |
 
-## 5. Relationship to the Original Architecture Document
+### 4.8 `MediaDuration` (renamed from `Duration`)
 
-`AudioAsset` and `Timecode` are unchanged from the initial architecture design and are not redefined here. There is intentionally no separate persisted `CueSheet` type: the exportable cue sheet is the combination of `Setup` + `[Cue]`, assembled on demand by `ExportCueSheetUseCase` — introducing a distinct `CueSheet` model would duplicate data already owned by `Project`.
+Renamed from the originally-planned `Duration` to avoid colliding with the Swift standard library's own `Duration` type (`Swift.Duration`), which ships as part of Swift Concurrency (`ContinuousClock`, `Task.sleep(for:)`, etc.) and is implicitly in scope in virtually every file that touches `async`/`await` timing. Reusing that name for an unrelated domain type would produce constant, confusing ambiguity errors the moment both are in scope — a landmine far cheaper to defuse now, before any code exists, than after M2 ships.
+
+`MediaDuration` was chosen over the alternative `CueDuration` because the type isn't cue-specific: it's also used for `Setup.productionRuntime` and `Setup.totalMusicRuntime` — any length of media time, not just one cue's.
+
+Represents a **length** of time — "how long," never "where." Contrast with `Timecode` (§4.9), which represents a position.
+
+| Field | Type | Notes |
+|---|---|---|
+| `seconds` | `Double` | total length, in seconds. Deliberately `Double`, not `Decimal` — durations are formatted, compared, and summed for display/scheduling purposes, not accounted to an exact fixed target the way `CueRightHolder` percentage shares are (§4.4 uses `Decimal` specifically because the 100%-sum validation needs exact decimal arithmetic; `MediaDuration` has no equivalent exactness requirement). |
+
+Conformances: `Equatable`, `Comparable`, `Hashable`, `AdditiveArithmetic` (`+`, `-`, `.zero`) — `AdditiveArithmetic` is required directly by §4.14's `Σ cues[].duration` computation. No `Codable` — see `CLAUDE.md`, "Domain Model Value-Type Conformances," for why blanket `Codable` was removed project-wide.
+
+Formatting: `HH:MM:SS`, no frames. Cue durations and runtimes are declared to SUISA as a rights-accounting total, not located frame-accurately within the production — frame precision belongs to `Timecode`, not here.
+
+### 4.9 `Timecode` and `TimecodeFrameRate`
+
+Represents an absolute **position** within an `AudioAsset` — an offset from the start of the file. Contrast with `MediaDuration` (§4.8), a length. Used only by `Cue.startTimecode` and `EmbeddedMarker.position` (§4.10) — both app-internal, never exported to the SUISA document (§4.3 already notes `startTimecode` isn't exported; SUISA wants total usage duration, not on-screen position).
+
+| Field | Type | Notes |
+|---|---|---|
+| `offsetSeconds` | `Double` | precise offset from the start of the audio file, in seconds; sample-accurate at the point it's captured (derived from a sample index ÷ sample rate during import/analysis — the stored value is a time offset, not a raw sample count) |
+
+**Where the frame rate comes from — this is not audio metadata.** A WAV file carries no video frame rate; nothing in the RIFF/BWF format declares one. AutoCue is not synced to picture, only to itself, so "frame" here is a **display convention borrowed from film/TV editing practice**, not a property of the source audio or a synced video frame boundary. The frame rate used to format a `Timecode` as `HH:MM:SS:FF` comes from `Setup.timecodeFrameRate: TimecodeFrameRate` (§4.2) — a per-production, user-configurable, app-internal field, because different productions AutoCue is used on may be mastered at different frame rates, and a user reading cue positions wants them to match their own edit timeline. `Timecode.offsetSeconds` itself never changes when `timecodeFrameRate` changes — only its *formatted display* does, computed on demand. This also means changing `Setup.timecodeFrameRate` after cues already exist is always safe and needs no migration: it's a pure reformat of already-correct underlying data.
+
+`TimecodeFrameRate` (enum):
+
+| Case | Nominal FPS (`FF` field modulus) | Real FPS (used for frame-count math) | Drop-frame? |
+|---|---|---|---|
+| `.fps24` | 24 | 24.0 | no — no real/nominal mismatch to correct for |
+| `.fps25` | 25 | 25.0 | no |
+| `.fps29_97NonDrop` | 30 | 29.97 | no |
+| `.fps29_97Drop` | 30 | 29.97 | **yes** |
+| `.fps30` | 30 | 30.0 | no |
+
+Default: `.fps25` (PAL/European broadcast convention, matching AutoCue's Swiss/SUISA target market) — arbitrary but documented, freely overridable per `Setup`. Choosing `.fps25` as the default is unaffected by drop-frame support existing as an option: nothing selects `.fps29_97Drop` unless the user explicitly does, for material that's actually NTSC-derived.
+
+Drop-frame support was added in v1 rather than deferred — see `docs/DECISIONS.md` for why (short version: `Timecode`/`TimecodeFrameRate` are foundational types many later milestones depend on directly; retrofitting a second timecode mode after that dependency exists is far more expensive than getting the enum shape and conversion algorithm right once, up front, and NTSC-derived source material is a real case for this app, not a hypothetical one).
+
+**Why only `.fps29_97` needs a drop-frame variant.** Drop-frame numbering exists specifically to reconcile a *real* frame rate that doesn't evenly divide a second (29.97, in this app's case) with a *nominal* display rate that does (30). `.fps24`/`.fps25`/`.fps30` have no such mismatch — real and nominal are identical — so a drop-frame variant of any of them would be meaningless. This is why the enum only splits `.fps29_97` into `NonDrop`/`Drop`, not every case.
+
+**`Timecode` itself stays frame-rate-agnostic.** It stores nothing but `offsetSeconds: Double` — a pure position, with no frame rate and no drop/non-drop mode attached to it. Whether a given offset gets formatted as drop-frame or non-drop is entirely a property of the `TimecodeFrameRate` passed in at format time, never of the `Timecode` value itself. This is deliberate: it's what makes changing `Setup.timecodeFrameRate` later a pure reformat with no data migration (see above), and it's why drop-frame logic must never leak into `MediaDuration` (§4.8) — a length of time has no "position within a minute" to apply a skip-rule to in the first place.
+
+**Frame calculation, non-drop-frame:**
+
+```
+totalFrames = round(offsetSeconds × realFPS)
+hours   = totalFrames / (nominalFPS × 3600)
+minutes = (totalFrames / (nominalFPS × 60)) mod 60
+seconds = (totalFrames / nominalFPS) mod 60
+frames  = totalFrames mod nominalFPS
+```
+
+**Frame calculation, drop-frame (`.fps29_97Drop`) — SMPTE drop-frame numbering.** The real (uncorrected) frame count is first converted into a *display* frame number, by re-inserting the frame-numbers that drop-frame timecode skips, before the same decomposition above is applied to it. The skip rule: **frame numbers 0 and 1 are skipped at the start of every minute, except every 10th minute** (minutes 0, 10, 20, 30, 40, 50). This corrects for 29.97fps running ~0.1% slower than nominal 30fps, so that drop-frame timecode stays aligned with wall-clock time at hour boundaries — e.g. exactly 3600 seconds of real elapsed time reads `01:00:00:00`, not something drifted by several seconds, which is the entire reason drop-frame exists.
+
+```
+dropped = 2                                    // frames skipped per non-exempt minute, at nominal 30fps
+framesPerMinuteDropAdjusted = 1800 - dropped    // 1798
+framesPer10Min = 18000 - dropped × 9            // 17982 (9 non-exempt minutes per 10-minute block)
+
+d = realFrameCount / framesPer10Min             // integer division
+m = realFrameCount mod framesPer10Min
+
+if m < dropped:
+    displayFrameNumber = realFrameCount + dropped × 9 × d
+else:
+    displayFrameNumber = realFrameCount + dropped × 9 × d + dropped × ((m − dropped) / framesPerMinuteDropAdjusted)
+
+# then decompose displayFrameNumber exactly as in the non-drop formula above, using nominalFPS = 30
+```
+
+The inverse (parsing `HH:MM:SS:FF` back to an offset) reverses this: compute the naive nominal-30fps frame number from the fields, then subtract `dropped × (nonExemptMinutesElapsed)` to recover the real frame count, where `nonExemptMinutesElapsed = totalMinutes − totalMinutes/10`.
+
+**Invalid drop-frame timecodes are rejected, not silently miscomputed.** Under drop-frame numbering, `FF` values 0 and 1 at `SS == 0` of a non-exempt minute don't correspond to any real frame — e.g. `00:01:00:00` and `00:01:00:01` don't exist; the first real frame of minute 1 is `00:01:00:02`. Parsing such a value must fail (return `nil`/throw), not produce a `Timecode` that silently reformats to a different string than what was entered.
+
+Formatted as `HH:MM:SS:FF`, each component zero-padded to 2 digits. Drop-frame timecode conventionally uses a `;` separator immediately before the frame field (`HH:MM:SS;FF`) to visually distinguish it from non-drop timecode — applied here too.
+
+**Verification:** this arithmetic is implemented and unit-tested in `Packages/ACCore/Sources/ACCore/Models/{Timecode,TimecodeFrameRate}.swift` / `Packages/ACCore/Tests/ACCoreTests/TimecodeTests.swift`, including the every-10th-minute exception specifically (the classic bug in drop-frame implementations) and a round-trip sweep across a 3-hour-equivalent frame range.
+
+### 4.10 `AudioAsset`, `EmbeddedMarker`, `BroadcastWaveMetadata`
+
+One `AudioAsset` per `Project`, present once audio has been imported (`Project.audioAsset` is optional — absent before that, §4.1). An immutable, derived snapshot produced by `AudioAnalysisRepository` from the source WAV file; the file on disk remains the source of truth for raw audio (`CLAUDE.md`, Single Source of Truth).
+
+**Invariant: `AudioAsset` never contains raw or downsampled sample data (no PCM buffer, no waveform peak array).** It is bounded, metadata-only, and safe to hold fully in memory regardless of source file size — this is what keeps it a plain `ACCore` domain value type despite the "never load a full WAV into memory" constraint applying project-wide. The waveform-display data model this invariant explicitly excludes from `AudioAsset` is `WaveformPeaks` — a separate, explicitly-bounded sibling type on `Project`, not a field here — see §4.15.
+
+| Field | Type | Notes |
+|---|---|---|
+| `id` | `UUID` | |
+| `originalFileName` | `String` | display only; not a file-system path |
+| `securityScopedBookmark` | `Data` | opaque sandboxed-file-access bookmark (`URL.bookmarkData`); `Data` is a Foundation type, so this stays valid in `ACCore` without an extra framework import |
+| `duration` | `MediaDuration` | total length of the file |
+| `sampleRate` | `Double` | Hz |
+| `channelCount` | `Int` | |
+| `bitDepth` | `Int` | |
+| `embeddedMarkers` | `[EmbeddedMarker]` | from `cue`/`labl`/`ltxt` chunks; may be empty |
+| `broadcastWaveMetadata` | `BroadcastWaveMetadata?` | from the `bext` chunk; `nil` if the file isn't BWF-tagged |
+| `importedAt` | `Date` | |
+
+**`EmbeddedMarker`** — one embedded cue-point marker:
+
+| Field | Type | Notes |
+|---|---|---|
+| `id` | `UUID` | |
+| `position` | `Timecode` | offset from the start of the file, §4.9 |
+| `label` | `String?` | from the `labl` chunk, if present |
+| `note` | `String?` | from the `ltxt` chunk's text, if present |
+
+**`BroadcastWaveMetadata`** — from the `bext` chunk, when present:
+
+| Field | Type | Notes |
+|---|---|---|
+| `description` | `String?` | |
+| `originator` | `String?` | recording device/software |
+| `originatorReference` | `String?` | |
+| `originationDate` | `Date?` | |
+| `timeReferenceSamples` | `UInt64?` | sample count since midnight, for external sync reference |
+
+### 4.11 `AnalysisSettings`
+
+App-level audio-analysis defaults, nested under `Settings.audioAnalysisDefaults` (§4.7) rather than flat fields on `Settings` — kept as its own type so it can be passed directly as a parameter to `DetectCuesUseCase`/`AudioAnalysisRepository` without those APIs depending on the whole `Settings` type. This section is the implementation *contract* for `ACAudioKit`'s silence/level detection (`ROADMAP.md` M16–M20) — concrete enough that those milestones have an unambiguous target, without prescribing the actual DSP code (window-size tuning, exact statistic used for noise-floor estimation, etc. remain implementation detail within this contract).
+
+**Detection approach: windowed RMS level, not instantaneous/peak sample values.** Audio is analyzed in fixed-size windows (`analysisWindowMilliseconds`), computing each window's RMS level in dBFS via `Accelerate`/vDSP (per `CLAUDE.md`'s "no hand-rolled sample loops" rule). A window is classified silent if its RMS level is below the effective threshold (see calibration, below). Peak/instantaneous-sample thresholding is deliberately not used — a single loud transient sample (a click, a digital pop) would otherwise misclassify an entire otherwise-silent window, and RMS-over-a-window is the standard, more stable technique for gap/silence-gate detection.
+
+| Field | Type | Default | Notes |
+|---|---|---|---|
+| `noiseFloorCalibrationMode` | `enum { manual, automatic }` | `.manual` | see "Threshold: manual vs. automatic," below |
+| `silenceThresholdDb` | `Double` | `-40.0` | dBFS (≤ 0). Manual mode: used directly, unchanged for the whole file. Automatic mode: the fallback value if calibration is inconclusive; not the effective threshold otherwise — see below |
+| `calibrationMarginDb` | `Double` | `6.0` | automatic mode only: headroom added above the *measured* noise floor to set the effective threshold |
+| `noiseFloorReestimationIntervalSeconds` | `Double` | `300.0` | automatic mode only: how often the noise floor is re-measured across a file's duration — see "Time-varying noise floor," below |
+| `analysisWindowMilliseconds` | `Double` | `50.0` | size of the RMS measurement window described above |
+| `minimumSilenceDurationSeconds` | `Double` | `2.0` | renamed from `minimumCueGapSeconds` for clarity — it measures a duration of silence, not an abstract "gap." Minimum duration a run of below-threshold windows must sustain, continuously, before it's treated as a boundary between two cues |
+| `minimumCueDurationSeconds` | `Double` | `3.0` | a candidate non-silent region shorter than this is discarded (merged into whichever neighboring silence run absorbs it) rather than promoted to a `Cue` — guards against a short noise blip or brief room-tone swell being detected as a spurious musical work |
+| `tailToleranceDb` | `Double` | `6.0` | see "Reverb tails," below |
+| `tailCapSeconds` | `Double` | `2.0` | see "Reverb tails," below |
+| `embeddedMarkerMergeToleranceSeconds` | `Double` | `1.0` | see "Combining with embedded markers," below |
+
+Conformances: `Equatable`, `Hashable`, `Sendable` (consistent with every other `ACCore` value type — see `CLAUDE.md`, "Domain Model Value-Type Conformances"). No `Codable`.
+
+**Threshold: manual vs. automatic.** Both are supported, switched via `noiseFloorCalibrationMode` — not an either/or product decision, because a single fixed dBFS threshold across arbitrarily different source recordings (a quiet studio mix vs. a location recording with real room noise) is fragile. In `.manual` mode, `silenceThresholdDb` is used exactly as configured. In `.automatic` mode, the noise floor is measured from the file itself (a leading sample window at import time), and the effective threshold is `measuredNoiseFloorDb + calibrationMarginDb` — the margin exists so ordinary ambient hiss just above the true noise floor isn't misclassified as "non-silent." If calibration can't produce a reliable measurement (e.g. a file with no quiet passage at all to sample), the fallback is `silenceThresholdDb` unchanged. The exact statistic used to estimate "the noise floor" from a sample window (e.g. a low percentile of window RMS values) is left to M18 — the contract fixed here is *that* calibration happens this way and produces one effective-threshold-in-dBFS value per re-estimation window, not the literal statistic.
+
+**Time-varying noise floor.** A single floor measurement for an entire 3-hour file doesn't hold up if the recording's ambient conditions genuinely change partway through (a real possibility for this app's actual use case — production audio spanning scene/location changes). Rather than one global calibration, `.automatic` mode re-estimates the noise floor on a rolling basis, once per `noiseFloorReestimationIntervalSeconds` (default every 5 minutes), each time using the same leading-sample-window technique applied to that interval. This is a deliberately simple periodic re-estimation, not a continuously-adaptive filter — a real, bounded mechanism for the common case (noise floor shifts a few times across a long file) without building a full adaptive noise-gate model that isn't needed yet.
+
+**Ambience/room tone vs. silence.** The system does not attempt to semantically distinguish "quiet music" from "room tone" — both present identically to a level-based detector as continuous energy above the noise floor, and telling them apart is a *content-identity* question ("is this actually a musical work?"), not a signal-detection one. This is deliberately left to human review, not solved at the DSP layer: every detected boundary produces a `Cue` with `source == .detectedFromAudio` (SPEC.md §4.3), always user-confirmable/editable/deletable before export, never auto-finalized. The one signal-side mitigation is `minimumCueDurationSeconds`: a short blip of room tone bounded by two genuine silence gaps, too brief to plausibly be a musical work, is discarded rather than promoted to a spurious candidate `Cue`.
+
+**Reverb tails.** A decaying tail after a musical passage ends can sit above a naively-chosen threshold for a while, which would otherwise delay gap detection and push a cue's measured end later than where the audible "music" really stopped. Two things bound this, deliberately without attempting perceptual/spectral tail modeling (a much harder DSP problem than this contract calls for):
+
+1. Because a boundary requires *sustained* silence (`minimumSilenceDurationSeconds`) rather than a single below-threshold instant, a tail that decays into real silence and stays there is naturally absorbed into the *preceding* cue's measured duration — its end boundary sits at the start of the qualifying silence run, tail included. This is treated as correct, not a bug: the tail was audibly part of that work's use.
+2. To stop a slowly-decaying tail from extending a cue's measured end by an implausible amount, a second, stricter threshold applies during a candidate tail: if the level has been continuously below `silenceThresholdDb − tailToleranceDb` (i.e. `tailToleranceDb` further down than the main threshold) for longer than `tailCapSeconds`, the cue's end is hard-truncated to the point that stricter threshold was first crossed, rather than waiting for the full decay to cross the main (less strict) threshold.
+
+As with every detected boundary, this is a starting point for the editor, not a guaranteed-final value — the user can always adjust it.
+
+**Borderline/flickering regions.** A region hovering right at the threshold (classic noise-gate "chatter") is handled by the same sustained-duration requirement as ordinary gap detection (`minimumSilenceDurationSeconds`), not a separate hysteresis threshold — a region must remain classified as silence *continuously* for the full minimum duration to register as a gap at all, which already suppresses single-window or short-burst threshold crossings without a second configurable value.
+
+**Combining with embedded markers.** This setting governs raw signal detection only; merging its output with `AudioAsset.embeddedMarkers` is `DetectCuesUseCase`'s job (`ROADMAP.md` M21), using `embeddedMarkerMergeToleranceSeconds` from this same settings value so the whole detection pipeline is configured from one place. Rule: an embedded marker is always authoritative. A silence-detected boundary within `embeddedMarkerMergeToleranceSeconds` of an embedded marker is treated as confirming that marker, not as a second, competing detection — it does not produce a separate candidate. Two silence-detected boundaries (no marker involved) within the same tolerance of each other are merged into one.
+
+**Known gap:** this schema doesn't yet support a per-import override distinct from the app-wide default (e.g. "use different silence settings for this one unusually noisy production"). `ImportAudioUseCase`/`DetectCuesUseCase` can already accept an `AnalysisSettings` value directly at the call site without a schema change — whether that becomes user-facing UI (persisted per-`Project` vs. one-shot per-run) is a product decision for whichever milestone actually builds cue detection (Phase 7 of `ROADMAP.md`), not resolved here.
+
+### 4.12 Referential Integrity for `Person`/`Label` (delete guard)
+
+`Party.person(Person.ID)` / `.label(Label.ID)` are bare `UUID` references into `Project.people`/`Project.labels` — there is no SwiftData `@Relationship` cascade/nullify behind them (Domain-layer types don't know about SwiftData at all; see `CLAUDE.md`). Without an explicit rule, deleting a `Person`/`Label` that's still referenced would silently orphan every place it's used, with no compiler or runtime error.
+
+**Rule: deletion is blocked, never cascaded, never nulled, whenever a reference exists.**
+
+A dedicated Use Case — `DeletePersonUseCase`/`DeleteLabelUseCase` (or a shared `DeleteRightHolderUseCase` parameterized over `Party`) — is the *only* sanctioned way to remove a `Person`/`Label` from `Project.people`/`Project.labels`. Before deleting, it scans every `Party`-typed field reachable from the `Project`, plus `Settings.defaultDeclarant`:
+
+- `Setup.producer`
+- `Setup.directorOrPrincipal`
+- `Setup.declarant`
+- `Settings.defaultDeclarant` (app-level, not project-scoped, but still a live reference)
+- every `Cue.rightHolders[].party`, for every `Cue` in `Project.cues`
+
+If any reference is found, the Use Case returns a typed failure listing exactly where:
+
+```swift
+enum PartyReferenceLocation: Equatable {
+    case setupProducer
+    case setupDirectorOrPrincipal
+    case setupDeclarant
+    case settingsDefaultDeclarant
+    case cueRightHolder(cueID: Cue.ID)
+}
+```
+
+so the calling ViewModel/View can tell the user precisely what to edit first, rather than showing a generic "can't delete" message. Deletion proceeds only once the returned reference list is empty — the user must reassign or remove every reference first. This is a hard block by design: nullifying a required field like `Setup.producer` would silently create an invalid `Setup`, and cascade-deleting a `CueRightHolder` row would silently break that `Cue`'s 100%-share invariant (§4.6) without the user's knowledge — both are worse outcomes than refusing and explaining exactly why.
+
+### 4.13 `PartyResolver`
+
+Resolving a `Party` value into something displayable (a name, an address) requires looking it up against `Project.people`/`Project.labels` — every screen that shows a right-holder needs this. To avoid that scan-and-match logic being reimplemented slightly differently in every ViewModel, it lives in exactly one place: `PartyResolver`, a stateless, pure (no I/O, no async) type in `ACCore/Models/PartyResolver.swift` — a plain function/namespace, not a Use Case, since it has no Repository dependency and nothing to orchestrate (see `CLAUDE.md` Naming Conventions).
+
+```swift
+enum PartyResolver {
+    static func resolve(_ party: Party, people: [Person], labels: [Label]) -> ResolvedParty?
+}
+
+struct ResolvedParty: Equatable {
+    let displayName: String        // "First Last" for a Person, or the company name for a Label
+    let address: PostalAddress?    // nil if the referenced Person's address isn't set (Person.address is optional; Label.address is always present)
+    let ipiNumber: String?
+}
+```
+
+Returns `nil` only if the referenced `id` isn't found in either array — i.e. exactly the dangling-reference case §4.12's delete guard exists to prevent. Any caller that hits `nil` here, once §4.12 is correctly enforced everywhere deletion happens, indicates a bug, not a valid state to design UI around.
+
+### 4.14 `Setup.totalMusicRuntime` — Source of Truth and Update Rule
+
+`Setup.totalMusicRuntime` (§4.2) is a single persisted field — there is no separate "derived" shadow value; the field itself is both the exported value and the thing kept in sync. Ownership:
+
+- **Source of truth:** the `Setup.totalMusicRuntime` field, always. It is what gets exported.
+- **Update rule:** whenever `Project.cues` changes (add/edit/delete/reorder-with-duration-change) **and** `Settings.autoComputeTotalMusicRuntime == true`, the field is recomputed as `Σ cues[].duration` and written atomically as part of the same mutation — never as a separate, possibly-forgotten follow-up step.
+- **Owning Use Case:** `UpdateCueUseCase` (planned for `ROADMAP.md` M23) is responsible for triggering this recompute after every Cue mutation it performs. The actual sum logic lives in exactly one place — a pure static helper, `RecalculateTotalMusicRuntimeUseCase.recalculate(cues:) -> MediaDuration` — so it's computed identically everywhere it's needed, never copied.
+- **Manual override:** when `Settings.autoComputeTotalMusicRuntime == false`, `UpdateCueUseCase` leaves the field untouched; it can then only be changed via `UpdateSetupUseCase` (an explicit user edit of `Setup` directly).
+- **Toggling the setting:** flipping `autoComputeTotalMusicRuntime` from `false` → `true` immediately triggers one recompute via the same helper (invoked from the settings-update path, e.g. `UpdateSettingsUseCase`), so the field can't be left stale after re-enabling auto-compute. Flipping `true` → `false` leaves the current value as-is — it simply stops being overwritten going forward.
+
+This resolves the original derived-vs-stored ambiguity by making the calculation a single, named, reusable piece of domain logic invoked from exactly two call sites (Cue mutation, settings toggle) — not two independent implementations of the same sum.
+
+### 4.15 `WaveformPeaks` and `WaveformPeakBucket`
+
+Resolves a gap flagged in an earlier revision of this document: `CLAUDE.md`'s folder structure names `ACDesignSystem/Components/WaveformView`, but nothing in the schema or the audio pipeline (`ROADMAP.md` M16–M19) produced any data for it to render. This section is that missing piece.
+
+**Representation: a fixed-size, downsampled min/max peak array — never raw or full-resolution sample data.** For each of a fixed number of time buckets spanning the whole file, `WaveformPeaks` stores the minimum and maximum normalized sample amplitude reached in that bucket. Min/max-per-bucket (not average/RMS) is the standard waveform-rendering technique specifically because it preserves visible transients (a single sharp peak) that an averaging approach would smooth away.
+
+| Field | Type | Notes |
+|---|---|---|
+| `id` | `UUID` | |
+| `audioAssetID` | `AudioAsset.ID` | which `AudioAsset` this summarizes |
+| `resolution` | `Int` | bucket count; fixed at `4096` for the persisted overview (see below) |
+| `buckets` | `[WaveformPeakBucket]` | length always equals `resolution` |
+
+**`WaveformPeakBucket`:**
+
+| Field | Type | Notes |
+|---|---|---|
+| `min` | `Float` | normalized amplitude, `-1.0...1.0` |
+| `max` | `Float` | normalized amplitude, `-1.0...1.0` |
+
+Conformances (both types): `Equatable`, `Hashable`, `Sendable`. No `Codable` — see `CLAUDE.md`, "Domain Model Value-Type Conformances."
+
+**Memory bound.** `resolution` is fixed regardless of file length — a 3-hour file and a 3-minute file both produce exactly 4096 buckets. At 2 × `Float` (8 bytes) per bucket, the persisted overview is `4096 × 8 = 32,768` bytes — trivially safe to hold fully in memory or persist, independent of source file size. This is what lets `WaveformPeaks` exist as a plain `ACCore` value type without violating the "never load a full WAV into memory" constraint, the same way `AudioAsset`'s metadata-only invariant does (§4.10).
+
+**v1 simplification: mono mixdown, not per-channel.** Multi-channel source audio is summed to a single mono trace before peak extraction. A dual-trace (or per-channel) stereo waveform display is a real, plausible future enhancement, but not designed as part of this change — see §6.
+
+**Generation.** `ACAudioKit`, behind `AudioAnalysisRepository` — the same layer and protocol responsible for everything else audio-related, per `CLAUDE.md` rule 3 ("new audio analysis techniques are added inside `ACAudioKit`, behind the existing `AudioAnalysisRepository` protocol"). Computed via the streaming reader (`ACAudioKit/Streaming`) in bounded chunks: each chunk contributes to whichever bucket(s) its sample range maps to, via a vDSP min/max reduction (`vDSP_minv`/`vDSP_maxv` or equivalent) per `CLAUDE.md`'s "no hand-rolled sample loops" rule — never a second, separate full-file read distinct from the pass import/analysis already performs.
+
+**Ownership and lifecycle: generated once, automatically, right after import.** `GenerateWaveformPeaksUseCase` (`ACCore/UseCases/`) runs immediately after `ImportAudioUseCase` completes, producing the fixed-resolution overview and persisting it to `Project.waveformPeaks` (§4.1) — not lazily generated on first view, so the editor's waveform is never shown mid-computation for a file the user already finished importing.
+
+**Progressive rendering for long files: two-tier, not a single resolution and not a full mip-map pyramid.**
+
+1. **Overview** — the persisted `WaveformPeaks` described above, one fixed 4096-bucket summary of the entire file. This is what renders the full-timeline view. For a 3-hour file, 4096 buckets means roughly 2.6 seconds per bucket — coarse, but that's expected and correct for a full-file overview; it's not meant for boundary-level precision.
+2. **On-demand detail** — when the editor UI is zoomed into a specific time range (e.g. adjusting a cue boundary), `GenerateWaveformDetailUseCase` computes peaks for just that visible range, at a resolution supplied by the caller (driven by the actual pixel width of the zoomed-in view, not a fixed constant). This is deliberately **not persisted or cached** — a bounded time-range read via the streaming reader is cheap even against a 3-hour source file, and caching zoom-dependent results would be speculative complexity for a cost that's already negligible (see §6 for this as an explicit non-goal, not an oversight).
+
+A full multi-resolution mip-map (as some professional DAWs build) was deliberately not designed — two tiers (bounded overview + on-demand bounded detail) covers this app's actual editing workflow (confirm/adjust cue boundaries, not sample-accurate waveform editing) without the added complexity of maintaining a resolution pyramid.
+
+**What `WaveformView` (`ACDesignSystem`) itself consumes.** Per `CLAUDE.md`'s Design System rules, `ACDesignSystem` has zero knowledge of domain types — so `WaveformView` never takes a `WaveformPeaks` directly. It takes a design-system-local, domain-free `WaveformDisplayData` (defined in `ACDesignSystem`, not `ACCore`) — the same "local adapter struct" pattern already established for `CueTableView`'s row protocol. A Feature-layer mapper (in `ACFeatures`) converts `WaveformPeaks`/detail-region buckets into `WaveformDisplayData` at the point a screen renders it. See `CLAUDE.md`, Design System section, for the adapter type's shape.
+
+### 4.16 `CueSheetPageLayout` — the shared preview/export layout model
+
+See `CLAUDE.md`'s Export Architecture section for why this exists (in short: the on-screen A4 preview and the exported PDF must be pixel-identical, which requires computing layout exactly once, not twice). The types:
+
+| Type | Shape | Notes |
+|---|---|---|
+| `CueSheetPageLayout` | `{ pageIndex: Int, pageCount: Int, elements: [CueSheetLayoutElement] }` | one page's worth of fully-positioned content |
+| `CueSheetLayoutElement` | `{ frame: LayoutRect, content: LayoutElementContent }` | one positioned piece of content on a page |
+| `LayoutRect` | `{ x: Double, y: Double, width: Double, height: Double }` | a plain, Foundation-only geometry primitive — deliberately **not** `CGRect`. `ACCore` stays Foundation-only per `CLAUDE.md` rule 1; `CGRect` is a Core Graphics type. Each rendering backend (Core Graphics for the real PDF, SwiftUI for the on-screen preview) converts `LayoutRect` to its own native geometry type at the point of drawing — the same adapter-at-the-edge pattern as `WaveformDisplayData` (§4.15) |
+| `LayoutElementContent` | `enum { text(String, font: LayoutFontSpec), rule(LayoutRuleSpec) }` (sketch only) | the exact case set (table cells, borders, logos, etc.) is real visual-design work for `ROADMAP.md` M27, not fixed by this architectural change — this section commits to the *mechanism* (one computed layout, two consumers), not the SUISA form's pixel-perfect visual design |
+
+Conformances: `Equatable`, `Hashable`, `Sendable` (`LayoutFontSpec`/`LayoutRuleSpec` follow the same pattern — plain Foundation value types, not designed field-by-field here). No `Codable` — see `CLAUDE.md`, "Domain Model Value-Type Conformances."
+
+Who computes it: `ExportRepository` (`ACExport`, Data layer) — it's the one place with Core Text available for real text measurement and line-breaking, which pagination (5 works/page main form, 4/page continuation, per §2.1) genuinely depends on getting right. Pure Foundation code cannot compute accurate text layout; this is why layout *computation* is a Data-layer responsibility even though the resulting *value* is a plain `ACCore` type.
+
+Who consumes it: both the real PDF renderer (`PDFCueSheetRenderer`, `ACExport` — draws it with Core Graphics `PDFContext` + Core Text) and the on-screen preview View (`ACFeatures` — obtains the same value via a Use Case wrapping `ExportRepository`, then draws it with SwiftUI, e.g. `Canvas`). Both draw the *identical* precomputed frames and text; neither re-derives layout independently.
+
+### 4.17 `ProgressUpdate` and `OperationProgress<Success>`
+
+The shared progress-reporting shape used by every long-running operation — see `CLAUDE.md`'s "Long-Running Operations: Progress & Cancellation" section for the full rationale and which operations use it.
+
+```swift
+public struct ProgressUpdate: Sendable, Equatable {
+    public let fractionCompleted: Double   // 0.0...1.0
+    public let message: String?             // optional human-readable status
+}
+
+public enum OperationProgress<Success: Sendable>: Sendable {
+    case progress(ProgressUpdate)
+    case completed(Success)
+}
+```
+
+Both are plain `ACCore` value types (`ACCore/Models/`) — Foundation-only, no dependency on `Progress` (Foundation's KVO-based class) or any other framework. A Repository/Use Case method that reports progress returns `AsyncThrowingStream<OperationProgress<T>, Error>`, where `T` is whatever that operation ultimately produces (`AudioAsset` for import, `[Cue]` for detection, `WaveformPeaks` for the waveform overview, a file `URL` for export).
+
+## 5. Scope of This Document
+
+This document is now fully self-contained: every domain type referenced anywhere in `CLAUDE.md` (`AudioAsset`, `Timecode`, `TimecodeFrameRate`, `MediaDuration`, `AnalysisSettings`, `PartyResolver`, `WaveformPeaks`, `CueSheetPageLayout`, `OperationProgress`, etc.) is fully specified above in §4, not deferred to an external document. An earlier draft of this project referenced an "original architecture document" for `AudioAsset`/`Timecode`/`AnalysisSettings`; that document does not exist anywhere in this repository's history and has been superseded — §4 above is the sole authoritative source for all domain types going forward.
+
+There is intentionally no separate persisted `CueSheet` type: the exportable cue sheet is the combination of `Setup` + `[Cue]`, assembled on demand by `ExportCueSheetUseCase` — introducing a distinct `CueSheet` model would duplicate data already owned by `Project`.
 
 ## 6. Known Gaps / Follow-ups
 
-- Exact current revision of the SUISA WA Film form should be reconfirmed with SUISA before production/compliance-critical use (§2.3).
+- The exact current revision of the SUISA WA Film form now has a concrete, dated revalidation checkpoint (§2.3) tied to `ROADMAP.md` M27, rather than being an open-ended "should be reconfirmed" item with nothing forcing it to actually happen.
 - SWISSPERFORM has no equivalent structured document to validate field-by-field against; §2.2's approach (shared identity fields, no fabricated "SWISSPERFORM cue sheet") should be revisited if SWISSPERFORM publishes a production-side reporting form in the future.
-- IPI/CAE number fields are a AutoCue addition for disambiguation, not a literal field on the sourced paper form — acceptable, but worth confirming SUISA is fine receiving it as supplementary info if included in exports.
+- IPI/CAE number fields are an AutoCue addition for disambiguation, not a literal field on the sourced paper form — acceptable, but worth confirming SUISA is fine receiving it as supplementary info if included in exports.
+- `AnalysisSettings` has no per-import override mechanism yet, only an app-wide default (§4.11).
+- `ROADMAP.md` was not fully updated as part of the architecture correction that produced this revision — most milestones (M13–M25, M31) still reference the pre-`ACFeatures`-package `Features/...` path instead of `Packages/ACFeatures/Sources/ACFeatures/...`, a pre-existing inconsistency from an earlier batch, not newly introduced. Its milestone file-path lists should be swept for consistency before Milestone 1 begins. Deployment target, the SUISA revalidation checkpoint, the `Codable`-round-trip wording in M2–M6, and the multi-window/"Review & Export"-as-a-tab navigation model in M11/M12/M26/M29 have already been corrected directly in `ROADMAP.md`; the remaining `Features/...` path sweep is still outstanding.
+- `WaveformPeaks` (§4.15) is mono-mixdown only — no per-channel/stereo dual-trace representation. A real, plausible future enhancement, not designed here.
+- `GenerateWaveformDetailUseCase` (§4.15) results are never cached across zoom interactions — always recomputed on demand. Deliberate (the cost is already negligible against a bounded time range), not an oversight; revisit only if a real performance problem shows up.
+- `CueSheetPageLayout` (§4.16) fixes the *mechanism* for keeping preview and export in sync — the actual SUISA-matching visual design (exact fonts, column widths, table borders) is still unbuilt, real work for `ROADMAP.md` M27.
+- The `libxlsxwriter` dependency (`CLAUDE.md` rule 4) has been verified to compile, link, and produce a valid workbook via a real smoke test, **and** to work correctly under genuine kernel-enforced App Sandbox (a real ad-hoc-signed `.app` bundle carrying the actual sandbox entitlement — unauthorized writes were genuinely blocked, writes inside the sandbox container genuinely succeeded with correct output; see `docs/DECISIONS.md`). What remains unverified is narrower than "sandbox compatibility" in general: the real app's `NSSavePanel`-granted write flow specifically (dynamic, Powerbox-mediated access to a user-chosen destination) hasn't been tested, only the baseline container-write case has. Confirm that once a real signed app target with real entitlements exists (`ROADMAP.md` M11 onward), not deferred back to M28.
+- The Progress/Cancellation contract (§4.17, `CLAUDE.md`) has no system-level integration (Dock icon progress, Finder progress, menu-bar activity) — deliberately deferred; Foundation's `Progress` could be layered on top of a `AsyncThrowingStream`-driven operation later without changing this contract, if that's ever actually wanted.

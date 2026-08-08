@@ -4,6 +4,8 @@ Each milestone is scoped to fit in one Claude Code session: one coherent vertica
 
 Commit messages follow Conventional Commits, matching the style already implied by `CLAUDE.md`/`SPEC.md`'s own framing.
 
+**Minimum deployment target: macOS 14.0 (Sonoma).** Required by `@Observable`/`SwiftData` — see `CLAUDE.md`, "Deployment Target," and `SPEC.md` §0. Every package's `Package.swift` and the App target's deployment target setting must target this; don't use an API newer than macOS 14 without updating that section first.
+
 ## Overview
 
 | Phase | Milestones |
@@ -39,23 +41,24 @@ Phases 4 and parts of 12 (M31) aren't named in the original phase list but are n
 - `xcodebuild -scheme AutoCue build` succeeds
 - App launches to an empty window
 - Every package target builds and its placeholder test passes
+- Every package's `Package.swift` and the App target set macOS 14.0 as the deployment target, per `CLAUDE.md`'s "Deployment Target" section
 **Commit:** `chore: scaffold Xcode workspace and local SPM package structure`
 
 ### M2 — Core value types
 **Goal:** Implement the shared value types every domain model depends on.
-**Files:** `Packages/ACCore/Sources/ACCore/Models/{Duration,Timecode,PostalAddress,Party}.swift` + tests
+**Files:** `Packages/ACCore/Sources/ACCore/Models/{MediaDuration,Timecode,TimecodeFrameRate,PostalAddress,Party}.swift` + tests (`MediaDuration`/`Timecode`/`TimecodeFrameRate` already implemented ahead of schedule — see `SPEC.md` §4.8–§4.9 and `docs/DECISIONS.md`; this milestone's remaining scope is `PostalAddress`/`Party`)
 **Dependencies:** M1
 **Acceptance criteria:**
-- Unit tests cover `hh:mm:ss` formatting, arithmetic, equality, and `Codable` round-trip for each type
+- Unit tests cover `hh:mm:ss`/`HH:MM:SS:FF` formatting, arithmetic, equality, and an `Equatable`-based round-trip (construct → copy/mutate a copy → assert expected equality/inequality) for each type — not a `Codable` round-trip; see `CLAUDE.md`, "Domain Model Value-Type Conformances," for why `Codable` isn't part of this project's default conformance set
 - No import beyond `Foundation` anywhere in `ACCore`
-**Commit:** `feat(core): add Duration, Timecode, PostalAddress, and Party value types`
+**Commit:** `feat(core): add MediaDuration, Timecode, PostalAddress, and Party value types`
 
 ### M3 — Person and Label models
 **Goal:** Implement individual and corporate right-holder identity.
 **Files:** `Models/{Person,Label}.swift` + tests
 **Dependencies:** M2
 **Acceptance criteria:**
-- `Codable` round-trip tests pass for both types
+- `Equatable`-based round-trip tests pass for both types (see `CLAUDE.md`, "Domain Model Value-Type Conformances" — not `Codable`)
 - `Identifiable` conformance present
 - A tested helper distinguishes "has complete address" (all four `PostalAddress` parts present) per `SPEC.md` §4.5
 **Commit:** `feat(core): add Person and Label right-holder models`
@@ -65,9 +68,10 @@ Phases 4 and parts of 12 (M31) aren't named in the original phase list but are n
 **Files:** `Models/Setup.swift`, `Models/ProductionType.swift`, `Models/AttachmentType.swift` + tests
 **Dependencies:** M2, M3
 **Acceptance criteria:**
-- `Codable` round-trip test passes
+- `Equatable`-based round-trip test passes (see `CLAUDE.md`, "Domain Model Value-Type Conformances" — not `Codable`)
 - Every field listed as required in `SPEC.md` §4.2 has no default value that could silently satisfy it
 - `ProductionType`/`AttachmentType` enum cases match `SPEC.md` §4.2.1/4.2.2 exactly
+- `Setup.timecodeFrameRate: TimecodeFrameRate` (default `.fps25`) is included per `SPEC.md` §4.2/§4.9
 **Commit:** `feat(core): add Setup model and production/attachment classification enums`
 
 ### M5 — Cue, CueRightHolder, and share validation
@@ -75,9 +79,9 @@ Phases 4 and parts of 12 (M31) aren't named in the original phase list but are n
 **Files:** `Models/Cue.swift`, `Models/CueRightHolder.swift`, `UseCases/ValidateCueRightHolderSharesUseCase.swift` + tests
 **Dependencies:** M2, M3
 **Acceptance criteria:**
-- Unit tests prove the 100%-sum rule is checked independently for `performanceBroadcastShare` and `mechanicalRightsShare`
+- Unit tests prove the 100%-sum rule is checked independently for `performanceBroadcastShare` and `mechanicalRightsShare`, using exact `Decimal` equality against `100.00` with zero tolerance (`SPEC.md` §4.6) — include a case proving an uneven legitimate split (e.g. `33.33`/`33.33`/`33.34`) passes
 - Unit tests prove `publishingContractAttached`/`arrangementAuthorizationAttached` are flagged as missing only when their triggering role/condition applies
-- `Cue` `Codable` round-trip test passes
+- `Cue` `Equatable`-based round-trip test passes (see `CLAUDE.md`, "Domain Model Value-Type Conformances" — not `Codable`)
 **Commit:** `feat(core): add Cue and CueRightHolder models with share validation`
 
 ### M6 — AudioAsset, Settings, Project, and repository protocols
@@ -85,7 +89,7 @@ Phases 4 and parts of 12 (M31) aren't named in the original phase list but are n
 **Files:** `Models/{AudioAsset,Settings,Project}.swift`, `RepositoryProtocols/{ProjectRepository,AudioAnalysisRepository,ExportRepository}.swift` + tests; `Packages/ACTestSupport/Sources/ACTestSupport/Fakes/InMemory{ProjectRepository,AudioAnalysisRepository,ExportRepository}.swift`
 **Dependencies:** M3, M4, M5
 **Acceptance criteria:**
-- `Project` composes `Setup`, `[Cue]`, `[Person]`, `[Label]`, `AudioAsset`; round-trips via `Codable`
+- `Project` composes `Setup`, `[Cue]`, `[Person]`, `[Label]`, an optional `AudioAsset`, and an optional `WaveformPeaks` (`SPEC.md` §4.1, §4.15); round-trips via an `Equatable`-based test (see `CLAUDE.md`, "Domain Model Value-Type Conformances" — not `Codable`)
 - A grep check confirms no Apple framework (beyond `Foundation`) is imported anywhere in `ACCore`
 - In-memory fake implementations of all three protocols exist in `ACTestSupport` and pass a basic CRUD smoke test
 **Commit:** `feat(core): add Project, Settings, AudioAsset models and repository protocols`
@@ -139,24 +143,25 @@ Phases 4 and parts of 12 (M31) aren't named in the original phase list but are n
 
 ## Phase 4 — App Shell & Project Library
 
-### M11 — Dependency container and app shell
-**Goal:** Give the app a real window and a single place where concrete services are wired.
-**Files:** `AutoCue/DependencyContainer.swift` (real wiring), `AutoCueApp.swift` (`NavigationSplitView` shell, injects container via `Environment`), `AppState.swift` (selected project id), `AutoCue.entitlements` (App Sandbox on)
+### M11 — Dependency container, Library scene, and Project window scene
+**Goal:** Give the app its real multi-window shell and a single place where concrete services are wired. Per `CLAUDE.md`'s "Navigation Model" and "Document & Window Model": a singleton Library scene, a `WindowGroup(for: Project.ID.self)` scene (one window per open `Project`, each its own 2-column `NavigationSplitView`), and the `Settings` scene.
+**Files:** `AutoCue/DependencyContainer.swift` (real wiring), `AutoCue/OpenProjectWindowRegistry.swift` (app-wide duplicate-open guard), `AutoCueApp.swift` (declares the Library/Project-window/Settings scenes), `Packages/ACFeatures/Sources/ACFeatures/AppState.swift` (per-window: `selectedSection` only — no `selectedProjectID`), `AutoCue.entitlements` (App Sandbox on)
 **Dependencies:** M8, M10
 **Acceptance criteria:**
-- App launches showing an empty sidebar + placeholder detail pane
+- App launches showing the Library scene (empty project list + placeholder empty state)
+- Opening a project from the Library opens a new Project window showing an empty content/detail `NavigationSplitView`; opening the same project again from the Library focuses the existing window instead of creating a duplicate (`OpenProjectWindowRegistry`)
 - A grep check confirms `ProjectRepositoryImpl` is constructed only inside `DependencyContainer`
 - App runs under App Sandbox with no violations in Console
-**Commit:** `feat(app): wire dependency container and add NavigationSplitView app shell`
+**Commit:** `feat(app): wire dependency container and add multi-window Library/Project-window app shell`
 
 ### M12 — Project Library feature
-**Goal:** Let the user create, list, select, and delete projects.
-**Files:** `Features/ProjectLibrary/ViewModels/ProjectLibraryViewModel.swift`, `Views/ProjectLibraryView.swift`, `Components/ProjectRow.swift`
+**Goal:** Let the user create, list, select, and delete projects, and open a project into its own window.
+**Files:** `Packages/ACFeatures/Sources/ACFeatures/ProjectLibrary/ViewModels/ProjectLibraryViewModel.swift`, `Views/ProjectLibraryView.swift`, `Components/ProjectRow.swift`
 **Dependencies:** M11
 **Acceptance criteria:**
-- Manually verified: create a named project, see it listed, select it (updates `AppState.selectedProjectID`), delete it
-- List reflects the repository live (via `@Query` or equivalent) — no stale state after create/delete in the same session
-**Commit:** `feat(project-library): add project creation, listing, and deletion`
+- Manually verified: create a named project, see it listed, open it (opens/focuses its Project window per `OpenProjectWindowRegistry`, per M11), delete it
+- List reflects the repository live (`CLAUDE.md`'s Repository-owned `AsyncStream`, not `@Query` — see "Single Source of Truth") — no stale state after create/delete in the same session
+**Commit:** `feat(project-library): add project creation, listing, deletion, and window-opening`
 
 ---
 
@@ -293,14 +298,14 @@ Phases 4 and parts of 12 (M31) aren't named in the original phase list but are n
 
 ## Phase 9 — Review
 
-### M26 — Validation summary and Review screen
-**Goal:** Surface every outstanding issue across Setup and all Cues in one place before export.
-**Files:** `Packages/ACCore/Sources/ACCore/UseCases/ValidateCueSheetUseCase.swift` (aggregates M5's per-cue rule + Setup completeness); `Features/CueSheetEditor/ViewModels/ReviewViewModel.swift`, `Views/ReviewView.swift`
+### M26 — Validation summary and Review section
+**Goal:** Surface every outstanding issue across Setup and all Cues in one place before export. Builds the Review half of the combined "Review & Export" destination (`CLAUDE.md` "Navigation Model") — M29 composes this with the Export half into the actual navigable screen; this milestone's `ReviewView` is a real, independently previewable/testable component, not yet wired into navigation on its own.
+**Files:** `Packages/ACCore/Sources/ACCore/UseCases/ValidateCueSheetUseCase.swift` (aggregates M5's per-cue rule + Setup completeness); `Packages/ACFeatures/Sources/ACFeatures/ReviewAndExport/ViewModels/ReviewViewModel.swift`, `Views/ReviewView.swift`
 **Dependencies:** M23, M14
 **Acceptance criteria:**
 - Unit tests confirm the aggregate use case reports every incomplete required field across Setup and Cues as a distinct, identifiable issue
-- Manually verified: clicking an issue navigates to the offending field; a fully valid project shows a clear "ready to export" state
-**Commit:** `feat(review): add cue-sheet validation summary and review screen`
+- Manually verified (via Xcode preview, since this isn't wired into navigation yet): clicking an issue signals the offending field; a fully valid project shows a clear "ready to export" state
+**Commit:** `feat(review): add cue-sheet validation summary and review section`
 
 ---
 
@@ -311,8 +316,10 @@ Phases 4 and parts of 12 (M31) aren't named in the original phase list but are n
 **Files:** `Packages/ACExport/Sources/ACExport/PDF/PDFCueSheetRenderer.swift` + tests
 **Dependencies:** M6
 **Acceptance criteria:**
+- **Before implementation begins:** the SUISA form revalidation checkpoint (`SPEC.md` §2.3) has been completed and its outcome — date checked, version confirmed, any differences found — recorded in `docs/DECISIONS.md`. Do not start the layout work in this milestone until that record exists.
 - Rendering a fixture `Project` with more than 5 cues produces a multi-page PDF whose pagination matches the form (5 works per main page, continuation pages thereafter)
 - Visually checked against the sourced SUISA form for field placement
+- Layout is computed once via `CueSheetPageLayout` (`SPEC.md` §4.16, `CLAUDE.md` "Export Architecture") and drawn by `PDFCueSheetRenderer`; the on-screen preview View draws the identical computed layout, not an independently-derived one
 **Commit:** `feat(export): add PDF cue-sheet renderer matching the SUISA form layout`
 
 ### M28 — XLSX export
@@ -324,13 +331,13 @@ Phases 4 and parts of 12 (M31) aren't named in the original phase list but are n
 - A round-trip test reads the generated file back (e.g., via CoreXLSX) and asserts cell values match the fixture
 **Commit:** `feat(export): add XLSX cue-sheet writer using libxlsxwriter`
 
-### M29 — ExportRepositoryImpl and Export UI
-**Goal:** Wire both renderers behind the protocol and let the user trigger an export.
-**Files:** `Packages/ACExport/Sources/ACExport/ExportRepositoryImpl.swift`; `Packages/ACCore/Sources/ACCore/UseCases/ExportCueSheetUseCase.swift`; `Features/Export/ViewModels/ExportViewModel.swift`, `Views/ExportSheetView.swift`
+### M29 — ExportRepositoryImpl and the combined Review & Export screen
+**Goal:** Wire both renderers behind the protocol, and compose M26's `ReviewView` with the export controls into `ReviewAndExportView` — the single, always-accessible "Review & Export" tab (`CLAUDE.md` "Navigation Model"), wired into each Project window's `NavigationSplitView` content list alongside Setup and Cue Sheet. **Not a sheet** — an earlier draft of this milestone built `ExportSheetView` as a modal; that contradicted the product brief (three always-visible tabs) and is corrected here.
+**Files:** `Packages/ACExport/Sources/ACExport/ExportRepositoryImpl.swift`; `Packages/ACCore/Sources/ACCore/UseCases/ExportCueSheetUseCase.swift`; `Packages/ACFeatures/Sources/ACFeatures/ReviewAndExport/ViewModels/{ReviewAndExportViewModel,ExportViewModel}.swift`, `Views/{ReviewAndExportView,ExportPanelView}.swift`
 **Dependencies:** M27, M28, M26
 **Acceptance criteria:**
 - Export is blocked or warned per `Settings.shareValidationStrictness` when validation issues remain
-- Manually verified: choose PDF/XLSX/both, pick a destination via `NSSavePanel`, export completes with progress, resulting file(s) open correctly outside the app
+- Manually verified: the "Review & Export" tab is reachable at any time a project is open (not gated behind presenting a sheet); choose PDF/XLSX/both, pick a destination via `NSSavePanel`, export completes with progress, resulting file(s) open correctly outside the app
 **Commit:** `feat(export): wire export use case, repository, and export UI`
 
 ---
