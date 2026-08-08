@@ -359,3 +359,21 @@ Entries are chronological, oldest first. `CONTRIBUTING.md` §2 and `docs/Definit
 **Consequences:** `CLAUDE.md`'s `Identifiable` bullet now names `Timecode`, `MediaDuration`, `PostalAddress`, `Party`, `ProgressUpdate`, `OperationProgress<T>`, and `AnalysisSettings` as the standing list of "no `id` field, no `Identifiable`, and that's correct" examples — a future domain type in the same shape (a pure value with no independent identity need) should look here first rather than re-deriving the reasoning. Rules out adding `id: UUID` to any of these types "just in case" without a specific, real, documented need per rule 7.
 
 **Full detail:** `CLAUDE.md`, "Domain Model Value-Type Conformances." Implementation: `Packages/ACCore/Sources/ACCore/Models/{PostalAddress,Party}.swift`.
+
+---
+
+## 2026-08-08 — D1 claimed `MediaDuration` was shipped; it wasn't. Corrected at the start of D2, not silently patched in.
+
+**Decision:** `MediaDuration` (`Packages/ACCore/Sources/ACCore/Models/MediaDuration.swift`) is implemented now, at the start of D2, as corrective work completing `ROADMAP.md` D1/T1.4's actual scope. `ROADMAP.md`'s D1 section is corrected in the same change to state plainly that this was missing at D1's close, rather than rewritten to look like it was always fine.
+
+**Context:** D1/T1.4 and its own PR #1 commit message both asserted `MediaDuration`, `Timecode`, and `TimecodeFrameRate` were "already implemented and tested ahead of schedule." Only `Timecode`/`TimecodeFrameRate` were real. When D2 planning began, the source tree was checked directly against the claim (per this project's own established discipline — see the two `swift-tools-version`/`--swiftformat` entries above, where "verified locally" was asserted prematurely and the real check caught what was missed) — `grep`/`find` across `Packages/ACCore/Sources` and the whole repository turned up no `MediaDuration.swift`, no `struct MediaDuration` anywhere. D2's own scope (`Setup.productionRuntime`, `Setup.totalMusicRuntime`, `Cue.duration` — SPEC.md §4.2–§4.3) depends on it directly, so this was a real blocker, not a paperwork nit.
+
+**Alternatives Considered:**
+- **Silently add `MediaDuration` as part of D2's normal work, without correcting D1's record.** Rejected — this is exactly the kind of quiet history-rewriting this project's documentation discipline has consistently refused to do elsewhere (e.g. the CI-run entries above correct their own prior "verified" claims rather than editing them away). Leaving D1 saying "complete, MediaDuration included" when it demonstrably wasn't would mislead the next session reading `ROADMAP.md` at face value.
+- **Build `MediaDuration` now, correct D1's status/history to admit the gap plainly** *(chosen)*.
+
+**Reason for Choice:** The same transparency standard already applied to every other correction in this log (the tools-version fixes, the `pbxproj` verification-gap entry) — state what actually happened, including the parts that don't look clean, rather than editing the past to look tidier than it was.
+
+**Consequences:** `ROADMAP.md` D1's Status note and T1.4 description now both flag this correction explicitly rather than reading as originally written. No retrofit cost beyond the corrective commit itself — `MediaDuration` had no dependents yet (D2 is its first real consumer), so this is caught at essentially the cheapest possible point, same reasoning as the `MediaDuration`-naming decision at the top of this log.
+
+**Full detail:** `ROADMAP.md` D1 (Status, T1.4). Implementation: `Packages/ACCore/Sources/ACCore/Models/MediaDuration.swift`; `Packages/ACCore/Tests/ACCoreTests/MediaDurationTests.swift`.
