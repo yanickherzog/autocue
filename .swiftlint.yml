@@ -5,6 +5,8 @@
 
 included:
   - Packages
+  - AutoCue
+  - AutoCueTests
 
 excluded:
   - "Packages/*/.build"
