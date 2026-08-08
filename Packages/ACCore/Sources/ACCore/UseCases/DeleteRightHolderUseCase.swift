@@ -91,7 +91,11 @@ public struct DeleteRightHolderUseCase: Sendable {
 
     /// `Project`'s fields are all `let` — there's no in-place mutation, even
     /// on a `var` copy, so removal goes through reconstruction via the
-    /// memberwise initializer instead.
+    /// memberwise initializer instead. Bumps `updatedAt` to now: a
+    /// successful `Person`/`Label` removal is a real mutation to the
+    /// `Project`'s data (SPEC.md §4.1), the same as any other write through
+    /// `ProjectRepository` — `updatedAt` isn't scoped to a narrower subset
+    /// of fields anywhere in SPEC.md/CLAUDE.md.
     private static func replacing(
         _ project: Project,
         people: [Person]? = nil,
@@ -101,7 +105,7 @@ public struct DeleteRightHolderUseCase: Sendable {
             id: project.id,
             name: project.name,
             createdAt: project.createdAt,
-            updatedAt: project.updatedAt,
+            updatedAt: Date(),
             audioAsset: project.audioAsset,
             waveformPeaks: project.waveformPeaks,
             setup: project.setup,

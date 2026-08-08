@@ -47,9 +47,14 @@ final class DeleteRightHolderOrchestrationTests: XCTestCase {
             return XCTFail("Expected .deleted, got \(result)")
         }
         XCTAssertTrue(updatedProject.people.isEmpty)
+        // A successful deletion is a real mutation to the Project's data
+        // (SPEC.md §4.1) — updatedAt must advance, the same as any other
+        // write through ProjectRepository.
+        XCTAssertGreaterThan(updatedProject.updatedAt, project.updatedAt)
 
         let persisted = try await repository.fetch(id: project.id)
         XCTAssertEqual(persisted?.people, [])
+        XCTAssertGreaterThan(persisted?.updatedAt ?? .distantPast, project.updatedAt)
     }
 
     func test_deletePerson_whenReferencedAsSetupProducer_isBlockedAndNotPersisted() async throws {
@@ -64,6 +69,8 @@ final class DeleteRightHolderOrchestrationTests: XCTestCase {
 
         let persisted = try await repository.fetch(id: project.id)
         XCTAssertEqual(persisted?.people, [person])
+        // Nothing was mutated or persisted, so updatedAt must stay untouched.
+        XCTAssertEqual(persisted?.updatedAt, project.updatedAt)
     }
 
     func test_deleteLabel_whenUnreferenced_removesThemAndPersists() async throws {
@@ -81,6 +88,7 @@ final class DeleteRightHolderOrchestrationTests: XCTestCase {
             return XCTFail("Expected .deleted, got \(result)")
         }
         XCTAssertTrue(updatedProject.labels.isEmpty)
+        XCTAssertGreaterThan(updatedProject.updatedAt, project.updatedAt)
     }
 
     func test_deleteLabel_whenReferencedAsSettingsDefaultDeclarant_isBlockedAndNotPersisted() async throws {
@@ -99,5 +107,6 @@ final class DeleteRightHolderOrchestrationTests: XCTestCase {
 
         let persisted = try await repository.fetch(id: project.id)
         XCTAssertEqual(persisted?.labels, [label])
+        XCTAssertEqual(persisted?.updatedAt, project.updatedAt)
     }
 }
