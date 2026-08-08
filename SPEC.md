@@ -122,6 +122,7 @@ Many per `Project`, ordered. One SUISA "musical work" entry.
 | `workNumber` | `String?` | optional | "Work No" | "where known" |
 | `duration` | `MediaDuration` | **required** | "Playing time" / "Duration" | total duration this work is used in the production |
 | `rightHolders` | `[CueRightHolder]` | **required, ≥1** | "Right-holder...with status" block | |
+| `isArrangementOfProtectedOriginal` | `Bool` | **required** (defaults to `false`) | — | not itself printed on the form, but not a purely app-internal workflow aid either: this is the condition §4.4/§4.6 refer to as "the original work is still copyright-protected" — it's what `ValidateCueRightHolderSharesUseCase` checks to decide whether `CueRightHolder.arrangementAuthorizationAttached` is required for any `.arranger`-role right-holder on this work. A property of the work itself, not of any one right-holder row, since it doesn't depend on who the arranger is. Defaults to `false` (the common case — most works aren't arrangements of a still-protected original) rather than being left with no default, the same reasoning as `Setup.attachmentTypes` defaulting to an empty set: a real, safe default exists, unlike e.g. `Setup.productionTypes`, which has none |
 | `source` | `enum { embeddedMarker, detectedFromAudio, manual }` | optional, app-internal | — | not exported to the SUISA document; drives editor UI provenance display. **Reclassification rule:** editing any field of a `Cue` via `UpdateCueUseCase`'s edit path sets `source = .manual`, regardless of the field changed or the cue's prior source — see §4.19 |
 | `startTimecode` | `Timecode?` | optional, app-internal | — | not exported; SUISA wants usage duration, not on-screen position. See §4.9 for why this is a distinct type from `duration`. |
 | `notes` | `String?` | optional, app-internal | — | not exported |
@@ -137,7 +138,7 @@ Sub-entity of `Cue`; one row per right-holder per work.
 | `performanceBroadcastShare` | `Decimal` (%), scaled to 2 decimal places | **required** | "Performances Broadcasts (%)" | see §4.6 for the exact-equality sum validation this scale enables |
 | `mechanicalRightsShare` | `Decimal` (%), scaled to 2 decimal places | **required** | "Mechanical rights (%)" | see §4.6 |
 | `publishingContractAttached` | `Bool` | required iff `role == .publisher` | "(join copy of publishing contract)" | |
-| `arrangementAuthorizationAttached` | `Bool` | required iff `role == .arranger` and the original work is still copyright-protected | form footnote on arrangements | |
+| `arrangementAuthorizationAttached` | `Bool` | required iff `role == .arranger` and `Cue.isArrangementOfProtectedOriginal == true` (§4.3) | form footnote on arrangements | |
 
 ### 4.5 `Person` and `Label` (right-holder identity)
 
@@ -189,7 +190,7 @@ Used for: `Setup.producer`, `Setup.directorOrPrincipal`, `Setup.declarant`, `Set
 - `Setup.otherProductionTypeDescription` required iff `.other ∈ productionTypes`.
 - `Setup.otherAttachmentDescription` required iff `.other ∈ attachmentTypes`.
 - `CueRightHolder.publishingContractAttached` must be `true` before export iff `role == .publisher`.
-- `CueRightHolder.arrangementAuthorizationAttached` must be `true` before export iff `role == .arranger` and the work is flagged as based on a still-protected original.
+- `CueRightHolder.arrangementAuthorizationAttached` must be `true` before export iff `role == .arranger` and `Cue.isArrangementOfProtectedOriginal == true` (§4.3).
 - Whether a failed rule **blocks** export or only **warns** is controlled by `Settings.shareValidationStrictness`.
 
 `Setup.totalMusicRuntime`'s auto-recompute (§4.14) and `Person`/`Label` deletion guarding (§4.12) are separate, non-optional domain rules — not part of this list because they aren't pass/fail validations checked before export; they're invariants enforced continuously as data changes.

@@ -16,3 +16,17 @@ public struct PostalAddress: Equatable, Sendable {
         self.country = country
     }
 }
+
+public extension PostalAddress {
+    /// Whether all four parts are actually filled in, not merely present as
+    /// non-`nil` — the SUISA form's "complete address" requirement (SPEC.md
+    /// §4.5) means all four non-blank, not just a `PostalAddress` value
+    /// existing (its fields are already non-optional `String`, so a blank
+    /// value is otherwise indistinguishable from a real one at the type level).
+    var isComplete: Bool {
+        !street.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && !postalCode.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && !city.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && !country.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+}
