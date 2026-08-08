@@ -52,3 +52,17 @@ Not a `ROADMAP.md` Deliverable in the normal sense — this entry documents the 
 **Refactoring suggestions:** None.
 
 **Follow-ups filed:** `docs/DECISIONS.md` gets a new entry for this fix. `SPEC.md` §6's "CI... hasn't been confirmed against a live runner" gap is updated to reflect that it has now been confirmed, and genuinely failed once before the fix.
+
+---
+
+## 2026-08-08 — CI's second real run (same-day follow-up — the first fix was incomplete)
+
+**Architecture observations:** The entry above closed too early. The `swift-tools-version` fix was pushed and *believed* fixed without actually watching that push's CI result to completion first — a real process lapse worth naming plainly, not glossing over. When actually watched, CI failed again, with a different error: `.swiftformat` separately declared `--swiftversion 6.1` (the same "copied from the local authoring environment" mistake as the tools-version one, just in a second config file), which made SwiftFormat add trailing commas to function-call argument lists — syntax the CI-pinned Xcode 15.4's actual Swift 5.10 compiler cannot parse at all, confirmed by a direct local test compiling a minimal snippet under `-swift-version 5` with the full Xcode toolchain (it succeeded locally — Swift 6.1.2 supports the syntax even in that compatibility mode — which is exactly why local success didn't predict CI's result; this is a compiler-*version* gap, not a language-*mode* gap).
+
+**Code quality observations:** The fix (`.swiftformat`'s `--swiftversion` lowered to `5.10`, matching `swift-tools-version`) is a one-line config change plus a `swiftformat .` re-run — SwiftFormat then correctly stopped producing the problematic syntax on its own, no manual per-line editing needed.
+
+**Technical debt:** None added by the fix itself. The debt this surfaces is process debt: "verified locally" was asserted in the prior entry (and, briefly, in a `docs/DECISIONS.md` entry since corrected) before the corresponding CI run had actually been watched to completion — a gap between "I ran a command that should confirm this" and "I confirmed it," worth remembering on any future infra change in this repo, not just this one.
+
+**Refactoring suggestions:** None.
+
+**Follow-ups filed:** `docs/DECISIONS.md` gets a new entry for this second fix, plus a correction appended to the previous entry's over-claimed "confirmed against the actual failing CI run" line. `SPEC.md` §6 updated to describe both failures and to stop claiming "closed" until a subsequent run is actually observed green.

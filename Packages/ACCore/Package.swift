@@ -17,12 +17,12 @@ let package = Package(
     targets: [
         .target(
             name: "ACCore",
-            path: "Sources/ACCore",
+            path: "Sources/ACCore"
         ),
         .testTarget(
             name: "ACCoreTests",
             dependencies: ["ACCore"],
-            path: "Tests/ACCoreTests",
+            path: "Tests/ACCoreTests"
         ),
-    ],
+    ]
 )

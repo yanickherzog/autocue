@@ -28,12 +28,12 @@ let package = Package(
             dependencies: [
                 .product(name: "libxlsxwriter", package: "libxlsxwriter"),
             ],
-            path: "Sources/ACExport",
+            path: "Sources/ACExport"
         ),
         .testTarget(
             name: "ACExportTests",
             dependencies: ["ACExport"],
-            path: "Tests/ACExportTests",
+            path: "Tests/ACExportTests"
         ),
-    ],
+    ]
 )

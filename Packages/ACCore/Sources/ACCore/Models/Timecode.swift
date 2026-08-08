@@ -74,7 +74,7 @@ public extension Timecode {
         let frameSeparator = frameRate.isDropFrame ? ";" : ":"
         return String(
             format: "%02d:%02d:%02d%@%02d",
-            parts.hours, parts.minutes, parts.seconds, frameSeparator, parts.frames,
+            parts.hours, parts.minutes, parts.seconds, frameSeparator, parts.frames
         )
     }
 
