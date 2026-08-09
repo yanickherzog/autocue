@@ -18,28 +18,30 @@ on:
 jobs:
   lint:
     name: Format, lint, and architecture-boundary checks
-    runs-on: macos-14
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
 
-      # Pin a specific Xcode version rather than whatever the runner image
-      # defaults to, so this job's result doesn't silently change out from
-      # under CI when GitHub updates the macos-14 image's default toolchain.
-      # 15.4 was tried first (the macos-14 image's default) and genuinely
-      # failed on a real run: its Swift toolchain (5.10) is older than the
-      # Package.swift-declared tools-version at the time (6.1), which was
-      # never validated against a live runner before that point. Fixed by
-      # lowering swift-tools-version to 5.10 in every Package.swift instead
-      # of chasing a newer Xcode pin (neither package's manifest used
-      # anything newer) — see docs/DECISIONS.md. 15.4 stays pinned
-      # deliberately: it's the actual minimum Xcode version CLAUDE.md's
-      # "Deployment Target" section documents as required, so CI now
-      # validates against that real floor instead of whatever happens to be
-      # newest on the runner image.
+      # PROVISIONAL, pending the result of this exact change (D4/PR #4): was
+      # pinned to macos-14/Xcode 15.4 (CLAUDE.md's documented minimum-Xcode
+      # floor) since D1 — see the two swift-tools-version/--swiftversion
+      # entries in docs/DECISIONS.md for why that pin existed. D4's
+      # ACPersistence work hit a fully deterministic SIGTRAP crash in
+      # SwiftData relationship handling that reproduces on every Xcode-15.4
+      # CI run and on zero local runs under Xcode 26.3, including in a
+      # minimal toy @Model reproduction with no connection to this project's
+      # real entities, under both `swift test` and `xcodebuild test`. Pinned
+      # here to macos-15/Xcode 26.3 (the exact local version, per GitHub's
+      # runner-images docs — https://github.com/actions/runner-images) to
+      # test directly whether this is a real Xcode-15.4/SwiftData defect
+      # rather than a mistake in this project's code. See docs/DECISIONS.md
+      # for the outcome once this run completes — if confirmed, this also
+      # means CLAUDE.md's minimum-Xcode-floor statement needs updating in
+      # the same change, not left silently stale.
       - name: Select Xcode
         uses: maxim-lobanov/setup-xcode@v1
         with:
-          xcode-version: "15.4"
+          xcode-version: "26.3"
 
       - name: Install SwiftFormat and SwiftLint
         run: brew install swiftformat swiftlint
@@ -58,7 +60,7 @@ jobs:
 
   test-packages:
     name: swift test — ${{ matrix.package }}
-    runs-on: macos-14
+    runs-on: macos-15
     strategy:
       matrix:
         # Explicit list, not an auto-discovered glob: a Deliverable that adds
@@ -69,10 +71,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # See the `lint` job's "Select Xcode" step comment, above, for why this
+      # is macos-15/26.3 rather than macos-14/15.4 — same reasoning, same
+      # provisional status, not repeated per job.
       - name: Select Xcode
         uses: maxim-lobanov/setup-xcode@v1
         with:
-          xcode-version: "15.4"
+          xcode-version: "26.3"
 
       - name: swift test
         working-directory: Packages/${{ matrix.package }}
@@ -80,14 +85,14 @@ jobs:
 
   xcodebuild-app:
     name: xcodebuild build/test — AutoCue
-    runs-on: macos-14
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
 
       - name: Select Xcode
         uses: maxim-lobanov/setup-xcode@v1
         with:
-          xcode-version: "15.4"
+          xcode-version: "26.3"
 
       - name: xcodebuild build
         run: xcodebuild -workspace AutoCue.xcworkspace -scheme AutoCue -destination "platform=macOS" build
