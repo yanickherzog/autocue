@@ -78,30 +78,6 @@ jobs:
         working-directory: Packages/${{ matrix.package }}
         run: swift test
 
-      # TEMPORARY diagnostic for D4/PR #4 — not part of this Deliverable's
-      # real scope, to be removed once the ACPersistence SIGTRAP crash is
-      # actually diagnosed from a real backtrace instead of guessed at.
-      # First attempt found only stale, pre-baked VM-image reports (system
-      # installer/update logs, shutdown stalls) — no report for the actual
-      # crashed test process. `ReportCrash` writes asynchronously and can lag
-      # behind the crash itself, so this version waits before searching, and
-      # filters to files modified in the last few minutes to cut the noise.
-      - name: Dump crash reports on failure (temporary D4 diagnostic)
-        if: failure()
-        run: |
-          echo "Waiting for ReportCrash to finish writing..."
-          sleep 20
-          for dir in ~/Library/Logs/DiagnosticReports /Library/Logs/DiagnosticReports; do
-            if [ -d "$dir" ]; then
-              echo "=== $dir (files modified in the last 10 minutes) ==="
-              find "$dir" -type f -newermt '-10 minutes' -print
-              for f in $(find "$dir" -type f -newermt '-10 minutes'); do
-                echo "--- $f ---"
-                cat "$f" || true
-              done
-            fi
-          done
-
   xcodebuild-app:
     name: xcodebuild build/test — AutoCue
     runs-on: macos-14

@@ -56,9 +56,10 @@ public actor ProjectRepositoryImpl: ProjectRepository {
     /// A function, not a `static let`: `Schema` is a class, and a single
     /// shared `Schema` instance reused across many `ModelContainer`s in the
     /// same process (as this test target's helper originally did, once per
-    /// test) is the leading candidate for a real, repeatable SIGTRAP crash
-    /// hit on PR #4's CI runner — see `docs/DECISIONS.md`. Each call here
-    /// builds a fresh instance, so every `ModelContainer` gets its own.
+    /// test) was a candidate fix for a real, repeatable SIGTRAP crash hit on
+    /// PR #4's CI runner. **It turned out not to be the actual cause** (see
+    /// `docs/DECISIONS.md` for the real one) — kept anyway, since building a
+    /// fresh `Schema` per container is correct on its own merits regardless.
     public static func makeSchema() -> Schema {
         Schema([
             ProjectEntity.self,

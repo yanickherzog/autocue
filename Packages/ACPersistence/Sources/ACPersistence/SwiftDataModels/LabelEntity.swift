@@ -11,7 +11,8 @@ import SwiftData
 /// array-order problem applies identically to `Project.labels`.
 ///
 /// No `@Attribute(.unique)` on `id` — see `PersonEntity`'s doc comment for
-/// why, and for the crash this is the leading candidate fix for.
+/// why (kept on its own merits; it wasn't the cause of the crash it was
+/// originally a candidate fix for — see `docs/DECISIONS.md`).
 @Model
 final class LabelEntity {
     var id: UUID

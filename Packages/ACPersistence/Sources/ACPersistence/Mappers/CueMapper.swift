@@ -7,6 +7,20 @@ import Foundation
 /// instance to reference — the same self-contained-subtree pattern
 /// `AudioAssetMapper` uses for `embeddedMarkers`).
 enum CueMapper {
+    /// Builds the child entities fully **before** assigning them to
+    /// `entity.rightHolders`, and only sets each child's `cue` back-reference
+    /// **after** that assignment has completed — not interleaved inside the
+    /// `.map` that produces the array. This isn't stylistic: writing a child's
+    /// inverse-relationship property while the parent's forward-relationship
+    /// assignment is still in progress is a real Swift exclusivity violation
+    /// under SwiftData's macro-generated relationship accessors (setting one
+    /// side of a declared `inverse:` pair can itself touch the other side) —
+    /// confirmed as the actual cause of a real `EXC_BREAKPOINT`/`SIGTRAP`
+    /// crash on PR #4's CI run, via a real crash report (`swift_beginAccess`,
+    /// register values naming `CueEntity`/`CueRightHolderEntity`'s type
+    /// metadata), not theorized. Only reproduces with a non-empty array —
+    /// `[].map { ... }` never runs the closure body — which is why it never
+    /// surfaced against the minimal fixture. See `docs/DECISIONS.md`.
     static func toEntity(_ cue: Cue, order: Int) -> CueEntity {
         let entity = CueEntity(
             id: cue.id,
@@ -19,10 +33,12 @@ enum CueMapper {
             startTimecodeOffsetSeconds: cue.startTimecode?.offsetSeconds,
             notes: cue.notes
         )
-        entity.rightHolders = cue.rightHolders.enumerated().map { index, rightHolder in
-            let rightHolderEntity = CueRightHolderMapper.toEntity(rightHolder, order: index)
+        let rightHolderEntities = cue.rightHolders.enumerated().map { index, rightHolder in
+            CueRightHolderMapper.toEntity(rightHolder, order: index)
+        }
+        entity.rightHolders = rightHolderEntities
+        for rightHolderEntity in rightHolderEntities {
             rightHolderEntity.cue = entity
-            return rightHolderEntity
         }
         return entity
     }

@@ -4,6 +4,11 @@ import Foundation
 /// Converts `ACCore.AudioAsset` to/from `AudioAssetEntity`, self-contained
 /// including its `embeddedMarkers`/`broadcastWaveMetadata` subtree.
 enum AudioAssetMapper {
+    /// Materializes `embeddedMarkers` fully before assigning them to
+    /// `entity.embeddedMarkers`, then sets each child's `audioAsset`
+    /// back-reference afterward — see `CueMapper.toEntity`'s doc comment for
+    /// why this ordering isn't optional (a real Swift exclusivity violation,
+    /// confirmed via a real crash report, not a style preference).
     static func toEntity(_ asset: AudioAsset) -> AudioAssetEntity {
         let entity = AudioAssetEntity(
             id: asset.id,
@@ -15,10 +20,12 @@ enum AudioAssetMapper {
             bitDepth: asset.bitDepth,
             importedAt: asset.importedAt
         )
-        entity.embeddedMarkers = asset.embeddedMarkers.enumerated().map { index, marker in
-            let markerEntity = EmbeddedMarkerMapper.toEntity(marker, order: index)
+        let markerEntities = asset.embeddedMarkers.enumerated().map { index, marker in
+            EmbeddedMarkerMapper.toEntity(marker, order: index)
+        }
+        entity.embeddedMarkers = markerEntities
+        for markerEntity in markerEntities {
             markerEntity.audioAsset = entity
-            return markerEntity
         }
         entity.broadcastWaveMetadata = asset.broadcastWaveMetadata.map(BroadcastWaveMetadataMapper.toEntity)
         return entity

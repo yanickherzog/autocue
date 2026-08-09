@@ -7,6 +7,13 @@ import Foundation
 /// `PersonEntity.project`, `LabelEntity.project`) — those need the parent
 /// `ProjectEntity` instance, which only this function holds.
 enum ProjectMapper {
+    /// Each child collection is fully materialized before being assigned to
+    /// `entity.cues`/`.people`/`.labels`, with back-references set only
+    /// afterward — see `CueMapper.toEntity`'s doc comment for why: writing a
+    /// child's inverse-relationship property while the parent's
+    /// forward-relationship assignment is still in progress is a real Swift
+    /// exclusivity violation under SwiftData's macro-generated relationship
+    /// accessors, confirmed via a real crash report on PR #4's CI run.
     static func toEntity(_ project: Project) -> ProjectEntity {
         let entity = ProjectEntity(
             id: project.id,
@@ -15,21 +22,31 @@ enum ProjectMapper {
             updatedAt: project.updatedAt
         )
         entity.setup = SetupMapper.toEntity(project.setup)
-        entity.cues = project.cues.enumerated().map { index, cue in
-            let cueEntity = CueMapper.toEntity(cue, order: index)
+
+        let cueEntities = project.cues.enumerated().map { index, cue in
+            CueMapper.toEntity(cue, order: index)
+        }
+        entity.cues = cueEntities
+        for cueEntity in cueEntities {
             cueEntity.project = entity
-            return cueEntity
         }
-        entity.people = project.people.enumerated().map { index, person in
-            let personEntity = PersonMapper.toEntity(person, order: index)
+
+        let personEntities = project.people.enumerated().map { index, person in
+            PersonMapper.toEntity(person, order: index)
+        }
+        entity.people = personEntities
+        for personEntity in personEntities {
             personEntity.project = entity
-            return personEntity
         }
-        entity.labels = project.labels.enumerated().map { index, label in
-            let labelEntity = LabelMapper.toEntity(label, order: index)
+
+        let labelEntities = project.labels.enumerated().map { index, label in
+            LabelMapper.toEntity(label, order: index)
+        }
+        entity.labels = labelEntities
+        for labelEntity in labelEntities {
             labelEntity.project = entity
-            return labelEntity
         }
+
         entity.audioAsset = project.audioAsset.map(AudioAssetMapper.toEntity)
         entity.waveformPeaks = project.waveformPeaks.map(WaveformPeaksMapper.toEntity)
         return entity
