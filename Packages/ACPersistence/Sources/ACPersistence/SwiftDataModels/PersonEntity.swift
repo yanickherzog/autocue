@@ -16,9 +16,22 @@ import SwiftData
 /// no fetch-order guarantee for a to-many relationship — confirmed the hard
 /// way, by an actual non-deterministic round-trip test failure across runs
 /// before this field was added, not anticipated up front.
+///
+/// **No `@Attribute(.unique)` on `id`, deliberately.** Nothing in
+/// `ProjectRepositoryImpl` ever queries a `PersonEntity` by `id` directly —
+/// `Person`/`Label` are only ever reached by walking `ProjectEntity.people`/
+/// `.labels`, never fetched independently — so a uniqueness constraint here
+/// enforces nothing this Deliverable actually needs (`CLAUDE.md` rule 7).
+/// Was present in an earlier revision of this type; removed as the leading
+/// candidate fix for a real SIGTRAP crash PR #4's CI run hit the first time
+/// a fixture populated more than one `@Attribute(.unique)` entity type in
+/// the same schema at once (multiple unique constraints across different
+/// `@Model` types in one schema is a documented crash source on early
+/// SwiftData) — see `docs/DECISIONS.md` for the confirmed outcome once a
+/// real CI run has verified this actually fixes it, not just theorized.
 @Model
 final class PersonEntity {
-    @Attribute(.unique) var id: UUID
+    var id: UUID
     var order: Int
     var firstName: String
     var lastName: String

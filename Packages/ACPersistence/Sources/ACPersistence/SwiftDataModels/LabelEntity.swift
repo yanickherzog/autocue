@@ -9,9 +9,12 @@ import SwiftData
 ///
 /// `order` is persistence-only — see `PersonEntity`'s doc comment; the same
 /// array-order problem applies identically to `Project.labels`.
+///
+/// No `@Attribute(.unique)` on `id` — see `PersonEntity`'s doc comment for
+/// why, and for the crash this is the leading candidate fix for.
 @Model
 final class LabelEntity {
-    @Attribute(.unique) var id: UUID
+    var id: UUID
     var order: Int
     var name: String
     var addressStreet: String
