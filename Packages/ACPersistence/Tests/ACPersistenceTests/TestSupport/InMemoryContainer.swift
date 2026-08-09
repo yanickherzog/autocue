@@ -6,5 +6,5 @@ import SwiftData
 /// container so tests can't leak state into each other.
 func makeInMemoryContainer() throws -> ModelContainer {
     let configuration = ModelConfiguration(isStoredInMemoryOnly: true)
-    return try ModelContainer(for: ProjectRepositoryImpl.schema, configurations: configuration)
+    return try ModelContainer(for: ProjectRepositoryImpl.makeSchema(), configurations: configuration)
 }

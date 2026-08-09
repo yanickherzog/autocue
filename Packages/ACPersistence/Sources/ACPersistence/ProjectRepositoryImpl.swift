@@ -52,18 +52,27 @@ public actor ProjectRepositoryImpl: ProjectRepository {
     /// path is deliberately out of scope for this Deliverable — no App
     /// target/entitlements exist yet (`ROADMAP.md` D6, D15) — so this type
     /// only ever receives an already-constructed `ModelContainer`.
-    public static let schema = Schema([
-        ProjectEntity.self,
-        SetupEntity.self,
-        CueEntity.self,
-        CueRightHolderEntity.self,
-        PersonEntity.self,
-        LabelEntity.self,
-        AudioAssetEntity.self,
-        EmbeddedMarkerEntity.self,
-        BroadcastWaveMetadataEntity.self,
-        WaveformPeaksEntity.self,
-    ])
+    ///
+    /// A function, not a `static let`: `Schema` is a class, and a single
+    /// shared `Schema` instance reused across many `ModelContainer`s in the
+    /// same process (as this test target's helper originally did, once per
+    /// test) is the leading candidate for a real, repeatable SIGTRAP crash
+    /// hit on PR #4's CI runner — see `docs/DECISIONS.md`. Each call here
+    /// builds a fresh instance, so every `ModelContainer` gets its own.
+    public static func makeSchema() -> Schema {
+        Schema([
+            ProjectEntity.self,
+            SetupEntity.self,
+            CueEntity.self,
+            CueRightHolderEntity.self,
+            PersonEntity.self,
+            LabelEntity.self,
+            AudioAssetEntity.self,
+            EmbeddedMarkerEntity.self,
+            BroadcastWaveMetadataEntity.self,
+            WaveformPeaksEntity.self,
+        ])
+    }
 
     private let modelContainer: ModelContainer
     private var writeTails: [Project.ID: Task<Void, Error>] = [:]
