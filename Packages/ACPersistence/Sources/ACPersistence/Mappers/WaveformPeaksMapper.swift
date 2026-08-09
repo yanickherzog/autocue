@@ -2,56 +2,35 @@ import ACCore
 import Foundation
 
 /// Converts `ACCore.WaveformPeaks` to/from `WaveformPeaksEntity`. `buckets`
-/// is packed into a single `Data` blob (min/max `Float` pairs, in order) —
-/// see `WaveformPeaksEntity`'s doc comment for why this is stored as one
-/// blob rather than `resolution` child rows.
+/// maps to/from the entity's two parallel `[Float]` attributes — see
+/// `WaveformPeaksEntity`'s doc comment for why this isn't a manually
+/// byte-packed `Data` blob.
 enum WaveformPeaksMapper {
     static func toEntity(_ peaks: WaveformPeaks) -> WaveformPeaksEntity {
         WaveformPeaksEntity(
             id: peaks.id,
             audioAssetID: peaks.audioAssetID,
             resolution: peaks.resolution,
-            bucketsData: pack(peaks.buckets)
+            minValues: peaks.buckets.map(\.min),
+            maxValues: peaks.buckets.map(\.max)
         )
     }
 
     static func toDomain(_ entity: WaveformPeaksEntity) throws -> WaveformPeaks {
-        try WaveformPeaks(
-            id: entity.id,
-            audioAssetID: entity.audioAssetID,
-            resolution: entity.resolution,
-            buckets: unpack(entity.bucketsData, expectedCount: entity.resolution)
-        )
-    }
-
-    private static func pack(_ buckets: [WaveformPeakBucket]) -> Data {
-        var data = Data(capacity: buckets.count * MemoryLayout<Float>.size * 2)
-        for bucket in buckets {
-            withUnsafeBytes(of: bucket.min) { data.append(contentsOf: $0) }
-            withUnsafeBytes(of: bucket.max) { data.append(contentsOf: $0) }
-        }
-        return data
-    }
-
-    private static func unpack(_ data: Data, expectedCount: Int) throws -> [WaveformPeakBucket] {
-        let bucketByteCount = MemoryLayout<Float>.size * 2
-        guard data.count == expectedCount * bucketByteCount else {
+        guard entity.minValues.count == entity.resolution, entity.maxValues.count == entity.resolution else {
             throw MappingError.corruptWaveformPeaksData(
-                expectedByteCount: expectedCount * bucketByteCount,
-                actualByteCount: data.count
+                expectedCount: entity.resolution,
+                actualMinCount: entity.minValues.count,
+                actualMaxCount: entity.maxValues.count
             )
         }
 
-        var buckets: [WaveformPeakBucket] = []
-        buckets.reserveCapacity(expectedCount)
-        var offset = data.startIndex
-        for _ in 0 ..< expectedCount {
-            let min = data[offset ..< offset + 4].withUnsafeBytes { $0.load(as: Float.self) }
-            offset += 4
-            let max = data[offset ..< offset + 4].withUnsafeBytes { $0.load(as: Float.self) }
-            offset += 4
-            buckets.append(WaveformPeakBucket(min: min, max: max))
-        }
-        return buckets
+        let buckets = zip(entity.minValues, entity.maxValues).map(WaveformPeakBucket.init(min:max:))
+        return WaveformPeaks(
+            id: entity.id,
+            audioAssetID: entity.audioAssetID,
+            resolution: entity.resolution,
+            buckets: buckets
+        )
     }
 }

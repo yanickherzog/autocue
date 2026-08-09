@@ -50,6 +50,6 @@ enum PartyMapper {
 enum MappingError: Error, Equatable {
     case unknownPartyKind(String)
     case unknownRawValue(type: String, rawValue: String)
-    case corruptWaveformPeaksData(expectedByteCount: Int, actualByteCount: Int)
+    case corruptWaveformPeaksData(expectedCount: Int, actualMinCount: Int, actualMaxCount: Int)
     case missingRequiredChild(type: String, parentID: UUID)
 }
