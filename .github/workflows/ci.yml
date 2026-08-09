@@ -78,6 +78,23 @@ jobs:
         working-directory: Packages/${{ matrix.package }}
         run: swift test
 
+      # TEMPORARY diagnostic for D4/PR #4 — not part of this Deliverable's
+      # real scope, to be removed once the ACPersistence SIGTRAP crash is
+      # actually diagnosed from a real backtrace instead of guessed at.
+      - name: Dump crash reports on failure (temporary D4 diagnostic)
+        if: failure()
+        run: |
+          for dir in ~/Library/Logs/DiagnosticReports /Library/Logs/DiagnosticReports; do
+            if [ -d "$dir" ]; then
+              echo "=== $dir ==="
+              ls -la "$dir" || true
+              for f in "$dir"/*; do
+                echo "--- $f ---"
+                cat "$f" || true
+              done
+            fi
+          done
+
   xcodebuild-app:
     name: xcodebuild build/test — AutoCue
     runs-on: macos-14
