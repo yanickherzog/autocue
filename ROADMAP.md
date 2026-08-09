@@ -99,6 +99,8 @@ The original plan was 34 fine-grained milestones across 12 phases, each scoped t
 
 ## D3 — Domain Composition & Repository Protocols
 
+**Status: Complete (2026-08-08).** Verified locally (`swift test` × 7 packages, `swiftformat --lint`, `swiftlint lint --strict`, both architecture-boundary scripts) **and** confirmed against a real, watched-to-completion CI run on PR #3 — all 9 jobs passed on the actual Xcode-15.4-pinned runner, then all 9 jobs passed again on the post-merge run against `main` itself (commit `72f03cb`). A real bug was found and fixed within this Deliverable, not carried forward: `DeleteRightHolderUseCase`'s internal reconstruction helper wasn't bumping `Project.updatedAt` on a successful right-holder deletion, contradicting `SPEC.md` §4.1's unqualified scope for that field — fixed, with orchestration tests added asserting the field advances on success and stays untouched when a delete is correctly blocked. Six stale cross-references to an earlier two-type `DeletePersonUseCase`/`DeleteLabelUseCase` phrasing (`ROADMAP.md`, `CLAUDE.md`, `SPEC.md`) were also corrected to name the real, shared `DeleteRightHolderUseCase` this Deliverable actually built — one of them (`ROADMAP.md` D7's own acceptance criteria) would otherwise have pointed a future session at a type that doesn't exist. This "Status" note itself was added later than D3's actual completion — see `docs/REVIEW.md`'s D3 entry (added 2026-08-09, alongside D4's own Definition-of-Done follow-up work) for the full account, including that gap's own history.
+
 **Goal:** Compose the top-level `Project` container and declare every Data-layer boundary `ACCore` will be injected against.
 
 **Dependencies:** D2.
