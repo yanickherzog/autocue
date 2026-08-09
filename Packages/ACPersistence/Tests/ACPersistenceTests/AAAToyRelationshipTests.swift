@@ -32,7 +32,7 @@ final class ToyChild {
     }
 }
 
-final class ToyRelationshipTests: XCTestCase {
+final class AAAToyRelationshipTests: XCTestCase {
     func test_toyParentChildRoundTrip() throws {
         let schema = Schema([ToyParent.self, ToyChild.self])
         let configuration = ModelConfiguration(isStoredInMemoryOnly: true)
