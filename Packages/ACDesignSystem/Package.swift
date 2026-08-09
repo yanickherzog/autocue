@@ -10,7 +10,10 @@ let package = Package(
     targets: [
         .target(
             name: "ACDesignSystem",
-            path: "Sources/ACDesignSystem"
+            path: "Sources/ACDesignSystem",
+            resources: [
+                .copy("Resources/Fonts"),
+            ]
         ),
         .testTarget(
             name: "ACDesignSystemTests",

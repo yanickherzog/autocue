@@ -161,19 +161,22 @@ The original plan was 34 fine-grained milestones across 12 phases, each scoped t
 
 **Dependencies:** D1.
 
+**Correction to this Deliverable's original scope, made during D5 planning, before implementation began:** the visual design AutoCue actually targets (brand colors, typography, sharp corners, transition timing, etc.) had never been written down anywhere in this repository — `SPEC.md` §3 correctly scopes UI/visual design out of that document, and nothing else had captured it either, so D5's Acceptance Criteria below were originally written as generic SwiftUI-best-practice placeholders ("dark-mode-safe," "both appearances") rather than against a real brief. Once the real brief was supplied and checked against that wording, it conflicted: AutoCue's palette is two deliberately **fixed** surface styles chosen per screen (Setup/Cue Sheet: white background, black text; Review & Export: black background, white text), not colors that should adapt to the system Light/Dark Mode setting. See `docs/DECISIONS.md` ("AutoCue does not adapt to system Light/Dark Mode") and `CLAUDE.md`'s new "Visual Language" subsection (under Design System) for the full, now-documented visual language. The Tasks/Acceptance Criteria below are corrected to match; two files are added to T5.2 beyond its original list (`Modifiers/SharpButtonStyle.swift`, `Theme/Motion.swift`) because the brief explicitly calls for sharp corners and the transition convention to be real, reusable, enforced components — not prose guidelines a future screen could silently violate.
+
 **Tasks:**
-- **T5.1 — Design tokens** *(was M9)*. `Packages/ACDesignSystem/Sources/ACDesignSystem/Theme/{Colors,Typography,Spacing}.swift` + a preview file.
-- **T5.2 — Core reusable components** *(was M10)*. `Components/{EmptyStateView,ProgressBanner}.swift`, `Modifiers/ErrorAlertModifier.swift`.
+- **T5.1 — Design tokens** *(was M9, expanded)*. `Packages/ACDesignSystem/Sources/ACDesignSystem/Theme/{Colors,Typography,Spacing,Motion}.swift` + a preview file (`ThemePreview.swift`). `Colors.swift` exposes fixed-value `Theme.Colors.accent` plus two named, fixed surface styles (`Surface.primary`/`Surface.reversed`) — never a `colorScheme`-adaptive pair. `Typography.swift` bundles and registers Space Grotesk (Regular/Medium/Bold, vendored from Google Fonts under OFL) via `Resources/Fonts/`. `Motion.swift` adds `Theme.Motion.standard` (the shared ~1.5s transition) beyond the originally-planned file list.
+- **T5.2 — Core reusable components** *(was M10, expanded)*. `Components/{EmptyStateView,ProgressBanner}.swift`, `Modifiers/{ErrorAlertModifier,SharpButtonStyle}.swift` — `SharpButtonStyle` added beyond the original list to make "no rounded corners, ever" a real enforced component rather than a convention every future button call site has to remember.
 
 **Acceptance Criteria:**
-- Package builds for the macOS target; every color/font token uses semantic, dark-mode-safe definitions (no hardcoded hex without a dark variant).
-- A SwiftUI preview renders a token swatch sheet in both appearances.
-- Each component has a SwiftUI preview with representative sample data in both appearances.
+- Package builds for the macOS target; every color token is a fixed, documented value (`CLAUDE.md`, "Visual Language") — not a `colorScheme`-adaptive pair; no raw hex literal appears outside `Theme/` (mechanically checked by `Scripts/check-color-literals.sh`, which deliberately skips `ACDesignSystem` itself since that's where the literals are meant to live).
+- A SwiftUI preview renders a token swatch sheet showing **both fixed surface styles** (primary and reversed) side by side — not "both appearances" in the system-light/dark sense, since these tokens don't adapt to that setting at all.
+- Each component has a SwiftUI preview with representative sample data, rendered against both surface styles.
+- `SharpButtonStyle` renders with zero corner radius — verified visually via its own preview, since SwiftUI's stock `.bordered`/`.borderedProminent` styles round by default on macOS and this component exists specifically to prevent that.
 - None of these files import `ACCore` or reference any domain type — only `String`/closures/bindings (mechanically checked from this Deliverable forward by `Scripts/check-import-boundaries.sh`).
 
 **Testing Requirements:** No unit tests expected — `ACDesignSystem` components are verified via SwiftUI previews per `CONTRIBUTING.md` §5's "Views: still not unit tested" note; this package is entirely Views/tokens.
 
-**Documentation Requirements:** None expected.
+**Documentation Requirements:** `CLAUDE.md` gains a "Visual Language" subsection (under Design System) documenting the full visual brief this Deliverable implements; `docs/DECISIONS.md` gains an entry recording the fixed-appearance-vs-adaptive-color decision. Both are corrective work done at the start of this Deliverable, not standard D5 output — see the correction note above.
 
 **Suggested Commit Boundary:** 2 commits, one per Task — tokens are a real dependency of the components, so tokens land first.
 
