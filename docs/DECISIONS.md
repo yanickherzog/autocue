@@ -468,3 +468,35 @@ That pointed directly at a real bug: setting `rightHolderEntity.cue = entity` (t
 **Consequences:** `Theme.Colors` (`ACDesignSystem`) exposes `Surface.primary`/`Surface.reversed` plus a constant `accent` — never a `colorScheme`-driven pair. Rules out a future Deliverable reintroducing adaptive system-appearance colors for these three tokens without a real, separately-discussed reason to reverse this decision. `ROADMAP.md` D5's Acceptance Criteria corrected to require a swatch preview of the two surface styles, not "both appearances" in the light/dark sense. Full visual-language detail (ghost-text tint, sharp corners, dividers, transition timing, default window size) recorded in `CLAUDE.md`'s new "Visual Language" subsection, not duplicated here.
 
 **Full detail:** `CLAUDE.md`, "Design System" → "Visual Language." Implementation: `Packages/ACDesignSystem/Sources/ACDesignSystem/Theme/Colors.swift`.
+
+---
+
+## 2026-08-10 — `Setup`'s three `Party` fields become optional: `producer`/`directorOrPrincipal`/`declarant`
+
+**Decision:** `Setup.producer`, `.directorOrPrincipal`, and `.declarant` change from `Party` to `Party?`, each defaulting to `nil`. Their export-required-ness (SPEC.md §4.2) is enforced by `ValidateCueSheetUseCase` (`ROADMAP.md` D11), not by the type or at `Project`-creation time.
+
+**Context:** Found during `ROADMAP.md` D6 planning, before `CreateProjectUseCase` was written. `Setup` requires a `Party` value for these three fields, but `Party` (`ACCore/Models/Party.swift`) is `enum { case person(Person.ID); case label(Label.ID) }` — it has no case representing "none." A brand-new `Project` (D6/T6.2's "create a named project" flow) has an empty `people`/`labels` directory at the moment of creation, so there is no real `Person`/`Label` yet for these fields to reference. The first proposal considered — auto-creating one placeholder, empty-named `Person` in the new project's directory and pointing all three fields at it — was rejected before implementation began: it directly reproduces the exact pattern D2's own acceptance criterion already rules out ("every §4.2-required field has no default value that could silently satisfy it"), just introduced at D6 instead of D2. A fabricated `Person` with an empty name pointed at by three required fields is precisely that kind of silently-satisfying default, not a real value.
+
+**Alternatives Considered:**
+- **Auto-create a placeholder `Person` at Project-creation time.** Rejected, per the reasoning above — it satisfies the type system without satisfying the actual requirement, and looks done in a diff review without being done.
+- **Make the three fields `Party?`, validate non-`nil`-ness at export-readiness time instead of construction time** *(chosen)*.
+
+Before choosing, every field in `SPEC.md` §4.2 was checked individually against the same question ("does a brand-new `Project` have an honest, non-deceptive value for this required field already, within its current type?"), not just the three `Party` fields already suspected — see the full field-by-field table below. Every other required field already has one: `title`/`knownOrFutureBroadcasts`-style `String`s can honestly start `""`; `productionRuntime`/`totalMusicRuntime: MediaDuration` can honestly start `.zero`; `productionTypes: Set<ProductionType>` can honestly start `[]`; `containsAdditionalUndeclaredWorks` has a real `.notKnown` case built for exactly this; `timecodeFrameRate`'s `.fps25` default and `declarationDate`'s "defaults to today" are both already explicitly sanctioned in SPEC.md itself, and neither stands in for missing SUISA-export data the way a fabricated `Party` reference would (`timecodeFrameRate` is never exported at all). Only `Party` has no such value. This rules out the alternative reading of D2's acceptance criterion as inconsistently applied — it was checked exhaustively, not assumed to apply narrowly to just these three fields.
+
+| Field | Honest "not yet entered" value already representable? |
+|---|---|
+| `title: String` | Yes — `""` |
+| `producer`/`directorOrPrincipal`/`declarant: Party` | **No** — fixed by this entry |
+| `productionRuntime`/`totalMusicRuntime: MediaDuration` | Yes — `.zero` |
+| `productionYear: Int` | Yes — `0` (see Consequences: implementation must use `0`, not a calendar-derived guess) |
+| `containsAdditionalUndeclaredWorks: enum` | Yes — `.notKnown` is a real SUISA-form answer, not a fake default |
+| `productionTypes: Set<ProductionType>` | Yes — `[]`; the ≥1 rule is already a §4.6 Use Case check, not a type constraint |
+| `timecodeFrameRate: TimecodeFrameRate` | Yes — `.fps25`, already SPEC-sanctioned, never exported |
+| `declarationDate: Date` | Yes — "defaults to export date," already SPEC-sanctioned |
+| everything else in §4.2 | already `Optional` or conditionally-required |
+
+**Reason for Choice:** `Optional<Party>` represents the real state honestly — a brand-new `Project` genuinely has no producer/director/declarant chosen yet — and defers the "is this actually filled in" check to exactly where every other required-but-not-yet-type-enforced field in `Setup` already gets checked (`ValidateCueSheetUseCase`, D11), rather than inventing a construction-time special case just for these three fields.
+
+**Consequences:** `Setup`'s memberwise initializer gains `producer`/`directorOrPrincipal`/`declarant` defaults of `nil`; `DeleteRightHolderUseCase.referenceLocations` (D3, `ACCore/UseCases/DeleteRightHolderUseCase.swift`) needed **no code change** — `project.setup.producer == party` already compiles and behaves correctly comparing `Party?` to a `Party` parameter via Swift's standard non-optional-to-optional promotion in `==`. `ACPersistence`'s `SetupEntity`/`SetupMapper`/`PartyMapper` (D4) needed real changes: the three kind+id column pairs become optional, and `PartyMapper` gained optional-aware `kind(for:)`/`id(for:)`/`party(kind:id:)` variants. No existing D2–D4 test fixture broke — all of them already construct `Setup` with concrete `Party` values, which promote into the new `Party?` parameters unchanged. Rules out reintroducing a placeholder-`Person`-style default for any future required-but-referential field that hits this same "the type has no honest empty value" shape — check for a real `Optional` fix first, the same way this entry did, before reaching for a fabricated stand-in value. **Implementation note, worth keeping visible in code, not just here:** `CreateProjectUseCase`'s `productionYear` default must be `0`, not a `Calendar`-derived current year — a plausible-looking guessed year would be exactly the silently-satisfying default this whole entry exists to avoid, even though `productionYear`'s type didn't need to change.
+
+**Full detail:** `SPEC.md` §4.2, §4.6. Implementation: `Packages/ACCore/Sources/ACCore/Models/Setup.swift`; `Packages/ACPersistence/Sources/ACPersistence/SwiftDataModels/SetupEntity.swift`; `Packages/ACPersistence/Sources/ACPersistence/Mappers/{SetupMapper,PartyMapper}.swift`. `ROADMAP.md` D6.

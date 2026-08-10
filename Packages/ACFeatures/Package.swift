@@ -10,6 +10,7 @@ let package = Package(
     dependencies: [
         .package(path: "../ACCore"),
         .package(path: "../ACDesignSystem"),
+        .package(path: "../ACTestSupport"),
     ],
     targets: [
         .target(
@@ -19,7 +20,12 @@ let package = Package(
         ),
         .testTarget(
             name: "ACFeaturesTests",
-            dependencies: ["ACFeatures"],
+            // ACTestSupport is a .testTarget-only dependency (CLAUDE.md,
+            // Naming Conventions) — never a dependency of the ACFeatures
+            // .target above. ViewModels are tested against its fakes
+            // (InMemoryProjectRepository, etc.), never real SwiftData
+            // (CONTRIBUTING.md §5).
+            dependencies: ["ACFeatures", "ACTestSupport"],
             path: "Tests/ACFeaturesTests"
         ),
     ]

@@ -12,6 +12,11 @@ import SwiftData
 /// cascade/nullify behind them, and a real `@Relationship` here would
 /// silently reintroduce exactly that behavior behind the guard's back.
 ///
+/// Each pair is optional (`String?`/`UUID?`), matching `ACCore.Setup`'s
+/// `Party?` fields — a brand-new `Project` genuinely has none of these
+/// chosen yet (`docs/DECISIONS.md`, "`Setup`'s three `Party` fields become
+/// optional").
+///
 /// `Set<ProductionType>`/`Set<AttachmentType>` are stored as `[String]` raw
 /// values (order-independent by construction — reconstructed as a `Set` in
 /// `SetupMapper`, so storage order never matters here, unlike the `order`
@@ -20,10 +25,10 @@ import SwiftData
 final class SetupEntity {
     var title: String
     var subtitle: String?
-    var producerPartyKind: String
-    var producerPartyID: UUID
-    var directorPartyKind: String
-    var directorPartyID: UUID
+    var producerPartyKind: String?
+    var producerPartyID: UUID?
+    var directorPartyKind: String?
+    var directorPartyID: UUID?
     var productionRuntimeSeconds: Double
     var totalMusicRuntimeSeconds: Double
     var productionYear: Int
@@ -40,8 +45,8 @@ final class SetupEntity {
     var productionCountry: String?
     var language: String?
     var timecodeFrameRate: String
-    var declarantPartyKind: String
-    var declarantPartyID: UUID
+    var declarantPartyKind: String?
+    var declarantPartyID: UUID?
     var declarationDate: Date
     var attachmentTypesRawValues: [String]
     var otherAttachmentDescription: String?
@@ -49,10 +54,10 @@ final class SetupEntity {
     init(
         title: String,
         subtitle: String?,
-        producerPartyKind: String,
-        producerPartyID: UUID,
-        directorPartyKind: String,
-        directorPartyID: UUID,
+        producerPartyKind: String?,
+        producerPartyID: UUID?,
+        directorPartyKind: String?,
+        directorPartyID: UUID?,
         productionRuntimeSeconds: Double,
         totalMusicRuntimeSeconds: Double,
         productionYear: Int,
@@ -69,8 +74,8 @@ final class SetupEntity {
         productionCountry: String?,
         language: String?,
         timecodeFrameRate: String,
-        declarantPartyKind: String,
-        declarantPartyID: UUID,
+        declarantPartyKind: String?,
+        declarantPartyID: UUID?,
         declarationDate: Date,
         attachmentTypesRawValues: [String],
         otherAttachmentDescription: String?

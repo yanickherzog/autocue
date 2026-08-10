@@ -18,6 +18,13 @@ public extension Theme {
         /// No reversed-surface equivalent yet; add one only when a real input field on
         /// a reversed-surface screen actually needs it, not speculatively.
         public static let ghostTextPrimary = carbonBlack.opacity(0.4)
+
+        /// Divider lines on the primary surface — Carbon Black at 50% opacity,
+        /// lighter than solid Carbon Black (manual verification follow-up,
+        /// `ROADMAP.md` D6). Same "no reversed-surface equivalent yet" caveat as
+        /// `ghostTextPrimary` — add one only when a real reversed-surface screen
+        /// actually needs a divider, not speculatively.
+        public static let dividerPrimary = carbonBlack.opacity(0.5)
     }
 
     /// Two fixed surface styles, selected per screen — Setup/Cue Sheet use

@@ -30,6 +30,20 @@ public struct SharpButtonStyle: ButtonStyle {
                 Rectangle()
                     .strokeBorder(borderColor, lineWidth: 1)
             )
+            // Without this, SwiftUI hit-tests only the label's own drawn
+            // content (e.g. a Text's tight glyph bounds), not the padded/
+            // backgrounded rectangle this style visually draws — a real
+            // usability bug (clickable only on the text itself), not a
+            // hypothetical: found during D6's manual verification on a
+            // full-width sidebar button, where the dead space was large
+            // enough to notice. Fixed here, once, for every button using
+            // this style, rather than patched per call site.
+            .contentShape(Rectangle())
+            // Every button built on this style automatically shows the
+            // pointing-hand cursor on hover (manual verification
+            // follow-up) — see `pointingHandCursor()`'s own doc comment for
+            // why this is a shared modifier rather than inline here.
+            .pointingHandCursor()
         // Deliberately no `.clipShape`/`.cornerRadius` call — a plain `Rectangle`
         // background/overlay is square by construction.
     }
