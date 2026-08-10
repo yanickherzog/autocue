@@ -42,9 +42,19 @@ public struct ProjectLibraryView: View {
                             onOpen: { onOpenProject(project.id) },
                             onDelete: { Task { await viewModel.deleteProject(id: project.id) } }
                         )
+                        .listRowBackground(Theme.Surface.primary.background)
                     }
                 }
                 .listStyle(.plain)
+                // List/ScrollView on macOS paint their own native background
+                // material (dark under system Dark Mode) behind rows by
+                // default — a plain `.background()` on the List does not
+                // override it. `.scrollContentBackground(.hidden)` suppresses
+                // that native chrome so the explicit Theme background (below
+                // and per-row above) is what actually shows, matching this
+                // app's fixed, non-adaptive palette (CLAUDE.md, "Visual
+                // Language") instead of a system-appearance-dependent one.
+                .scrollContentBackground(.hidden)
                 .background(Theme.Surface.primary.background)
             }
         }
@@ -91,7 +101,15 @@ private struct NewProjectSheet: View {
                 .font(Theme.Typography.font(.medium, size: 17))
                 .foregroundStyle(Theme.Surface.primary.foreground)
 
-            TextField("Project Name", text: $name)
+            // Explicit foregroundStyle: TextField otherwise falls back to
+            // the system's dynamic label color, which resolves near-white
+            // under system Dark Mode regardless of this app's own fixed
+            // white surface background — invisible text, not just a
+            // stylistic miss. The `prompt:` variant lets the placeholder use
+            // the documented ghost-text token (CLAUDE.md, "Visual Language")
+            // instead of the system's default placeholder gray.
+            TextField("", text: $name, prompt: Text("Project Name").foregroundStyle(Theme.Colors.ghostTextPrimary))
+                .foregroundStyle(Theme.Surface.primary.foreground)
                 .textFieldStyle(.plain)
                 .padding(Theme.Spacing.sm)
                 .overlay(Rectangle().strokeBorder(Theme.Colors.carbonBlack.opacity(0.3), lineWidth: 1))
