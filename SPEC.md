@@ -76,8 +76,8 @@ One per `Project`. Mirrors the SUISA WA Film form header.
 |---|---|---|---|---|
 | `title` | `String` | **required** | "Title" | |
 | `subtitle` | `String?` | optional | "(and sub-title, if any)" | |
-| `producer` | `Party` | **required** | "Producer (complete address)" | |
-| `directorOrPrincipal` | `Party` | **required** | "Director / principal (commercials and Spots)" | form frames the label around commercials/spots but the field applies to all production types |
+| `producer` | `Party?` | **required for export, optional at the type level** | "Producer (complete address)" | `Party` has no case representing "none," so a brand-new `Project` (with no `Person`/`Label` in its directory yet to reference) must be able to represent this as genuinely absent, not forced onto a fabricated placeholder right-holder. Export-required-ness is enforced by `ValidateCueSheetUseCase` (`ROADMAP.md` D11), not the type. See `docs/DECISIONS.md`, "`Setup`'s three `Party` fields become optional." |
+| `directorOrPrincipal` | `Party?` | **required for export, optional at the type level** | "Director / principal (commercials and Spots)" | form frames the label around commercials/spots but the field applies to all production types; same optionality reasoning as `producer`, above |
 | `productionRuntime` | `MediaDuration` | **required** | "Playing time of film or production" | |
 | `totalMusicRuntime` | `MediaDuration` | **required** | "Total music playing time" | source of truth and update rule fully defined in §4.14 |
 | `productionYear` | `Int` | **required** | "Production year" | |
@@ -94,7 +94,7 @@ One per `Project`. Mirrors the SUISA WA Film form header.
 | `productionCountry` | `String?` | optional | — | not on the form; useful context for broadcasts + SWISSPERFORM reuse |
 | `language` | `String?` | optional | — | not on the form |
 | `timecodeFrameRate` | `TimecodeFrameRate` | **required, app-internal** | — | not on the form; the display frame rate used only to format `Cue.startTimecode`/`EmbeddedMarker.position` as `HH:MM:SS:FF` in the editor UI. Default `.fps25`. Never exported — SUISA durations are declared via `MediaDuration` (`HH:MM:SS`), not frame-accurate. See §4.9. |
-| `declarant` | `Party` | **required** | "Particulars of the declaring person or publisher" | |
+| `declarant` | `Party?` | **required for export, optional at the type level** | "Particulars of the declaring person or publisher" | same optionality reasoning as `producer`, above |
 | `declarationDate` | `Date` | **required** | "Date and signature" | defaults to export date |
 | `attachmentTypes` | `Set<AttachmentType>` | optional | "Attachment(s)" | see 4.2.2; informational flags only — the app does not manage the physical attachments themselves |
 | `otherAttachmentDescription` | `String?` | required iff `attachmentTypes` contains `.other` | "Other (please indicate)" | |
@@ -186,6 +186,7 @@ Used for: `Setup.producer`, `Setup.directorOrPrincipal`, `Setup.declarant`, `Set
 
   **Rounding/tolerance policy for both sums above:** `performanceBroadcastShare` and `mechanicalRightsShare` are `Decimal` values scaled to exactly 2 decimal places (hundredths of a percent — matching the precision the printed SUISA form supports). The 100%-sum check is **exact equality against `100.00`, with zero tolerance band** — deliberately, not approximately. This is precise specifically *because* `Decimal` performs exact base-10 arithmetic: unlike `Double`, summing `Decimal` values at a fixed scale never accumulates binary floating-point rounding error, so no epsilon/tolerance comparison is needed to absorb arithmetic noise the way it would be with a `Double`-based sum — this is the actual reason `Decimal` was chosen for these two fields in the first place (§4.4). A legitimate uneven split — e.g. three right-holders at `33.33`, `33.33`, `33.34` — sums to exactly `100.00` under `Decimal` arithmetic and passes with no special-casing. A sum of `99.99` or `100.01` is treated as a genuine data-entry error, not a rounding artifact to be tolerated, and is flagged (blocking or warning per `Settings.shareValidationStrictness`, below). The domain model does not enforce the 2-decimal-place scale as a hard, compiler-checked constraint — `Decimal` has no such type-level restriction, and a custom validator for it is unneeded complexity this rule doesn't call for. Constraining user input to 2 decimal places is a Presentation-layer concern (input field formatting), out of scope for this document per §3.
 
+- `Setup.producer`/`.directorOrPrincipal`/`.declarant` must each be non-`nil` before export (§4.2) — the one export-required-field check in this list driven by an `Optional` type rather than a business condition on otherwise-present data, since `Party` itself has no "none" case to check against.
 - `Setup.productionTypes` must be non-empty.
 - `Setup.otherProductionTypeDescription` required iff `.other ∈ productionTypes`.
 - `Setup.otherAttachmentDescription` required iff `.other ∈ attachmentTypes`.

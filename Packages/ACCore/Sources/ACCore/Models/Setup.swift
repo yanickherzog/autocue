@@ -7,11 +7,24 @@ import Foundation
 /// `Project` it belongs to (1:1), the same "no `id` field, no `Identifiable`"
 /// shape as `PostalAddress`/`Party` (`CLAUDE.md`, "Domain Model Value-Type
 /// Conformances").
+///
+/// `producer`/`directorOrPrincipal`/`declarant` are `Party?`, not `Party`,
+/// despite being required-for-export SUISA fields (SPEC.md §4.2). `Party` has
+/// no case representing "none" — unlike a `String` (which can honestly start
+/// as `""`) or a `Set` (which can honestly start as `[]`), there is no value
+/// of `Party` that means "not yet chosen." A brand-new `Project` (`ROADMAP.md`
+/// D6/T6.2) has no `Person`/`Label` in its directory yet to reference, so
+/// these three fields must be representable as genuinely absent rather than
+/// forced to reference a fabricated placeholder right-holder. Their
+/// export-required-ness is enforced where every other required-but-absent
+/// field in this type already is: `ValidateCueSheetUseCase` (`ROADMAP.md`
+/// D11), not at construction time. See `docs/DECISIONS.md` for the full
+/// record of this correction, made during D6 planning.
 public struct Setup: Equatable, Sendable {
     public let title: String
     public let subtitle: String?
-    public let producer: Party
-    public let directorOrPrincipal: Party
+    public let producer: Party?
+    public let directorOrPrincipal: Party?
     public let productionRuntime: MediaDuration
     public let totalMusicRuntime: MediaDuration
     public let productionYear: Int
@@ -28,7 +41,7 @@ public struct Setup: Equatable, Sendable {
     public let productionCountry: String?
     public let language: String?
     public let timecodeFrameRate: TimecodeFrameRate
-    public let declarant: Party
+    public let declarant: Party?
     public let declarationDate: Date
     public let attachmentTypes: Set<AttachmentType>
     public let otherAttachmentDescription: String?
@@ -36,8 +49,8 @@ public struct Setup: Equatable, Sendable {
     public init(
         title: String,
         subtitle: String? = nil,
-        producer: Party,
-        directorOrPrincipal: Party,
+        producer: Party? = nil,
+        directorOrPrincipal: Party? = nil,
         productionRuntime: MediaDuration,
         totalMusicRuntime: MediaDuration,
         productionYear: Int,
@@ -54,7 +67,7 @@ public struct Setup: Equatable, Sendable {
         productionCountry: String? = nil,
         language: String? = nil,
         timecodeFrameRate: TimecodeFrameRate = .fps25,
-        declarant: Party,
+        declarant: Party? = nil,
         declarationDate: Date,
         attachmentTypes: Set<AttachmentType> = [],
         otherAttachmentDescription: String? = nil

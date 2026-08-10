@@ -47,6 +47,35 @@ final class SetupMapperTests: XCTestCase {
         }
     }
 
+    func test_nilProducerDirectorDeclarant_roundTripToNilNotAThrownError() throws {
+        // Setup.producer/.directorOrPrincipal/.declarant are Party? — a
+        // brand-new Project genuinely has none chosen yet (docs/DECISIONS.md,
+        // "Setup's three Party fields become optional"). The persisted
+        // column pair must round-trip that absence as nil, not as an error.
+        let setup = Setup(
+            title: "Test",
+            productionRuntime: MediaDuration(seconds: 60),
+            totalMusicRuntime: .zero,
+            productionYear: 2026,
+            containsAdditionalUndeclaredWorks: .no,
+            productionTypes: [.other],
+            otherProductionTypeDescription: "n/a",
+            declarationDate: Date(timeIntervalSince1970: 1_699_000_000)
+        )
+        let entity = SetupMapper.toEntity(setup)
+        XCTAssertNil(entity.producerPartyKind)
+        XCTAssertNil(entity.producerPartyID)
+        XCTAssertNil(entity.directorPartyKind)
+        XCTAssertNil(entity.directorPartyID)
+        XCTAssertNil(entity.declarantPartyKind)
+        XCTAssertNil(entity.declarantPartyID)
+
+        let roundTripped = try SetupMapper.toDomain(entity)
+        XCTAssertNil(roundTripped.producer)
+        XCTAssertNil(roundTripped.directorOrPrincipal)
+        XCTAssertNil(roundTripped.declarant)
+    }
+
     private func makeSetup(
         productionTypes: Set<ProductionType> = [.other],
         attachmentTypes: Set<AttachmentType> = [],

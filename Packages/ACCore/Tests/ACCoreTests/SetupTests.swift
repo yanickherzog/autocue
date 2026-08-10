@@ -89,6 +89,26 @@ final class SetupTests: XCTestCase {
         XCTAssertNil(setup.otherAttachmentDescription)
     }
 
+    func test_producerDirectorDeclarant_defaultToNilWhenOmitted() {
+        // A brand-new Project (ROADMAP.md D6/T6.2) has no Person/Label in its
+        // directory yet to reference, so these three fields must be
+        // genuinely representable as absent rather than forced to reference
+        // a fabricated placeholder right-holder — see the doc comment on
+        // Setup itself and docs/DECISIONS.md.
+        let setup = Setup(
+            title: "A Swiss Story",
+            productionRuntime: MediaDuration(seconds: 5400),
+            totalMusicRuntime: MediaDuration(seconds: 600),
+            productionYear: 2026,
+            containsAdditionalUndeclaredWorks: .no,
+            productionTypes: [.documentaryFilm],
+            declarationDate: Date(timeIntervalSince1970: 0)
+        )
+        XCTAssertNil(setup.producer)
+        XCTAssertNil(setup.directorOrPrincipal)
+        XCTAssertNil(setup.declarant)
+    }
+
     private struct FullyPopulatedFixture {
         let producer: Party
         let director: Party
