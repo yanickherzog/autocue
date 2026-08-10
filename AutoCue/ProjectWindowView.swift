@@ -21,6 +21,10 @@ struct ProjectWindowView: View {
     let registry: OpenProjectWindowRegistry
 
     @State private var appState = AppState()
+    /// Retains the observer for this window's lifetime — see
+    /// `ProjectWindowFrameSaver`'s doc comment for why this can't just be a
+    /// local variable in the closure below.
+    @State private var frameSaver: ProjectWindowFrameSaver?
 
     var body: some View {
         NavigationSplitView {
@@ -31,6 +35,22 @@ struct ProjectWindowView: View {
         .background(
             WindowAccessor { window in
                 registry.register(projectID, window: window)
+                // Per-Project window-size persistence (ROADMAP.md D6,
+                // manual verification follow-up). Explicit, not
+                // `NSWindow.setFrameAutosaveName` — that was tried first and
+                // confirmed, via `defaults read com.autocue.AutoCue`, to
+                // never actually persist anything in this SwiftUI
+                // `WindowGroup(for:)` context (see `ProjectWindowFrameStore`'s
+                // doc comment for the full finding). If this Project has a
+                // previously saved frame, apply it now; a Project opened for
+                // the first time has none, so this is a no-op and the
+                // window stays at whatever `Theme.Layout.defaultWindowSize`
+                // (`.defaultSize` on the WindowGroup in AutoCueApp.swift)
+                // already sized it to.
+                if let savedFrame = ProjectWindowFrameStore.savedFrame(for: projectID) {
+                    window.setFrame(savedFrame, display: true, animate: false)
+                }
+                frameSaver = ProjectWindowFrameSaver(window: window, projectID: projectID)
             }
         )
         .onDisappear {
