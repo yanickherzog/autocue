@@ -15,7 +15,12 @@
 		133E7AAE282B40A0B8E6504E /* ACPersistence in Frameworks */ = {isa = PBXBuildFile; productRef = 9CAF729976154D94AB987F0B /* ACPersistence */; };
 		D1A5BE3D77CC437198EF6980 /* AutoCueApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1803CA150ED4478BBF815C3 /* AutoCueApp.swift */; };
 		F8BE39284CA94C879D3FE6C2 /* DependencyContainer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6A3F033C49E94C098AD70991 /* DependencyContainer.swift */; };
+		B1B2C3D4E5F647890ABCDEF1 /* OpenProjectWindowRegistry.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F647890ABCDEF1 /* OpenProjectWindowRegistry.swift */; };
+		B1B2C3D4E5F647890ABCDEF2 /* WindowAccessor.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F647890ABCDEF2 /* WindowAccessor.swift */; };
+		B1B2C3D4E5F647890ABCDEF3 /* LibraryWindowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F647890ABCDEF3 /* LibraryWindowView.swift */; };
+		B1B2C3D4E5F647890ABCDEF4 /* ProjectWindowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F647890ABCDEF4 /* ProjectWindowView.swift */; };
 		1500D5C218BB4D8A9F48D79B /* AutoCueTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1D5CC5A2D264932A71CAA50 /* AutoCueTests.swift */; };
+		C2B2C3D4E5F647890ABCDEF1 /* OpenProjectWindowRegistryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1B2C3D4E5F647890ABCDEF1 /* OpenProjectWindowRegistryTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -33,7 +38,13 @@
 		4F5E7DBFF073441EBF3E1724 /* AutoCueTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = AutoCueTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		F1803CA150ED4478BBF815C3 /* AutoCueApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutoCueApp.swift; sourceTree = "<group>"; };
 		6A3F033C49E94C098AD70991 /* DependencyContainer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DependencyContainer.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F647890ABCDEF1 /* OpenProjectWindowRegistry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenProjectWindowRegistry.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F647890ABCDEF2 /* WindowAccessor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WindowAccessor.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F647890ABCDEF3 /* LibraryWindowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryWindowView.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F647890ABCDEF4 /* ProjectWindowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectWindowView.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F647890ABCDEF5 /* AutoCue.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = AutoCue.entitlements; sourceTree = "<group>"; };
 		E1D5CC5A2D264932A71CAA50 /* AutoCueTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutoCueTests.swift; sourceTree = "<group>"; };
+		C1B2C3D4E5F647890ABCDEF1 /* OpenProjectWindowRegistryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenProjectWindowRegistryTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -83,6 +94,11 @@
 			children = (
 				F1803CA150ED4478BBF815C3 /* AutoCueApp.swift */,
 				6A3F033C49E94C098AD70991 /* DependencyContainer.swift */,
+				A1B2C3D4E5F647890ABCDEF1 /* OpenProjectWindowRegistry.swift */,
+				A1B2C3D4E5F647890ABCDEF2 /* WindowAccessor.swift */,
+				A1B2C3D4E5F647890ABCDEF3 /* LibraryWindowView.swift */,
+				A1B2C3D4E5F647890ABCDEF4 /* ProjectWindowView.swift */,
+				A1B2C3D4E5F647890ABCDEF5 /* AutoCue.entitlements */,
 			);
 			path = AutoCue;
 			sourceTree = "<group>";
@@ -91,6 +107,7 @@
 			isa = PBXGroup;
 			children = (
 				E1D5CC5A2D264932A71CAA50 /* AutoCueTests.swift */,
+				C1B2C3D4E5F647890ABCDEF1 /* OpenProjectWindowRegistryTests.swift */,
 			);
 			path = AutoCueTests;
 			sourceTree = "<group>";
@@ -210,6 +227,10 @@
 			files = (
 				D1A5BE3D77CC437198EF6980 /* AutoCueApp.swift in Sources */,
 				F8BE39284CA94C879D3FE6C2 /* DependencyContainer.swift in Sources */,
+				B1B2C3D4E5F647890ABCDEF1 /* OpenProjectWindowRegistry.swift in Sources */,
+				B1B2C3D4E5F647890ABCDEF2 /* WindowAccessor.swift in Sources */,
+				B1B2C3D4E5F647890ABCDEF3 /* LibraryWindowView.swift in Sources */,
+				B1B2C3D4E5F647890ABCDEF4 /* ProjectWindowView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -218,6 +239,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				1500D5C218BB4D8A9F48D79B /* AutoCueTests.swift in Sources */,
+				C2B2C3D4E5F647890ABCDEF1 /* OpenProjectWindowRegistryTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -280,6 +302,7 @@
 		12BF3E12F2C44742A1AB459C /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = AutoCue/AutoCue.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -299,6 +322,7 @@
 		A68A2B8F452449D391AAFBEA /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = AutoCue/AutoCue.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				GENERATE_INFOPLIST_FILE = YES;
