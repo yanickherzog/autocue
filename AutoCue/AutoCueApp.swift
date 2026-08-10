@@ -55,7 +55,7 @@ struct AutoCueApp: App {
 
         WindowGroup(for: Project.ID.self) { projectIDBinding in
             if let projectID = projectIDBinding.wrappedValue {
-                ProjectWindowView(projectID: projectID, registry: registry)
+                ProjectWindowView(projectID: projectID, registry: registry, container: container)
             }
         }
         .defaultSize(Theme.Layout.defaultWindowSize)

@@ -7,11 +7,10 @@ import SwiftData
 /// The only type in the codebase allowed to construct a concrete Repository
 /// or Use Case (`CLAUDE.md`, "Dependency Injection Pattern"). Constructed
 /// exactly once, in `AutoCueApp`, at launch. Gains one factory method per
-/// top-level Feature ViewModel as later Deliverables need them — only
-/// `makeProjectLibraryViewModel()` exists yet, since it's the only Feature
-/// `ROADMAP.md` D6 actually builds; adding `makeSetupViewModel(for:)` etc.
-/// now, before `SetupViewModel` exists, would be exactly the kind of
-/// half-built stub `CONTRIBUTING.md` §2 warns against.
+/// top-level Feature ViewModel as later Deliverables need them —
+/// `makeSetupViewModel(for:)`/`makeRightHolderDirectoryViewModel(for:)` are
+/// `ROADMAP.md` D7's additions, alongside the existing
+/// `makeProjectLibraryViewModel()` from D6.
 @MainActor
 final class DependencyContainer {
     private let projectRepository: ProjectRepository
@@ -26,6 +25,23 @@ final class DependencyContainer {
             observeProjectsUseCase: ObserveProjectsUseCase(projectRepository: projectRepository),
             createProjectUseCase: CreateProjectUseCase(projectRepository: projectRepository),
             deleteProjectUseCase: DeleteProjectUseCase(projectRepository: projectRepository)
+        )
+    }
+
+    func makeSetupViewModel(for projectID: Project.ID) -> SetupViewModel {
+        SetupViewModel(
+            projectID: projectID,
+            observeProjectsUseCase: ObserveProjectsUseCase(projectRepository: projectRepository),
+            updateSetupUseCase: UpdateSetupUseCase(projectRepository: projectRepository)
+        )
+    }
+
+    func makeRightHolderDirectoryViewModel(for projectID: Project.ID) -> RightHolderDirectoryViewModel {
+        RightHolderDirectoryViewModel(
+            projectID: projectID,
+            observeProjectsUseCase: ObserveProjectsUseCase(projectRepository: projectRepository),
+            updateRightHolderDirectoryUseCase: UpdateRightHolderDirectoryUseCase(projectRepository: projectRepository),
+            deleteRightHolderUseCase: DeleteRightHolderUseCase(projectRepository: projectRepository)
         )
     }
 

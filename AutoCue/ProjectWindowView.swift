@@ -6,9 +6,9 @@ import SwiftUI
 /// Root content of one Project window (`ROADMAP.md` D6/T6.1) — the 2-column
 /// `NavigationSplitView` shell `CLAUDE.md`'s "Navigation Model" describes:
 /// content = the three always-accessible section tabs, detail = the active
-/// screen. Real screen content (`SetupView`, `CueSheetEditorView`,
-/// `ReviewAndExportView`) doesn't exist until D7/D9–D10/D11 — each tab shows
-/// a plain `EmptyStateView` placeholder until then, per D6's own scope.
+/// screen. `SetupView` is real as of `ROADMAP.md` D7; `CueSheetEditorView`/
+/// `ReviewAndExportView` still show a placeholder `EmptyStateView` until
+/// D9–D10/D11.
 ///
 /// Owns this window's `AppState` (`ACFeatures`) — constructed once per
 /// window via `@State`, never a single app-wide instance (`CLAUDE.md`,
@@ -16,9 +16,15 @@ import SwiftUI
 /// `Project.ID` with `OpenProjectWindowRegistry` on appear/disappear via
 /// `WindowAccessor`, so the registry always reflects which Projects are
 /// actually open.
+///
+/// `detail`'s `.setup` case is the only call site that invokes
+/// `DependencyContainer.makeSetupViewModel(for:)`/
+/// `.makeRightHolderDirectoryViewModel(for:)`, per `CLAUDE.md`'s Dependency
+/// Injection Pattern — `SetupView` itself never sees `container`.
 struct ProjectWindowView: View {
     let projectID: Project.ID
     let registry: OpenProjectWindowRegistry
+    let container: DependencyContainer
 
     @State private var appState = AppState()
     /// Retains the observer for this window's lifetime — see
@@ -89,11 +95,9 @@ struct ProjectWindowView: View {
     private var detail: some View {
         switch appState.selectedSection {
         case .setup:
-            EmptyStateView(
-                systemImage: "doc.text",
-                title: "Setup",
-                message: "Coming in ROADMAP.md D7.",
-                surface: .primary
+            SetupView(
+                viewModel: container.makeSetupViewModel(for: projectID),
+                directoryViewModel: container.makeRightHolderDirectoryViewModel(for: projectID)
             )
         case .cueSheet:
             EmptyStateView(
