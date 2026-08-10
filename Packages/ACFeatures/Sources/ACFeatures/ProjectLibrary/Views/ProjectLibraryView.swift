@@ -17,23 +17,49 @@ public struct ProjectLibraryView: View {
 
     @State private var isShowingNewProjectSheet = false
     @State private var newProjectName = ""
+    @State private var searchQuery = ""
+    @FocusState private var isSearchFieldFocused: Bool
 
     public init(viewModel: ProjectLibraryViewModel, onOpenProject: @escaping (Project.ID) -> Void) {
         _viewModel = Bindable(viewModel)
         self.onOpenProject = onOpenProject
     }
 
+    /// Search by cue sheet (Project) name — case-insensitive substring match,
+    /// live-filtered as the user types. View-local, not `ProjectLibraryViewModel`
+    /// state: this is display-only filtering with no persistence or side effect,
+    /// the same category of thing `isShowingNewProjectSheet`/`newProjectName`
+    /// already are on this View, not a business rule that belongs in a Use Case.
+    private var filteredProjects: [Project] {
+        guard !searchQuery.isEmpty else { return viewModel.projects }
+        return viewModel.projects.filter { $0.name.localizedCaseInsensitiveContains(searchQuery) }
+    }
+
     public var body: some View {
         Group {
-            if viewModel.projects.isEmpty {
-                EmptyStateView(
-                    systemImage: "folder",
-                    title: "No Projects Yet",
-                    message: "Create a project to get started.",
-                    actionTitle: "New Cue Sheet",
-                    surface: .primary,
-                    action: { isShowingNewProjectSheet = true }
-                )
+            if filteredProjects.isEmpty {
+                if viewModel.projects.isEmpty {
+                    EmptyStateView(
+                        systemImage: "folder",
+                        title: "No Projects Yet",
+                        message: "Create a project to get started.",
+                        actionTitle: "New Cue Sheet",
+                        surface: .primary,
+                        action: { isShowingNewProjectSheet = true }
+                    )
+                } else {
+                    // Real projects exist, just none matching the current
+                    // search — a distinct state from "no projects yet," so it
+                    // gets its own message with no "create new" action
+                    // (there's nothing wrong with the library, only the
+                    // search term).
+                    EmptyStateView(
+                        systemImage: "magnifyingglass",
+                        title: "No Matches",
+                        message: "No cue sheets match your search.",
+                        surface: .primary
+                    )
+                }
             } else {
                 List {
                     // A single List row containing every project, not one
@@ -57,7 +83,7 @@ public struct ProjectLibraryView: View {
                     // left anywhere in the middle to add uncontrolled space
                     // to only one side.
                     VStack(spacing: 0) {
-                        ForEach(Array(viewModel.projects.enumerated()), id: \.element.id) { index, project in
+                        ForEach(Array(filteredProjects.enumerated()), id: \.element.id) { index, project in
                             if index == 0 {
                                 // List-level top inset (matches the row's
                                 // own .horizontal padding below, so the top
@@ -81,7 +107,7 @@ public struct ProjectLibraryView: View {
                             // same convention as every other divider this
                             // app uses, not a new component. Only between
                             // rows, not trailing the last one.
-                            if index < viewModel.projects.count - 1 {
+                            if index < filteredProjects.count - 1 {
                                 Divider()
                                     .overlay(Theme.Colors.dividerPrimary)
                                     // .horizontal matches ProjectRow's own
@@ -116,6 +142,18 @@ public struct ProjectLibraryView: View {
                 .background(Theme.Surface.primary.background)
             }
         }
+        // .safeAreaInset, not manual bottom padding/frame math on the List —
+        // this automatically insets the scrollable content area to make room
+        // for the search bar, so overlap between the two is prevented by
+        // construction (the list literally cannot lay out content underneath
+        // the inset), not by a magic-number bottom padding that could later
+        // drift out of sync with the search bar's actual height. Attached to
+        // the Group (both the empty-state and List branches), not just the
+        // List, so the search bar stays permanently visible regardless of
+        // which branch is showing.
+        .safeAreaInset(edge: .bottom) {
+            searchBar
+        }
         .frame(minWidth: 420, minHeight: 320)
         .background(Theme.Surface.primary.background)
         .toolbar {
@@ -141,6 +179,30 @@ public struct ProjectLibraryView: View {
         }
         .errorAlert(message: $viewModel.errorMessage)
         .task { viewModel.startObserving() }
+    }
+
+    /// Bottom-anchored, permanently visible — never a collapsible/toggled
+    /// search field. The magnifying-glass icon is clickable too (not purely
+    /// decorative): tapping it focuses the text field via `@FocusState`, the
+    /// same as tapping the field itself already does natively.
+    private var searchBar: some View {
+        HStack(spacing: Theme.Spacing.sm) {
+            Image(systemName: "magnifyingglass")
+                .foregroundStyle(Theme.Surface.primary.foreground.opacity(0.6))
+                .onTapGesture { isSearchFieldFocused = true }
+                .pointingHandCursor()
+            TextField(
+                "",
+                text: $searchQuery,
+                prompt: Text("Search cue sheets").foregroundStyle(Theme.Colors.ghostTextPrimary)
+            )
+            .foregroundStyle(Theme.Surface.primary.foreground)
+            .textFieldStyle(.plain)
+            .focused($isSearchFieldFocused)
+        }
+        .padding(.horizontal, Theme.Spacing.md)
+        .padding(.vertical, Theme.Spacing.sm)
+        .background(Theme.Surface.primary.background)
     }
 }
 
