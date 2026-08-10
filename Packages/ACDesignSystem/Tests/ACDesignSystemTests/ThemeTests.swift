@@ -17,6 +17,10 @@ final class ThemeTests: XCTestCase {
         XCTAssertEqual(Theme.Layout.defaultWindowSize, CGSize(width: 1290, height: 800))
     }
 
+    func test_defaultLibraryWindowSize_matchesSpecifiedDimensions() {
+        XCTAssertEqual(Theme.Layout.defaultLibraryWindowSize, CGSize(width: 450, height: 600))
+    }
+
     func test_spacingScale_isMonotonicallyIncreasing() {
         let scale = [Theme.Spacing.xs, Theme.Spacing.sm, Theme.Spacing.md, Theme.Spacing.lg, Theme.Spacing.xl]
         XCTAssertEqual(scale, scale.sorted())

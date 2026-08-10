@@ -19,5 +19,10 @@ public extension Theme {
         /// Default/initial Project window size. Layout is responsive to resizing
         /// where feasible — this is not a fixed constraint.
         public static let defaultWindowSize = CGSize(width: 1290, height: 800)
+
+        /// Default/initial Library window size (`ROADMAP.md` D6, manual
+        /// verification follow-up) — smaller than `defaultWindowSize` since
+        /// it's just a project list, not a multi-tab editor.
+        public static let defaultLibraryWindowSize = CGSize(width: 450, height: 600)
     }
 }

@@ -61,7 +61,7 @@ struct ProjectWindowView: View {
     private var sidebar: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
             sidebarButton(.setup, title: "Setup")
-            sidebarButton(.cueSheet, title: "Cue Sheet")
+            sidebarButton(.cueSheet, title: "Cues")
             sidebarButton(.reviewAndExport, title: "Review & Export")
             Spacer()
         }
@@ -98,7 +98,7 @@ struct ProjectWindowView: View {
         case .cueSheet:
             EmptyStateView(
                 systemImage: "list.bullet.rectangle",
-                title: "Cue Sheet",
+                title: "Cues",
                 message: "Coming in ROADMAP.md D9–D10.",
                 surface: .primary
             )

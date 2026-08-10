@@ -26,19 +26,21 @@ struct AutoCueApp: App {
         WindowGroup(id: "library") {
             LibraryWindowView(container: container, registry: registry)
         }
+        .defaultSize(Theme.Layout.defaultLibraryWindowSize)
         .commands {
             // The Library is a singleton (CLAUDE.md, "Document & Window
             // Model") — stock WindowGroup allows ⌘N to open a duplicate by
             // default, so the standard "New Window" command is replaced,
-            // not just removed. Found missing entirely during D6's manual
-            // verification: with no replacement, closing or losing track of
-            // the Library window left no way back to it short of quitting
-            // and relaunching — a real gap in D6's own scope (creating/
-            // opening a second project requires reaching the Library),
-            // not cosmetic. Same duplicate-open guard as Project windows:
-            // focus the existing Library window if one's open, otherwise
-            // reopen it — never blindly call `openWindow` again, which
-            // would spawn a second Library window.
+            // not just removed. Not a fix for an observed bug — a report
+            // that the Library had no reachable path back once a Project
+            // window was open did not reproduce (normal window switching
+            // already reaches it); kept anyway as a small preventive
+            // improvement noticed while investigating that false alarm
+            // (`docs/REVIEW.md`, D6's manual-click-through entry). Same
+            // duplicate-open guard as Project windows: focus the existing
+            // Library window if one's open, otherwise reopen it — never
+            // blindly call `openWindow` again, which would spawn a second
+            // Library window.
             CommandGroup(replacing: .newItem) {
                 Button("New Project") {
                     if registry.isLibraryWindowOpen() {
