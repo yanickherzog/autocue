@@ -30,20 +30,78 @@ public struct ProjectLibraryView: View {
                     systemImage: "folder",
                     title: "No Projects Yet",
                     message: "Create a project to get started.",
-                    actionTitle: "New Project",
+                    actionTitle: "New Cue Sheet",
                     surface: .primary,
                     action: { isShowingNewProjectSheet = true }
                 )
             } else {
                 List {
-                    ForEach(viewModel.projects) { project in
-                        ProjectRow(
-                            project: project,
-                            onOpen: { onOpenProject(project.id) },
-                            onDelete: { Task { await viewModel.deleteProject(id: project.id) } }
-                        )
-                        .listRowBackground(Theme.Surface.primary.background)
+                    // A single List row containing every project, not one
+                    // List row per project. Measured, not assumed: an
+                    // earlier version gave each project its own List row
+                    // with a trailing divider, and a real pixel measurement
+                    // (window-scoped screenshot, PIL) showed the gap above
+                    // each divider was consistently ~27px while the gap
+                    // below was ~43px, at 2x scale — an extra 8pt
+                    // (Theme.Spacing.sm) appearing only below the divider.
+                    // The reason: the "above" gap was entirely inside one
+                    // List row's own VStack, while the "below" gap crossed
+                    // a genuine List row boundary — and macOS's `List`
+                    // applies its own default inter-row spacing there that
+                    // `.listRowSpacing` can't zero out (it's iOS/watchOS/
+                    // tvOS-only — confirmed by a real build error, not
+                    // assumed). Collapsing everything into one List row
+                    // means every gap, including the ones around each
+                    // divider, is governed purely by this VStack's own
+                    // explicit padding, with no List-native row boundary
+                    // left anywhere in the middle to add uncontrolled space
+                    // to only one side.
+                    VStack(spacing: 0) {
+                        ForEach(Array(viewModel.projects.enumerated()), id: \.element.id) { index, project in
+                            if index == 0 {
+                                // List-level top inset (matches the row's
+                                // own .horizontal padding below, so the top
+                                // of the list feels as inset as its
+                                // left/right edges) — a different concern
+                                // from the symmetric inter-row gap the
+                                // divider owns, kept separate for the same
+                                // reason as before.
+                                Color.clear.frame(height: Theme.Spacing.md)
+                            }
+                            ProjectRow(
+                                project: project,
+                                onOpen: { onOpenProject(project.id) },
+                                onDelete: { Task { await viewModel.deleteProject(id: project.id) } }
+                            )
+                            // A simple straight line between projects, per
+                            // CLAUDE.md's Visual Language ("Dividers: simple
+                            // straight lines... colored from Theme.Colors
+                            // rather than the system default gray") —
+                            // stock Divider() re-tinted via .overlay, the
+                            // same convention as every other divider this
+                            // app uses, not a new component. Only between
+                            // rows, not trailing the last one.
+                            if index < viewModel.projects.count - 1 {
+                                Divider()
+                                    .overlay(Theme.Colors.dividerPrimary)
+                                    // .horizontal matches ProjectRow's own
+                                    // horizontal padding exactly, so the
+                                    // divider's ends line up with the row
+                                    // content's left/right edges. .vertical
+                                    // is a single value applied to both top
+                                    // and bottom in one call; combined with
+                                    // ProjectRow's own symmetric .xs padding
+                                    // (equal on both of its sides) and no
+                                    // List row boundary anywhere nearby, the
+                                    // total gap on each side of the divider
+                                    // is provably the same amount.
+                                    .padding(.horizontal, Theme.Spacing.md)
+                                    .padding(.vertical, Theme.Spacing.sm)
+                            }
+                        }
                     }
+                    .listRowBackground(Theme.Surface.primary.background)
+                    .listRowSeparator(.hidden)
                 }
                 .listStyle(.plain)
                 // List/ScrollView on macOS paint their own native background
@@ -62,7 +120,7 @@ public struct ProjectLibraryView: View {
         .background(Theme.Surface.primary.background)
         .toolbar {
             ToolbarItem {
-                Button("New Project") { isShowingNewProjectSheet = true }
+                Button("New Cue Sheet") { isShowingNewProjectSheet = true }
                     .buttonStyle(SharpButtonStyle(emphasis: .primary, surface: .primary))
             }
         }
@@ -97,7 +155,7 @@ private struct NewProjectSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.md) {
-            Text("New Project")
+            Text("New Cue Sheet")
                 .font(Theme.Typography.font(.medium, size: 17))
                 .foregroundStyle(Theme.Surface.primary.foreground)
 
