@@ -36,5 +36,13 @@ struct LibraryWindowView: View {
                 openWindow(value: projectID)
             }
         }
+        .background(
+            WindowAccessor { window in
+                registry.registerLibraryWindow(window)
+            }
+        )
+        .onDisappear {
+            registry.unregisterLibraryWindow()
+        }
     }
 }

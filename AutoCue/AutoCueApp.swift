@@ -15,16 +15,40 @@ struct AutoCueApp: App {
     private let container = DependencyContainer()
     private let registry = OpenProjectWindowRegistry()
 
+    /// Read directly on `App`, not a View — `.commands { }` is built outside
+    /// any View's body, so this is the supported way to reach `openWindow`
+    /// from a menu command.
+    @Environment(\.openWindow) private var openWindow
+
     var body: some Scene {
-        WindowGroup {
+        // Explicit `id`: needed to target this specific WindowGroup with
+        // `openWindow(id:)` from the "New Project" command below.
+        WindowGroup(id: "library") {
             LibraryWindowView(container: container, registry: registry)
         }
         .commands {
             // The Library is a singleton (CLAUDE.md, "Document & Window
             // Model") — stock WindowGroup allows ⌘N to open a duplicate by
-            // default, so the standard "New Window" command is removed
-            // entirely rather than left to accidentally violate that.
-            CommandGroup(replacing: .newItem) {}
+            // default, so the standard "New Window" command is replaced,
+            // not just removed. Found missing entirely during D6's manual
+            // verification: with no replacement, closing or losing track of
+            // the Library window left no way back to it short of quitting
+            // and relaunching — a real gap in D6's own scope (creating/
+            // opening a second project requires reaching the Library),
+            // not cosmetic. Same duplicate-open guard as Project windows:
+            // focus the existing Library window if one's open, otherwise
+            // reopen it — never blindly call `openWindow` again, which
+            // would spawn a second Library window.
+            CommandGroup(replacing: .newItem) {
+                Button("New Project") {
+                    if registry.isLibraryWindowOpen() {
+                        registry.focusLibraryWindow()
+                    } else {
+                        openWindow(id: "library")
+                    }
+                }
+                .keyboardShortcut("n", modifiers: .command)
+            }
         }
 
         WindowGroup(for: Project.ID.self) { projectIDBinding in

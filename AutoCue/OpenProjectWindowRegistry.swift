@@ -18,6 +18,14 @@ import AppKit
 final class OpenProjectWindowRegistry {
     private var openWindows: [Project.ID: NSWindow] = [:]
 
+    /// The Library scene's own window, tracked the same way — not because
+    /// it's a `Project`, but because it needs the identical "is one already
+    /// open? focus it instead of opening a second one" guard: the Library
+    /// is a true singleton (`CLAUDE.md`, "Document & Window Model"), and
+    /// `WindowGroup(id:)` alone doesn't guarantee that — `openWindow(id:)`
+    /// happily opens a second window if called while one already exists.
+    private var libraryWindow: NSWindow?
+
     func isOpen(_ id: Project.ID) -> Bool {
         openWindows[id] != nil
     }
@@ -32,5 +40,21 @@ final class OpenProjectWindowRegistry {
 
     func focus(_ id: Project.ID) {
         openWindows[id]?.makeKeyAndOrderFront(nil)
+    }
+
+    func isLibraryWindowOpen() -> Bool {
+        libraryWindow != nil
+    }
+
+    func registerLibraryWindow(_ window: NSWindow) {
+        libraryWindow = window
+    }
+
+    func unregisterLibraryWindow() {
+        libraryWindow = nil
+    }
+
+    func focusLibraryWindow() {
+        libraryWindow?.makeKeyAndOrderFront(nil)
     }
 }
