@@ -45,6 +45,17 @@ public struct Setup: Equatable, Sendable {
     public let declarationDate: Date
     public let attachmentTypes: Set<AttachmentType>
     public let otherAttachmentDescription: String?
+    /// "Beitrag" — not on the physical SUISA form; a real field from the
+    /// original product brief found missing from this schema during D7
+    /// planning, added per `docs/DECISIONS.md`. Export-required-ness
+    /// unresolved — see `ExploitationType`'s doc comment.
+    public let beitrag: String?
+    /// "Verwertung" — see `ExploitationType`.
+    public let exploitationTypes: Set<ExploitationType>
+    public let otherExploitationTypeDescription: String?
+    /// "Sendedatum" — see `BroadcastDetails`. Deliberately separate from
+    /// `knownOrFutureBroadcasts`, not a replacement for it.
+    public let broadcastDetails: BroadcastDetails?
 
     public init(
         title: String,
@@ -70,7 +81,11 @@ public struct Setup: Equatable, Sendable {
         declarant: Party? = nil,
         declarationDate: Date,
         attachmentTypes: Set<AttachmentType> = [],
-        otherAttachmentDescription: String? = nil
+        otherAttachmentDescription: String? = nil,
+        beitrag: String? = nil,
+        exploitationTypes: Set<ExploitationType> = [],
+        otherExploitationTypeDescription: String? = nil,
+        broadcastDetails: BroadcastDetails? = nil
     ) {
         self.title = title
         self.subtitle = subtitle
@@ -96,6 +111,10 @@ public struct Setup: Equatable, Sendable {
         self.declarationDate = declarationDate
         self.attachmentTypes = attachmentTypes
         self.otherAttachmentDescription = otherAttachmentDescription
+        self.beitrag = beitrag
+        self.exploitationTypes = exploitationTypes
+        self.otherExploitationTypeDescription = otherExploitationTypeDescription
+        self.broadcastDetails = broadcastDetails
     }
 }
 

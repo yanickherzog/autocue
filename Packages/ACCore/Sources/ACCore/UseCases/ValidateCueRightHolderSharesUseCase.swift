@@ -15,12 +15,20 @@ public enum ValidateCueRightHolderSharesUseCase {
     public static func validate(_ cue: Cue) -> [CueRightHolderValidationIssue] {
         var issues: [CueRightHolderValidationIssue] = []
 
-        let performanceBroadcastTotal = cue.rightHolders.reduce(Decimal(0)) { $0 + $1.performanceBroadcastShare }
+        // `.performer` rows are excluded from both share sums: SUISA's WA
+        // Film form has no percentage-share column for performers (the
+        // C/A/AR/E legend is composer/author/arranger/publisher only) — see
+        // CueRightHolderRole's doc comment and docs/DECISIONS.md. Without
+        // this filter, a performer row's (meaningless) share values would
+        // silently count toward the 100% sum.
+        let shareParticipants = cue.rightHolders.filter { $0.role != .performer }
+
+        let performanceBroadcastTotal = shareParticipants.reduce(Decimal(0)) { $0 + $1.performanceBroadcastShare }
         if performanceBroadcastTotal != 100 {
             issues.append(.performanceBroadcastSharesDoNotSumTo100(total: performanceBroadcastTotal))
         }
 
-        let mechanicalRightsTotal = cue.rightHolders.reduce(Decimal(0)) { $0 + $1.mechanicalRightsShare }
+        let mechanicalRightsTotal = shareParticipants.reduce(Decimal(0)) { $0 + $1.mechanicalRightsShare }
         if mechanicalRightsTotal != 100 {
             issues.append(.mechanicalRightsSharesDoNotSumTo100(total: mechanicalRightsTotal))
         }

@@ -24,7 +24,7 @@ The main form holds 5 musical works per page and paginates with a 4-per-page con
 
 SWISSPERFORM (Swiss neighboring-rights society for performers and producers) does **not** have an equivalent per-production cue-sheet document. Its audiovisual-participation reporting is performer-centric and self-service: each performer registers their own participation (film/episode title, series/season, director, production country/year, function/role, shooting days or takes, role weighting) directly through SWISSPERFORM's online portal, not through a document the production company fills in per-production the way SUISA's WA Film form works.
 
-Consequently, AutoCue does not attempt to generate a "SWISSPERFORM cue sheet" — no such artifact exists in the same shape as SUISA's. What it does instead: the `Person` model carries an optional `swissPerformNumber`, and `Setup` carries the production-identity fields (series/season, director, country, language) that a performer would need when self-registering — so the data AutoCue already collects for SUISA can be reused/exported as reference information for SWISSPERFORM registration, without AutoCue claiming to produce an official SWISSPERFORM filing.
+Consequently, AutoCue does not attempt to generate a "SWISSPERFORM cue sheet" — no such artifact exists in the same shape as SUISA's. What it does instead: the `Person` model carries an optional `swissPerformNumber`, `Setup` carries the production-identity fields (series/season, director, country, language) that a performer would need when self-registering, and — as of `ROADMAP.md` D7's planning — a `Cue`'s right-holders can now carry a `.performer` role (§4.4) alongside composer/author/arranger/publisher, informational only and excluded from both share sums and the PDF export. All three are the same story: data AutoCue already collects can be reused/exported as reference information for SWISSPERFORM registration, without AutoCue claiming to produce an official SWISSPERFORM filing. Adding `.performer` doesn't change that conclusion — it only grows the list of data that supports it.
 
 ### 2.3 Revalidation checkpoint before PDF/export implementation
 
@@ -98,8 +98,14 @@ One per `Project`. Mirrors the SUISA WA Film form header.
 | `declarationDate` | `Date` | **required** | "Date and signature" | defaults to export date |
 | `attachmentTypes` | `Set<AttachmentType>` | optional | "Attachment(s)" | see 4.2.2; informational flags only — the app does not manage the physical attachments themselves |
 | `otherAttachmentDescription` | `String?` | required iff `attachmentTypes` contains `.other` | "Other (please indicate)" | |
+| `beitrag` | `String?` | optional — see note below | — | not on the physical WA Film form; a real field from the original product brief found missing from this schema during `ROADMAP.md` D7 planning (`docs/DECISIONS.md`) |
+| `exploitationTypes` | `Set<ExploitationType>` | optional — see note below | — | "Verwertung"; see §4.2.3. Distinct from `productionTypes`: that's *what kind* of production this is, this is *how/where it's being distributed* (cinema, TV, festival, …) |
+| `otherExploitationTypeDescription` | `String?` | required iff `exploitationTypes` contains `.other` | — | |
+| `broadcastDetails` | `BroadcastDetails?` | optional — see note below | — | "Sendedatum" ("Sender, Sendung, Datum der Sendung"); see §4.2.4. Deliberately separate from `knownOrFutureBroadcasts` (free text, general "broadcasts/screenings" notes) — this is one specific, structured broadcaster/programme/date |
 
 Not modeled as app-editable fields: "ISAN No" registration workflow beyond storing the string, and "Registration date/employee initials" (explicitly "to be completed by SUISA" on the form — SUISA-internal, never app-authored).
+
+**`beitrag`/`exploitationTypes`/`broadcastDetails`'s export-required-ness is unresolved as of D7 planning — flagged explicitly, not silently decided.** These three fields render on both the PDF and XLSX export when present, and don't block export when absent, matching how `isanNumber`/`seriesTitle` already behave — but whether any of the three should actually be export-blocking-required, matching SUISA's real WA Film form requirements, isn't known with confidence (none of the three was in this document's original field-by-field mapping from the physical form). **Confirm against the real form at `ROADMAP.md` D11/T11.3's SUISA revalidation checkpoint** (§2.3) before `ValidateCueSheetUseCase` is implemented — the same checkpoint already gates T11.2's PDF layout work on re-verifying the form version, so this rides along with an already-planned step rather than needing a new one. See `docs/DECISIONS.md`.
 
 #### 4.2.1 `ProductionType` (enum, from the form's checkbox grid)
 
@@ -110,6 +116,22 @@ Modeled as a `Set` (not a single value) because the form presents independent ch
 #### 4.2.2 `AttachmentType` (enum)
 
 `.score`, `.agreement`, `.soundOrVideoCarrier`, `.other`
+
+#### 4.2.3 `ExploitationType` (enum) — "Verwertung"
+
+`.cinema`, `.tv`, `.festival`, `.other`
+
+Modeled as a `Set` (not a single value), same reasoning as `ProductionType`/`AttachmentType`: a production can legitimately use more than one exploitation channel over its lifetime (e.g. cinema release followed by a later TV broadcast). Not on the physical WA Film form; found missing from this schema during `ROADMAP.md` D7 planning (`docs/DECISIONS.md`).
+
+#### 4.2.4 `BroadcastDetails` (struct) — "Sendedatum"
+
+| Field | Type | Notes |
+|---|---|---|
+| `broadcaster` | `String?` | "Sender" — the broadcaster's name |
+| `programmeName` | `String?` | "Sendung" — the programme/show name |
+| `date` | `Date?` | "Datum der Sendung" — the broadcast date |
+
+All three sub-fields optional: none is on the physical form, and a value can be partially known (a confirmed broadcaster before an exact air date is set). No `id` field — no independent identity outside the one `Setup` that holds it, the same shape as `PostalAddress`/`Party` (`CLAUDE.md`, "Domain Model Value-Type Conformances"). Conformances: `Equatable`, `Sendable`. No `Codable`.
 
 ### 4.3 `Cue`
 
@@ -134,11 +156,19 @@ Sub-entity of `Cue`; one row per right-holder per work.
 | Field | Type | Required | SUISA form field | Notes |
 |---|---|---|---|---|
 | `party` | `Party` | **required** | "Name, first name or publishing company" | resolved to display data via `PartyResolver`, §4.13 |
-| `role` | `enum { composer, author, arranger, publisher }` | **required** | legend: C / A / AR / E | |
-| `performanceBroadcastShare` | `Decimal` (%), scaled to 2 decimal places | **required** | "Performances Broadcasts (%)" | see §4.6 for the exact-equality sum validation this scale enables |
-| `mechanicalRightsShare` | `Decimal` (%), scaled to 2 decimal places | **required** | "Mechanical rights (%)" | see §4.6 |
+| `role` | `enum { composer, author, arranger, publisher, performer }` | **required** | legend: C / A / AR / E, plus app-only `.performer` | see note below — `.performer` reverses this document's original performer exclusion (§2.2) |
+| `performanceBroadcastShare` | `Decimal` (%), scaled to 2 decimal places | **required** | "Performances Broadcasts (%)" | see §4.6 for the exact-equality sum validation this scale enables. **Meaningless for `.performer` rows** — excluded from the sum, see below |
+| `mechanicalRightsShare` | `Decimal` (%), scaled to 2 decimal places | **required** | "Mechanical rights (%)" | see §4.6. Same `.performer` exclusion as above |
 | `publishingContractAttached` | `Bool` | required iff `role == .publisher` | "(join copy of publishing contract)" | |
 | `arrangementAuthorizationAttached` | `Bool` | required iff `role == .arranger` and `Cue.isArrangementOfProtectedOriginal == true` (§4.3) | form footnote on arrangements | |
+
+**`.performer` ("Interpret*in") — added during `ROADMAP.md` D7 planning, reversing this document's original performer-exclusion decision (§2.2).** Informational only within AutoCue:
+
+- **Not part of either 100%-share sum** (§4.6) — `ValidateCueRightHolderSharesUseCase` excludes `.performer` rows from both `performanceBroadcastShare`/`mechanicalRightsShare` totals. SUISA's WA Film form has no percentage-share column for performers; the C/A/AR/E legend and its two share columns are composer/author/arranger/publisher only. A `.performer` row's two share fields stay non-optional `Decimal` (defaulting to `0`) for structural consistency with the other four roles, rather than restructuring `CueRightHolder` to make them role-conditional — a larger, separate change this addition doesn't call for on its own.
+- **Not rendered on the PDF export** (§4.16, `ROADMAP.md` D11/T11.2) — the physical form's right-holder block has no slot for a 5th role.
+- **Rendered on the XLSX export** (tabular, unconstrained by the physical layout, §3) — extends §2.2's existing "reference data for SWISSPERFORM self-registration" framing rather than contradicting it; see §2.2.
+
+See `docs/DECISIONS.md` for the full reasoning behind this reversal.
 
 ### 4.5 `Person` and `Label` (right-holder identity)
 
@@ -490,6 +520,8 @@ Who computes it: `ExportRepository` (`ACExport`, Data layer) — it's the one pl
 
 Who consumes it: both the real PDF renderer (`PDFCueSheetRenderer`, `ACExport` — draws it with Core Graphics `PDFContext` + Core Text) and the on-screen preview View (`ACFeatures` — obtains the same value via a Use Case wrapping `ExportRepository`, then draws it with SwiftUI, e.g. `Canvas`). Both draw the *identical* precomputed frames and text; neither re-derives layout independently.
 
+**`CueRightHolder` rows with `role == .performer` (§4.4) are never included when this layout is computed for a Cue's right-holder block.** The physical WA Film form's right-holder block has no slot for a 5th role (the C/A/AR/E legend is composer/author/arranger/publisher only) — `ExportRepository`'s layout computation filters `.performer` rows out before laying out that block, the same way `ValidateCueRightHolderSharesUseCase` excludes them from both share sums (§4.4, §4.6). Performer rows still appear in the XLSX export, which isn't constrained by this fixed physical layout.
+
 ### 4.17 `ProgressUpdate` and `OperationProgress<Success>`
 
 The shared progress-reporting shape used by every long-running operation — see `CLAUDE.md`'s "Long-Running Operations: Progress & Cancellation" section for the full rationale and which operations use it.
@@ -559,3 +591,4 @@ There is intentionally no separate persisted `CueSheet` type: the exportable cue
 - CI (`.github/workflows/ci.yml`) exists as of `ROADMAP.md` D1. Its pinned Xcode version was flagged as unconfirmed against a live runner in an earlier revision of this document; it has since actually been run three times: the first two genuinely failed (once on `swift-tools-version` — 15.4's Swift 5.10 toolchain vs. a then-declared `6.1`; once on `.swiftformat`'s matching `--swiftversion` setting producing trailing commas in function calls that same Swift 5.10 compiler can't parse), both diagnosed from real CI logs and fixed by correcting the declared version to match the real floor rather than moving the Xcode pin. The third run, after both fixes, was watched to completion and was genuinely green (all three jobs). See `docs/DECISIONS.md` for the full sequence. Closed, confirmed by an actually-observed green run, not asserted.
 - Manual cue correction (§4.19) has no ripple model onto neighboring cues when one boundary is dragged — deliberate, per §4.19's own reasoning, not an oversight; revisit only if the independent-fields model turns out to be a real usability problem once built.
 - Waveform boundary-drag interaction (§4.15, §4.19) is specified at the architecture level (what crosses the `ACDesignSystem` boundary, which Use Case it writes through) but not at the interaction-design level (drag physics, snapping tolerance, visual affordance) — real work for `ROADMAP.md` D9/T9.3, not fixed by this architectural change.
+- `Setup.beitrag`/`.exploitationTypes`/`.broadcastDetails` (§4.2, §4.2.3–§4.2.4) — added during `ROADMAP.md` D7 planning after being found missing from this schema — are currently treated as export-optional (render when present, don't block export when absent). **Whether any of the three is actually export-required, matching SUISA's real WA Film form, is unconfirmed** — check at `ROADMAP.md` D11/T11.3's SUISA revalidation checkpoint (§2.3) alongside the form-version re-verification already scheduled there, before `ValidateCueSheetUseCase` is implemented. See `docs/DECISIONS.md`.

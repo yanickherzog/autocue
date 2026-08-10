@@ -37,7 +37,13 @@ enum SetupMapper {
             declarantPartyID: PartyMapper.id(for: setup.declarant),
             declarationDate: setup.declarationDate,
             attachmentTypesRawValues: setup.attachmentTypes.map(rawValue(for:)).sorted(),
-            otherAttachmentDescription: setup.otherAttachmentDescription
+            otherAttachmentDescription: setup.otherAttachmentDescription,
+            beitrag: setup.beitrag,
+            exploitationTypesRawValues: setup.exploitationTypes.map(rawValue(for:)).sorted(),
+            otherExploitationTypeDescription: setup.otherExploitationTypeDescription,
+            broadcaster: setup.broadcastDetails?.broadcaster,
+            broadcastProgrammeName: setup.broadcastDetails?.programmeName,
+            broadcastDate: setup.broadcastDetails?.date
         )
     }
 
@@ -68,8 +74,30 @@ enum SetupMapper {
             declarant: PartyMapper.party(kind: entity.declarantPartyKind, id: entity.declarantPartyID),
             declarationDate: entity.declarationDate,
             attachmentTypes: Set(entity.attachmentTypesRawValues.map(attachmentType(from:))),
-            otherAttachmentDescription: entity.otherAttachmentDescription
+            otherAttachmentDescription: entity.otherAttachmentDescription,
+            beitrag: entity.beitrag,
+            exploitationTypes: Set(entity.exploitationTypesRawValues.map(exploitationType(from:))),
+            otherExploitationTypeDescription: entity.otherExploitationTypeDescription,
+            broadcastDetails: broadcastDetails(
+                broadcaster: entity.broadcaster,
+                programmeName: entity.broadcastProgrammeName,
+                date: entity.broadcastDate
+            )
         )
+    }
+
+    // MARK: - BroadcastDetails
+
+    /// `nil` only when all three flat columns are `nil` — otherwise a
+    /// `BroadcastDetails` carrying whichever of its own three sub-fields are
+    /// actually present, since `BroadcastDetails` itself allows partial data.
+    private static func broadcastDetails(
+        broadcaster: String?,
+        programmeName: String?,
+        date: Date?
+    ) -> BroadcastDetails? {
+        guard broadcaster != nil || programmeName != nil || date != nil else { return nil }
+        return BroadcastDetails(broadcaster: broadcaster, programmeName: programmeName, date: date)
     }
 
     // MARK: - AdditionalWorksDeclaration
@@ -157,6 +185,27 @@ enum SetupMapper {
         case "soundOrVideoCarrier": .soundOrVideoCarrier
         case "other": .other
         default: throw MappingError.unknownRawValue(type: "AttachmentType", rawValue: rawValue)
+        }
+    }
+
+    // MARK: - ExploitationType
+
+    private static func rawValue(for value: ExploitationType) -> String {
+        switch value {
+        case .cinema: "cinema"
+        case .tv: "tv"
+        case .festival: "festival"
+        case .other: "other"
+        }
+    }
+
+    private static func exploitationType(from rawValue: String) throws -> ExploitationType {
+        switch rawValue {
+        case "cinema": .cinema
+        case "tv": .tv
+        case "festival": .festival
+        case "other": .other
+        default: throw MappingError.unknownRawValue(type: "ExploitationType", rawValue: rawValue)
         }
     }
 

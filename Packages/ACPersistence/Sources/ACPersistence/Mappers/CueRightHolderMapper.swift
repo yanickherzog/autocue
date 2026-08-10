@@ -33,6 +33,7 @@ enum CueRightHolderMapper {
         case .author: "author"
         case .arranger: "arranger"
         case .publisher: "publisher"
+        case .performer: "performer"
         }
     }
 
@@ -42,6 +43,7 @@ enum CueRightHolderMapper {
         case "author": .author
         case "arranger": .arranger
         case "publisher": .publisher
+        case "performer": .performer
         default: throw MappingError.unknownRawValue(type: "CueRightHolderRole", rawValue: rawValue)
         }
     }
