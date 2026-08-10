@@ -34,7 +34,7 @@ final class PersonTests: XCTestCase {
             address: address,
             email: "ada@example.com",
             swissPerformNumber: "SP-42",
-            intendedRole: .composer
+            intendedRoles: [.composer]
         )
 
         XCTAssertEqual(person.id, id)
@@ -44,17 +44,22 @@ final class PersonTests: XCTestCase {
         XCTAssertEqual(person.address, address)
         XCTAssertEqual(person.email, "ada@example.com")
         XCTAssertEqual(person.swissPerformNumber, "SP-42")
-        XCTAssertEqual(person.intendedRole, .composer)
+        XCTAssertEqual(person.intendedRoles, [.composer])
     }
 
-    func test_optionalFields_defaultToNil() {
+    func test_multipleSimultaneousRoles_areAllPreserved() {
+        let person = Person(firstName: "Ada", lastName: "Lovelace", intendedRoles: [.composer, .performer])
+        XCTAssertEqual(person.intendedRoles, [.composer, .performer])
+    }
+
+    func test_optionalFields_defaultToNilOrEmpty() {
         let person = Person(firstName: "Ada", lastName: "Lovelace")
 
         XCTAssertNil(person.ipiNumber)
         XCTAssertNil(person.address)
         XCTAssertNil(person.email)
         XCTAssertNil(person.swissPerformNumber)
-        XCTAssertNil(person.intendedRole)
+        XCTAssertEqual(person.intendedRoles, [])
     }
 
     func test_omittedID_generatesAFreshUUIDPerInstance() {

@@ -16,7 +16,7 @@ enum PersonMapper {
             addressCountry: person.address?.country,
             email: person.email,
             swissPerformNumber: person.swissPerformNumber,
-            intendedRoleRawValue: person.intendedRole.map(rawValue(for:))
+            intendedRolesRawValues: person.intendedRoles.map(rawValue(for:)).sorted()
         )
     }
 
@@ -34,7 +34,7 @@ enum PersonMapper {
             ),
             email: entity.email,
             swissPerformNumber: entity.swissPerformNumber,
-            intendedRole: entity.intendedRoleRawValue.map(intendedRole(from:))
+            intendedRoles: Set(entity.intendedRolesRawValues.map(intendedRole(from:)))
         )
     }
 

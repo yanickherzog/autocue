@@ -14,8 +14,8 @@ final class InMemoryProjectRepositoryTests: XCTestCase {
             updatedAt: Date(timeIntervalSince1970: 0),
             setup: Setup(
                 title: "A Swiss Story",
-                producer: .person(UUID()),
-                directorOrPrincipal: .person(UUID()),
+                producer: [.person(UUID())],
+                directorOrPrincipal: [.person(UUID())],
                 productionRuntime: MediaDuration(seconds: 5400),
                 totalMusicRuntime: MediaDuration(seconds: 600),
                 productionYear: 2026,

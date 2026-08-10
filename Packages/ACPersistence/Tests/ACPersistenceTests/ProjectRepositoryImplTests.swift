@@ -189,9 +189,174 @@ final class ProjectRepositoryImplTests: XCTestCase {
         XCTAssertNotNil(aResult)
     }
 
+    // MARK: - Concurrency: update(id:transform:) closes the fetch-then-write race
+
+    /// Reproduces the exact shape of the confirmed D7 data-loss bug:
+    /// `UpdateSetupUseCase` and `UpdateRightHolderDirectoryUseCase` each
+    /// mutate a disjoint slice (`setup` vs. `people`) of the *same*
+    /// `Project`, concurrently, from the same Project window. With plain
+    /// fetch-then-`update(_:)` (the pre-fix shape), the second write's fetch
+    /// can land before the first write does, so the second write persists a
+    /// `Project` built from stale data and silently discards the first
+    /// write's change. This test drives two concurrent
+    /// `update(id:transform:)` calls through that exact interleaving —
+    /// deterministically, via `Signal`/`setWriteHook`, not wall-clock timing
+    /// — and asserts *both* slices survive, proving `update(id:transform:)`
+    /// actually closes the gap rather than merely compiling.
+    func test_concurrentAtomicUpdatesToDisjointSlicesBothSurvive() async throws {
+        let repository = try makeRepository()
+        let projectID = UUID()
+        try await repository.create(ProjectFixture.makeMinimal(id: projectID, name: "original"))
+
+        let firstEntered = Signal()
+        let releaseFirst = Signal()
+        let pauseGate = PauseOnceGate()
+
+        // Pauses only the *first* write's dispatched work to reach this
+        // point — the second, chained write must run only after the first
+        // one has actually completed and persisted, at which point the hook
+        // is a no-op and it proceeds straight through.
+        await repository.setWriteHook { id in
+            guard id == projectID, await pauseGate.shouldPauseOnce() else { return }
+            await firstEntered.fire()
+            await releaseFirst.wait()
+        }
+
+        let addPersonTask = Task {
+            try await repository.update(id: projectID) { project in
+                Project(
+                    id: project.id,
+                    name: project.name,
+                    createdAt: project.createdAt,
+                    updatedAt: project.updatedAt,
+                    setup: project.setup,
+                    cues: project.cues,
+                    people: project.people + [Person(firstName: "Ada", lastName: "Lovelace")],
+                    labels: project.labels
+                )
+            }
+        }
+        // Confirms the first update is genuinely blocked *inside* its own
+        // dispatched write, holding projectID's write tail, before the
+        // second update is even submitted.
+        await firstEntered.wait()
+
+        let renameTask = Task {
+            try await repository.update(id: projectID) { project in
+                Project(
+                    id: project.id,
+                    name: "renamed",
+                    createdAt: project.createdAt,
+                    updatedAt: project.updatedAt,
+                    setup: project.setup,
+                    cues: project.cues,
+                    people: project.people,
+                    labels: project.labels
+                )
+            }
+        }
+
+        await releaseFirst.fire()
+        _ = try await addPersonTask.value
+        _ = try await renameTask.value
+
+        let final = try await repository.fetch(id: projectID)
+        XCTAssertEqual(final?.name, "renamed", "the rename must not be lost")
+        XCTAssertEqual(
+            final?.people.map(\.lastName), ["Lovelace"],
+            "the concurrently-added Person must not be lost — this is the exact data-loss shape " +
+                "update(id:transform:) exists to prevent"
+        )
+    }
+
+    /// Reproduces the exact reported bug, but as a genuine concurrent
+    /// interleaving against the real `ProjectRepositoryImpl` queue (not just
+    /// sequential test-code ordering, which `ACTestSupportTests`'
+    /// `DeleteRightHolderOrchestrationTests` already covers against the
+    /// simpler `InMemoryProjectRepository` fake) — same rigor as
+    /// `test_concurrentAtomicUpdatesToDisjointSlicesBothSurvive`, above.
+    /// `UpdateSetupUseCase.update` (clearing `Setup.declarant`) is paused
+    /// mid-write via `Signal`/`setWriteHook`; `DeleteRightHolderUseCase
+    /// .deletePerson` for the now-being-cleared `Person` is submitted while
+    /// that clear is still in flight, then the clear is released. Because
+    /// both Use Cases now go through the same `update(id:transform:)`
+    /// per-`Project.ID` `writeTails` queue, the delete's own fetch (inside
+    /// its `transform`) cannot execute until the clear's write has fully
+    /// landed — proving the guard-check is race-safe by construction, not
+    /// merely correct when called in a conveniently sequential order.
+    func test_deletePersonSubmittedWhileAConcurrentSetupClearIsInFlight_seesThePostClearState() async throws {
+        let repository = try makeRepository()
+        let projectID = UUID()
+        let personID = UUID()
+        let initialProject = ProjectFixture.makeMinimal(id: projectID, name: "original")
+        let clearedSetup = initialProject.setup.updating(declarant: .some(nil))
+        let declaredProject = Project(
+            id: initialProject.id,
+            name: initialProject.name,
+            createdAt: initialProject.createdAt,
+            updatedAt: initialProject.updatedAt,
+            setup: initialProject.setup.updating(declarant: .some(.person(personID))),
+            people: [Person(id: personID, firstName: "Anna", lastName: "Muster")]
+        )
+        try await repository.create(declaredProject)
+
+        let clearEntered = Signal()
+        let releaseClear = Signal()
+        let pauseGate = PauseOnceGate()
+
+        await repository.setWriteHook { id in
+            guard id == projectID, await pauseGate.shouldPauseOnce() else { return }
+            await clearEntered.fire()
+            await releaseClear.wait()
+        }
+
+        let setupUseCase = UpdateSetupUseCase(projectRepository: repository)
+        let clearTask = Task {
+            try await setupUseCase.update(projectID: projectID, setup: clearedSetup)
+        }
+        // The clear is now genuinely paused inside its own dispatched write,
+        // holding projectID's write tail.
+        await clearEntered.wait()
+
+        let deleteUseCase = DeleteRightHolderUseCase(projectRepository: repository)
+        let deleteTask = Task {
+            try await deleteUseCase.deletePerson(personID, from: projectID, settings: Settings())
+        }
+
+        await releaseClear.fire()
+        try await clearTask.value
+        let deleteResult = try await deleteTask.value
+
+        guard case let .deleted(updated) = deleteResult else {
+            return XCTFail(
+                "expected .deleted once the concurrent clear landed, got \(deleteResult) — " +
+                    "the delete must have seen a stale, pre-clear Setup"
+            )
+        }
+        XCTAssertTrue(updated.people.isEmpty)
+        let persisted = try await repository.fetch(id: projectID)
+        XCTAssertNil(persisted?.setup.declarant)
+        XCTAssertEqual(persisted?.people, [])
+    }
+
     // MARK: - Helpers
 
     private func makeRepository() throws -> ProjectRepositoryImpl {
         try ProjectRepositoryImpl(modelContainer: makeInMemoryContainer())
+    }
+}
+
+/// Test-only: lets a `writeHook` pause exactly the *first* write it's
+/// invoked for and pass every subsequent one straight through, without
+/// capturing a plain mutable `var` in the `@Sendable` hook closure (which
+/// would either fail to compile or be a genuine data race under strict
+/// concurrency checking).
+private actor PauseOnceGate {
+    private var hasPausedOnce = false
+
+    func shouldPauseOnce() -> Bool {
+        guard !hasPausedOnce else { return false }
+        hasPausedOnce = true
+        return true
     }
 }

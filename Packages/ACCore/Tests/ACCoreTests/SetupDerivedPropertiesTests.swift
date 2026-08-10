@@ -9,8 +9,8 @@ final class SetupUpdatingTests: XCTestCase {
         Setup(
             title: "A Swiss Story",
             subtitle: "Part Two",
-            producer: .person(UUID()),
-            directorOrPrincipal: .person(UUID()),
+            producer: [.person(UUID())],
+            directorOrPrincipal: [.person(UUID())],
             productionRuntime: MediaDuration(seconds: 5400),
             totalMusicRuntime: .zero,
             productionYear: 2026,
@@ -69,14 +69,75 @@ final class SetupUpdatingTests: XCTestCase {
         XCTAssertEqual(updated.exploitationTypes, [.cinema, .tv])
         XCTAssertEqual(updated.subtitle, setup.subtitle)
     }
+
+    /// Regression, matching the exact call `SetupView`'s `Title` field
+    /// binding makes (`ROADMAP.md` D7, later round): `beitrag` now mirrors
+    /// `Title` via one combined `updating(title:beitrag:)` call instead of
+    /// its own independent field. This is the same class of bug as the
+    /// earlier confirmed Declarant-clear data-loss issue — a multi-field
+    /// write silently dropping unrelated state — so every other field is
+    /// checked individually here, not just spot-checked, including ones a
+    /// narrower test could plausibly miss (`producer`/`directorOrPrincipal`/
+    /// `declarant`, all `Party?`, since those were exactly the fields
+    /// involved in that earlier bug).
+    func test_updating_titleAndBeitragTogether_matchingSetupViewsBinding_preservesEveryOtherField() {
+        let setup = Setup(
+            title: "Old Title",
+            subtitle: "Part Two",
+            producer: [.person(UUID())],
+            directorOrPrincipal: [.person(UUID())],
+            productionRuntime: MediaDuration(seconds: 5400),
+            totalMusicRuntime: MediaDuration(seconds: 120),
+            productionYear: 2026,
+            containsAdditionalUndeclaredWorks: .yes,
+            productionTypes: [.documentaryFilm, .series],
+            otherProductionTypeDescription: "Docuseries",
+            isanNumber: "1881-66C7-3420-0000-7-0000-0000-Y",
+            seriesTitle: "Alpine Stories",
+            productionCountry: "CH",
+            language: "de",
+            timecodeFrameRate: .fps30,
+            declarant: .person(UUID()),
+            declarationDate: Date(timeIntervalSince1970: 0),
+            attachmentTypes: [.score],
+            beitrag: "Old Title",
+            exploitationTypes: [.cinema]
+        )
+
+        // Exactly the call SetupView+ProductionSection.swift's Title field
+        // binding makes.
+        let updated = setup.updating(title: "New Title", beitrag: .some("New Title"))
+
+        XCTAssertEqual(updated.title, "New Title")
+        XCTAssertEqual(updated.beitrag, "New Title")
+        // Every other field, individually — not a partial spot-check.
+        XCTAssertEqual(updated.subtitle, setup.subtitle)
+        XCTAssertEqual(updated.producer, setup.producer)
+        XCTAssertEqual(updated.directorOrPrincipal, setup.directorOrPrincipal)
+        XCTAssertEqual(updated.productionRuntime, setup.productionRuntime)
+        XCTAssertEqual(updated.totalMusicRuntime, setup.totalMusicRuntime)
+        XCTAssertEqual(updated.productionYear, setup.productionYear)
+        XCTAssertEqual(updated.containsAdditionalUndeclaredWorks, setup.containsAdditionalUndeclaredWorks)
+        XCTAssertEqual(updated.productionTypes, setup.productionTypes)
+        XCTAssertEqual(updated.otherProductionTypeDescription, setup.otherProductionTypeDescription)
+        XCTAssertEqual(updated.isanNumber, setup.isanNumber)
+        XCTAssertEqual(updated.seriesTitle, setup.seriesTitle)
+        XCTAssertEqual(updated.productionCountry, setup.productionCountry)
+        XCTAssertEqual(updated.language, setup.language)
+        XCTAssertEqual(updated.timecodeFrameRate, setup.timecodeFrameRate)
+        XCTAssertEqual(updated.declarant, setup.declarant)
+        XCTAssertEqual(updated.declarationDate, setup.declarationDate)
+        XCTAssertEqual(updated.attachmentTypes, setup.attachmentTypes)
+        XCTAssertEqual(updated.exploitationTypes, setup.exploitationTypes)
+    }
 }
 
 final class SetupMissingRequiredFieldsTests: XCTestCase {
     private static func makeFullyValidSetup() -> Setup {
         Setup(
             title: "A Swiss Story",
-            producer: .person(UUID()),
-            directorOrPrincipal: .person(UUID()),
+            producer: [.person(UUID())],
+            directorOrPrincipal: [.person(UUID())],
             productionRuntime: MediaDuration(seconds: 5400),
             totalMusicRuntime: .zero,
             productionYear: 2026,
@@ -94,8 +155,8 @@ final class SetupMissingRequiredFieldsTests: XCTestCase {
     func test_blankTitle_isFlagged() {
         let setup = Setup(
             title: "   ",
-            producer: .person(UUID()),
-            directorOrPrincipal: .person(UUID()),
+            producer: [.person(UUID())],
+            directorOrPrincipal: [.person(UUID())],
             productionRuntime: MediaDuration(seconds: 5400),
             totalMusicRuntime: .zero,
             productionYear: 2026,
@@ -123,8 +184,8 @@ final class SetupMissingRequiredFieldsTests: XCTestCase {
     func test_zeroProductionRuntime_isFlagged() {
         let setup = Setup(
             title: "A Swiss Story",
-            producer: .person(UUID()),
-            directorOrPrincipal: .person(UUID()),
+            producer: [.person(UUID())],
+            directorOrPrincipal: [.person(UUID())],
             productionRuntime: .zero,
             totalMusicRuntime: .zero,
             productionYear: 2026,
@@ -139,8 +200,8 @@ final class SetupMissingRequiredFieldsTests: XCTestCase {
     func test_zeroProductionYear_isFlagged() {
         let setup = Setup(
             title: "A Swiss Story",
-            producer: .person(UUID()),
-            directorOrPrincipal: .person(UUID()),
+            producer: [.person(UUID())],
+            directorOrPrincipal: [.person(UUID())],
             productionRuntime: MediaDuration(seconds: 5400),
             totalMusicRuntime: .zero,
             productionYear: 0,
@@ -155,8 +216,8 @@ final class SetupMissingRequiredFieldsTests: XCTestCase {
     func test_emptyProductionTypes_isFlagged() {
         let setup = Setup(
             title: "A Swiss Story",
-            producer: .person(UUID()),
-            directorOrPrincipal: .person(UUID()),
+            producer: [.person(UUID())],
+            directorOrPrincipal: [.person(UUID())],
             productionRuntime: MediaDuration(seconds: 5400),
             totalMusicRuntime: .zero,
             productionYear: 2026,

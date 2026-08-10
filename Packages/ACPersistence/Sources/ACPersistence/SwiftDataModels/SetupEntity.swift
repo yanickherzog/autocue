@@ -5,17 +5,21 @@ import SwiftData
 /// — matches the domain type, which has no independent identity outside its
 /// owning `Project` (1:1).
 ///
-/// `Party`-typed fields (`producer`/`directorOrPrincipal`/`declarant`) are
-/// stored as a flat kind+id pair each, never as a SwiftData `@Relationship`
-/// — see `PartyMapper`'s doc comment for why: `DeleteRightHolderUseCase`'s
-/// delete guard (ACCore, D3) already assumes bare-UUID references with no
-/// cascade/nullify behind them, and a real `@Relationship` here would
-/// silently reintroduce exactly that behavior behind the guard's back.
+/// `declarant` (`Party?`) is stored as a flat kind+id pair, never as a
+/// SwiftData `@Relationship` — see `PartyMapper`'s doc comment for why:
+/// `DeleteRightHolderUseCase`'s delete guard (ACCore, D3) already assumes
+/// bare-UUID references with no cascade/nullify behind them, and a real
+/// `@Relationship` here would silently reintroduce exactly that behavior
+/// behind the guard's back. The pair is optional (`String?`/`UUID?`),
+/// matching `ACCore.Setup.declarant: Party?` — a brand-new `Project`
+/// genuinely has none chosen yet (`docs/DECISIONS.md`, "`Setup`'s three
+/// `Party` fields become optional").
 ///
-/// Each pair is optional (`String?`/`UUID?`), matching `ACCore.Setup`'s
-/// `Party?` fields — a brand-new `Project` genuinely has none of these
-/// chosen yet (`docs/DECISIONS.md`, "`Setup`'s three `Party` fields become
-/// optional").
+/// `producer`/`directorOrPrincipal` (`ACCore.Setup`'s `[Party]` fields,
+/// `ROADMAP.md` D7 later round) are stored the same bare-reference way, just
+/// as two *parallel* arrays each (`producerPartyKinds`/`producerPartyIDs`,
+/// same for director) instead of one scalar pair — same reasoning against a
+/// real `@Relationship`, extended to a list. See `docs/DECISIONS.md`.
 ///
 /// `Set<ProductionType>`/`Set<AttachmentType>` are stored as `[String]` raw
 /// values (order-independent by construction — reconstructed as a `Set` in
@@ -25,10 +29,10 @@ import SwiftData
 final class SetupEntity {
     var title: String
     var subtitle: String?
-    var producerPartyKind: String?
-    var producerPartyID: UUID?
-    var directorPartyKind: String?
-    var directorPartyID: UUID?
+    var producerPartyKinds: [String]
+    var producerPartyIDs: [UUID]
+    var directorPartyKinds: [String]
+    var directorPartyIDs: [UUID]
     var productionRuntimeSeconds: Double
     var totalMusicRuntimeSeconds: Double
     var productionYear: Int
@@ -67,10 +71,10 @@ final class SetupEntity {
     init(
         title: String,
         subtitle: String?,
-        producerPartyKind: String?,
-        producerPartyID: UUID?,
-        directorPartyKind: String?,
-        directorPartyID: UUID?,
+        producerPartyKinds: [String],
+        producerPartyIDs: [UUID],
+        directorPartyKinds: [String],
+        directorPartyIDs: [UUID],
         productionRuntimeSeconds: Double,
         totalMusicRuntimeSeconds: Double,
         productionYear: Int,
@@ -101,10 +105,10 @@ final class SetupEntity {
     ) {
         self.title = title
         self.subtitle = subtitle
-        self.producerPartyKind = producerPartyKind
-        self.producerPartyID = producerPartyID
-        self.directorPartyKind = directorPartyKind
-        self.directorPartyID = directorPartyID
+        self.producerPartyKinds = producerPartyKinds
+        self.producerPartyIDs = producerPartyIDs
+        self.directorPartyKinds = directorPartyKinds
+        self.directorPartyIDs = directorPartyIDs
         self.productionRuntimeSeconds = productionRuntimeSeconds
         self.totalMusicRuntimeSeconds = totalMusicRuntimeSeconds
         self.productionYear = productionYear

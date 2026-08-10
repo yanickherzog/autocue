@@ -10,8 +10,8 @@ final class UpdateSetupUseCaseTests: XCTestCase {
     private static func makeSetup(title: String = "A Swiss Story") -> Setup {
         Setup(
             title: title,
-            producer: .person(UUID()),
-            directorOrPrincipal: .person(UUID()),
+            producer: [.person(UUID())],
+            directorOrPrincipal: [.person(UUID())],
             productionRuntime: MediaDuration(seconds: 5400),
             totalMusicRuntime: MediaDuration(seconds: 600),
             productionYear: 2026,

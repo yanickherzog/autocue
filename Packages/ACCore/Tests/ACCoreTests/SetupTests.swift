@@ -10,8 +10,8 @@ final class SetupTests: XCTestCase {
     ) -> Setup {
         Setup(
             title: title,
-            producer: .person(UUID()),
-            directorOrPrincipal: .person(UUID()),
+            producer: [.person(UUID())],
+            directorOrPrincipal: [.person(UUID())],
             productionRuntime: MediaDuration(seconds: 5400),
             totalMusicRuntime: MediaDuration(seconds: 600),
             productionYear: 2026,
@@ -39,8 +39,8 @@ final class SetupTests: XCTestCase {
         // parameter — not the test helper's.
         let setup = Setup(
             title: "A Swiss Story",
-            producer: .person(UUID()),
-            directorOrPrincipal: .person(UUID()),
+            producer: [.person(UUID())],
+            directorOrPrincipal: [.person(UUID())],
             productionRuntime: MediaDuration(seconds: 5400),
             totalMusicRuntime: MediaDuration(seconds: 600),
             productionYear: 2026,
@@ -59,8 +59,8 @@ final class SetupTests: XCTestCase {
     func test_attachmentTypes_defaultsToEmptySetWhenOmittedAtTheInitializer() {
         let setup = Setup(
             title: "A Swiss Story",
-            producer: .person(UUID()),
-            directorOrPrincipal: .person(UUID()),
+            producer: [.person(UUID())],
+            directorOrPrincipal: [.person(UUID())],
             productionRuntime: MediaDuration(seconds: 5400),
             totalMusicRuntime: MediaDuration(seconds: 600),
             productionYear: 2026,
@@ -96,12 +96,16 @@ final class SetupTests: XCTestCase {
         XCTAssertTrue(Self.makeSetup().exploitationTypes.isEmpty)
     }
 
-    func test_producerDirectorDeclarant_defaultToNilWhenOmitted() {
+    func test_producerDirectorDeclarant_defaultToTheirOwnUnsetValueWhenOmitted() {
         // A brand-new Project (ROADMAP.md D6/T6.2) has no Person/Label in its
         // directory yet to reference, so these three fields must be
         // genuinely representable as absent rather than forced to reference
         // a fabricated placeholder right-holder — see the doc comment on
-        // Setup itself and docs/DECISIONS.md.
+        // Setup itself and docs/DECISIONS.md. producer/directorOrPrincipal
+        // are [Party] (later round — one or more, not at most one); an empty
+        // array is their own honest "not yet chosen" value, the same pattern
+        // productionTypes: Set<ProductionType> already uses. declarant stays
+        // Party?, using nil for the same purpose.
         let setup = Setup(
             title: "A Swiss Story",
             productionRuntime: MediaDuration(seconds: 5400),
@@ -111,8 +115,8 @@ final class SetupTests: XCTestCase {
             productionTypes: [.documentaryFilm],
             declarationDate: Date(timeIntervalSince1970: 0)
         )
-        XCTAssertNil(setup.producer)
-        XCTAssertNil(setup.directorOrPrincipal)
+        XCTAssertTrue(setup.producer.isEmpty)
+        XCTAssertTrue(setup.directorOrPrincipal.isEmpty)
         XCTAssertNil(setup.declarant)
     }
 
@@ -133,8 +137,8 @@ final class SetupTests: XCTestCase {
             setup = Setup(
                 title: "A Swiss Story",
                 subtitle: "Part Two",
-                producer: producer,
-                directorOrPrincipal: director,
+                producer: [producer],
+                directorOrPrincipal: [director],
                 productionRuntime: MediaDuration(seconds: 5400),
                 totalMusicRuntime: MediaDuration(seconds: 600),
                 productionYear: 2026,
@@ -167,8 +171,8 @@ final class SetupTests: XCTestCase {
 
         XCTAssertEqual(setup.title, "A Swiss Story")
         XCTAssertEqual(setup.subtitle, "Part Two")
-        XCTAssertEqual(setup.producer, fixture.producer)
-        XCTAssertEqual(setup.directorOrPrincipal, fixture.director)
+        XCTAssertEqual(setup.producer, [fixture.producer])
+        XCTAssertEqual(setup.directorOrPrincipal, [fixture.director])
         XCTAssertEqual(setup.productionRuntime, MediaDuration(seconds: 5400))
         XCTAssertEqual(setup.totalMusicRuntime, MediaDuration(seconds: 600))
         XCTAssertEqual(setup.productionYear, 2026)
@@ -200,6 +204,29 @@ final class SetupTests: XCTestCase {
             setup.broadcastDetails,
             BroadcastDetails(broadcaster: "SRF", programmeName: "Bergwelt", date: fixture.broadcastDate)
         )
+    }
+
+    func test_producerAndDirectorOrPrincipal_canHoldMultipleEntries_mixingPersonAndLabel() {
+        // Producer/Director must still be able to reference a Label (a
+        // production company), per the SUISA form's own "name, first name
+        // or publishing company" field language (SPEC.md §4.5) — the reason
+        // these are [Party], not folded into the Person-only
+        // PersonIntendedRole roster mechanism. See docs/DECISIONS.md.
+        let firstProducer = Party.person(UUID())
+        let secondProducer = Party.label(UUID())
+        let setup = Setup(
+            title: "A Swiss Story",
+            producer: [firstProducer, secondProducer],
+            directorOrPrincipal: [.person(UUID()), .person(UUID())],
+            productionRuntime: MediaDuration(seconds: 5400),
+            totalMusicRuntime: MediaDuration(seconds: 600),
+            productionYear: 2026,
+            containsAdditionalUndeclaredWorks: .no,
+            productionTypes: [.documentaryFilm],
+            declarationDate: Date(timeIntervalSince1970: 0)
+        )
+        XCTAssertEqual(setup.producer, [firstProducer, secondProducer])
+        XCTAssertEqual(setup.directorOrPrincipal.count, 2)
     }
 
     func test_productionTypes_canRepresentMultipleSimultaneousCheckboxes() {

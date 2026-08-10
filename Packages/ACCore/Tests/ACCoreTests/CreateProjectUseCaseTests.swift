@@ -13,13 +13,15 @@ final class CreateProjectUseCaseTests: XCTestCase {
         XCTAssertEqual(setup.title, "Reel One")
     }
 
-    func test_makeDefaultSetup_leavesProducerDirectorDeclarantNil() {
+    func test_makeDefaultSetup_leavesProducerDirectorDeclarantAtTheirOwnUnsetValue() {
         // A brand-new Project has no Person/Label in its directory yet to
         // reference — see docs/DECISIONS.md, "Setup's three Party fields
-        // become optional."
+        // become optional." producer/directorOrPrincipal are [Party] (later
+        // round) — empty array is their own unset value; declarant stays
+        // Party?, using nil.
         let setup = CreateProjectUseCase.makeDefaultSetup(title: "Reel One", now: Date(timeIntervalSince1970: 0))
-        XCTAssertNil(setup.producer)
-        XCTAssertNil(setup.directorOrPrincipal)
+        XCTAssertTrue(setup.producer.isEmpty)
+        XCTAssertTrue(setup.directorOrPrincipal.isEmpty)
         XCTAssertNil(setup.declarant)
     }
 

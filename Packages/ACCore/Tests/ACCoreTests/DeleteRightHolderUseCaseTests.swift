@@ -23,8 +23,8 @@ final class DeleteRightHolderUseCaseTests: XCTestCase {
             updatedAt: Date(timeIntervalSince1970: 0),
             setup: Setup(
                 title: "A Swiss Story",
-                producer: producer,
-                directorOrPrincipal: directorOrPrincipal,
+                producer: [producer],
+                directorOrPrincipal: [directorOrPrincipal],
                 productionRuntime: MediaDuration(seconds: 5400),
                 totalMusicRuntime: MediaDuration(seconds: 600),
                 productionYear: 2026,

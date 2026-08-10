@@ -8,8 +8,8 @@ final class SetupViewModelTests: XCTestCase {
     private func makeSetup(title: String = "A Swiss Story") -> Setup {
         Setup(
             title: title,
-            producer: .person(UUID()),
-            directorOrPrincipal: .person(UUID()),
+            producer: [.person(UUID())],
+            directorOrPrincipal: [.person(UUID())],
             productionRuntime: MediaDuration(seconds: 5400),
             totalMusicRuntime: .zero,
             productionYear: 2026,
@@ -178,6 +178,37 @@ final class SetupViewModelTests: XCTestCase {
 
         XCTAssertTrue(viewModel.missingRequiredFields.contains(.title))
         XCTAssertTrue(viewModel.missingRequiredFields.contains(.producer))
+    }
+
+    /// Regression: `SetupView` removed its only `productionRuntime` input
+    /// (moved to Review & Export, `ROADMAP.md` D11, not built yet) — this
+    /// screen's banner must not flag a field it now offers no way to fix,
+    /// which would otherwise be a permanently-unsatisfiable warning. The
+    /// underlying `Setup.missingRequiredFields` still legitimately flags it
+    /// (asserted directly here too, to prove this is a `SetupViewModel`-level
+    /// filter, not a change to the shared domain truth D11 will need).
+    func test_missingRequiredFields_excludesProductionRuntime_evenThoughSetupItselfStillFlagsIt() async {
+        let setup = Setup(
+            title: "A Swiss Story",
+            producer: [.person(UUID())],
+            directorOrPrincipal: [.person(UUID())],
+            productionRuntime: .zero,
+            totalMusicRuntime: .zero,
+            productionYear: 2026,
+            containsAdditionalUndeclaredWorks: .notKnown,
+            productionTypes: [.documentaryFilm],
+            declarant: .person(UUID()),
+            declarationDate: Date(timeIntervalSince1970: 0)
+        )
+        XCTAssertTrue(setup.missingRequiredFields.contains(.productionRuntime))
+
+        let project = makeProject(setup: setup)
+        let repository = InMemoryProjectRepository(projects: [project])
+        let viewModel = makeViewModel(project: project, repository: repository)
+        await viewModel.load()
+
+        XCTAssertFalse(viewModel.missingRequiredFields.contains(.productionRuntime))
+        XCTAssertTrue(viewModel.missingRequiredFields.isEmpty)
     }
 
     // MARK: - shouldShowMissingFieldsWarning

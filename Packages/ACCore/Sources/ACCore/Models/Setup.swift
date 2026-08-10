@@ -8,23 +8,45 @@ import Foundation
 /// shape as `PostalAddress`/`Party` (`CLAUDE.md`, "Domain Model Value-Type
 /// Conformances").
 ///
-/// `producer`/`directorOrPrincipal`/`declarant` are `Party?`, not `Party`,
-/// despite being required-for-export SUISA fields (SPEC.md §4.2). `Party` has
-/// no case representing "none" — unlike a `String` (which can honestly start
-/// as `""`) or a `Set` (which can honestly start as `[]`), there is no value
-/// of `Party` that means "not yet chosen." A brand-new `Project` (`ROADMAP.md`
-/// D6/T6.2) has no `Person`/`Label` in its directory yet to reference, so
-/// these three fields must be representable as genuinely absent rather than
-/// forced to reference a fabricated placeholder right-holder. Their
-/// export-required-ness is enforced where every other required-but-absent
-/// field in this type already is: `ValidateCueSheetUseCase` (`ROADMAP.md`
+/// `declarant` is `Party?`, not `Party`, despite being a required-for-export
+/// SUISA field (SPEC.md §4.2). `Party` has no case representing "none" —
+/// unlike a `String` (which can honestly start as `""`) or a `Set`/`Array`
+/// (which can honestly start empty), there is no value of `Party` that means
+/// "not yet chosen." A brand-new `Project` (`ROADMAP.md` D6/T6.2) has no
+/// `Person`/`Label` in its directory yet to reference, so this field must be
+/// representable as genuinely absent rather than forced to reference a
+/// fabricated placeholder right-holder.
+///
+/// **`producer`/`directorOrPrincipal` are `[Party]`, not `Party?` — one or
+/// more, not at most one.** An earlier revision of this type had them as
+/// `Party?`, matching `declarant`'s shape; reversed, deliberately and
+/// explicitly, once a real requirement to support multiple Producers/
+/// Directors on one `Project` (e.g. co-producers) surfaced. `[Party]`, not
+/// `Set<Party>`: order matters here the same way it matters for other
+/// printed-in-sequence collections in this codebase (`Project.cues`), unlike
+/// the genuinely order-independent `Set<ProductionType>`/
+/// `Set<ExploitationType>`/`Set<AttachmentType>` fields on this same type. An
+/// empty array is this field's own honest "not yet chosen" value — the same
+/// pattern `productionTypes: Set<ProductionType>` already establishes, no
+/// double-optional trick needed the way `declarant: Party?` needs one.
+/// **Not folded into the `PersonIntendedRole` roster mechanism**
+/// (`Person.intendedRoles`, used by the Setup screen's Komponist*in/
+/// Arrangeur*in/Interpret*in buckets) — that mechanism is `Person`-only, and
+/// Producer/Director must still be able to reference a `Label` (a production
+/// company), per the SUISA form's own "name, first name **or publishing
+/// company**" field language (SPEC.md §4.5). Promoting them into
+/// `PersonIntendedRole` cases was considered and rejected for exactly this
+/// reason — see `docs/DECISIONS.md`.
+///
+/// Their export-required-ness is enforced where every other required-but-
+/// absent field in this type already is: `ValidateCueSheetUseCase` (`ROADMAP.md`
 /// D11), not at construction time. See `docs/DECISIONS.md` for the full
 /// record of this correction, made during D6 planning.
 public struct Setup: Equatable, Sendable {
     public let title: String
     public let subtitle: String?
-    public let producer: Party?
-    public let directorOrPrincipal: Party?
+    public let producer: [Party]
+    public let directorOrPrincipal: [Party]
     public let productionRuntime: MediaDuration
     public let totalMusicRuntime: MediaDuration
     public let productionYear: Int
@@ -60,8 +82,8 @@ public struct Setup: Equatable, Sendable {
     public init(
         title: String,
         subtitle: String? = nil,
-        producer: Party? = nil,
-        directorOrPrincipal: Party? = nil,
+        producer: [Party] = [],
+        directorOrPrincipal: [Party] = [],
         productionRuntime: MediaDuration,
         totalMusicRuntime: MediaDuration,
         productionYear: Int,
@@ -145,8 +167,8 @@ public extension Setup {
     func updating(
         title: String? = nil,
         subtitle: String?? = nil,
-        producer: Party?? = nil,
-        directorOrPrincipal: Party?? = nil,
+        producer: [Party]? = nil,
+        directorOrPrincipal: [Party]? = nil,
         productionRuntime: MediaDuration? = nil,
         totalMusicRuntime: MediaDuration? = nil,
         productionYear: Int? = nil,
@@ -257,10 +279,10 @@ public extension Setup {
         if title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             missing.append(.title)
         }
-        if producer == nil {
+        if producer.isEmpty {
             missing.append(.producer)
         }
-        if directorOrPrincipal == nil {
+        if directorOrPrincipal.isEmpty {
             missing.append(.directorOrPrincipal)
         }
         if productionRuntime == .zero {

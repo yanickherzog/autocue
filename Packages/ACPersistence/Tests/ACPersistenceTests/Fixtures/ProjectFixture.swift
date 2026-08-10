@@ -49,8 +49,8 @@ enum ProjectFixture {
             updatedAt: Date(timeIntervalSince1970: 1_699_000_000),
             setup: Setup(
                 title: "Minimal",
-                producer: .person(producerID),
-                directorOrPrincipal: .person(producerID),
+                producer: [.person(producerID)],
+                directorOrPrincipal: [.person(producerID)],
                 productionRuntime: MediaDuration(seconds: 60),
                 totalMusicRuntime: .zero,
                 productionYear: 2026,
@@ -227,8 +227,8 @@ enum ProjectFixture {
         Setup(
             title: "The Great Swiss Film",
             subtitle: "A Documentary",
-            producer: .person(ids.producerPersonID),
-            directorOrPrincipal: .person(ids.directorPersonID),
+            producer: [.person(ids.producerPersonID)],
+            directorOrPrincipal: [.person(ids.directorPersonID)],
             productionRuntime: MediaDuration(seconds: 5400.0),
             totalMusicRuntime: MediaDuration(seconds: 215.5),
             productionYear: 2026,

@@ -2,27 +2,43 @@ import ACCore
 import ACDesignSystem
 import SwiftUI
 
-/// `SetupView`'s "Production" section — title, subtitle, producer/director,
-/// runtime, production year/types, timecode frame rate, beitrag. See
-/// `SetupView`'s own doc comment for why this screen is split across files.
+/// `SetupView`'s "Production" section — title, production year/types,
+/// timecode frame rate. See `SetupView`'s own doc comment for why this
+/// screen is split across files.
 ///
 /// **Deliberately does not show `totalMusicRuntime`.** It's owned by
 /// `UpdateCueUseCase`'s auto-recompute (SPEC.md §4.14) once D10 exists, and
 /// belongs on Review & Export instead — shown once the cue sheet is actually
 /// filled out, per the original product brief. The underlying field/
 /// recompute logic is unchanged; only where it's displayed moves.
+///
+/// **Also hidden from this screen, later round (`ROADMAP.md` D7):**
+/// `subtitle` (kept in the domain model, simply not shown or editable
+/// anywhere yet — no real requirement surfaced it); `productionRuntime`
+/// (moving to Review & Export, D11 — not built there yet either, so there is
+/// currently no UI for it anywhere, deliberately, matching "not built now");
+/// `beitrag` (kept in the domain model, but no longer independently
+/// editable — see the `Title` field's own binding below, which sets it
+/// automatically). `Setup.producer`/`.directorOrPrincipal` moved to the
+/// Artists section (`SetupView+CollaboratorsSection.swift`), after Label —
+/// see that file's doc comment for why they stayed single-select `Setup`
+/// fields rather than becoming roster buckets.
 extension SetupView {
     var productionSection: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.md) {
             sectionHeader("Production")
-            GhostTextField(placeholder: "Title", text: field({ $0.title }, { $0.updating(title: $1) }))
             GhostTextField(
-                placeholder: "Subtitle",
-                text: field({ $0.subtitle ?? "" }, { $0.updating(subtitle: .some($1.isEmpty ? nil : $1)) })
+                placeholder: "Title",
+                // `beitrag` (SPEC.md §4.2) is set to `Title`'s current value
+                // on every edit, not independently editable — the field
+                // itself has no UI anywhere on this screen. `Setup.updating`
+                // already supports setting more than one field in a single
+                // call, so this is one binding, not a second hidden write
+                // path that could drift out of sync with Title.
+                text: field({ $0.title }, { setup, newTitle in
+                    setup.updating(title: newTitle, beitrag: .some(newTitle))
+                })
             )
-            partyFieldRow(title: "Producer", party: draft.producer, field: .producer)
-            partyFieldRow(title: "Director / Principal", party: draft.directorOrPrincipal, field: .directorOrPrincipal)
-            productionRuntimeField
             productionYearField
             ProductionTypePicker(
                 selection: immediateField({ $0.productionTypes }, { $0.updating(productionTypes: $1) }),
@@ -32,33 +48,6 @@ extension SetupView {
                 )
             )
             timecodeFrameRatePicker
-            GhostTextField(
-                placeholder: "Beitrag",
-                text: field({ $0.beitrag ?? "" }, { $0.updating(beitrag: .some($1.isEmpty ? nil : $1)) })
-            )
-        }
-    }
-
-    var productionRuntimeField: some View {
-        HStack {
-            Text("Production Runtime (minutes)")
-                .font(Theme.Typography.font(.regular, size: 13))
-                .foregroundStyle(Theme.Surface.primary.foreground.opacity(0.6))
-            Spacer()
-            TextField(
-                "",
-                value: field(
-                    { Int(($0.productionRuntime.seconds / 60).rounded()) },
-                    { setup, minutes in
-                        setup.updating(productionRuntime: MediaDuration(seconds: Double(minutes) * 60))
-                    }
-                ),
-                format: .number
-            )
-            .multilineTextAlignment(.trailing)
-            .textFieldStyle(.plain)
-            .foregroundStyle(Theme.Surface.primary.foreground)
-            .frame(width: 80)
         }
     }
 

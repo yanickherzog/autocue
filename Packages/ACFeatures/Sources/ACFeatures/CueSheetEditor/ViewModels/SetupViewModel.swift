@@ -45,8 +45,20 @@ public final class SetupViewModel {
     public private(set) var labels: [Label] = []
     public var errorMessage: String?
 
+    /// **Deliberately excludes `.productionRuntime`, unlike the underlying
+    /// `Setup.missingRequiredFields` this otherwise forwards verbatim.**
+    /// `Setup.missingRequiredFields` itself must keep flagging it — that
+    /// property is explicitly shared with `ROADMAP.md` D11's future
+    /// `ValidateCueSheetUseCase` (its own doc comment), and production
+    /// runtime genuinely must be set before export. But this screen (D7,
+    /// later round) removed its only input for that field — it now belongs
+    /// on Review & Export, D11, not built yet — so surfacing it in *this*
+    /// screen's banner would be a permanently-unsatisfiable warning with no
+    /// way to act on it from here. Filtered at this Presentation-layer
+    /// property specifically so the shared domain-level truth stays intact
+    /// for D11 to use unfiltered.
     public var missingRequiredFields: [SetupRequiredField] {
-        setup.missingRequiredFields
+        setup.missingRequiredFields.filter { $0 != .productionRuntime }
     }
 
     /// Gates the Setup screen's missing-field warning on the user having

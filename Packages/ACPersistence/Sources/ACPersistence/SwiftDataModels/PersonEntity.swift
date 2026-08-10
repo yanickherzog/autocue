@@ -40,10 +40,14 @@ final class PersonEntity {
     var addressCountry: String?
     var email: String?
     var swissPerformNumber: String?
-    /// `PersonIntendedRole?` (SPEC.md §4.5) — app-internal roster-organizing
-    /// hint, never exported. Stored as a raw `String?`, same pattern as
-    /// every other `ACCore` enum this package persists.
-    var intendedRoleRawValue: String?
+    /// `Set<PersonIntendedRole>` (SPEC.md §4.5) — app-internal
+    /// roster-organizing hint, never exported. Stored as `[String]` raw
+    /// values, the same pattern `SetupEntity` already establishes for
+    /// `Set<ProductionType>`/`Set<ExploitationType>`/`Set<AttachmentType>`
+    /// (`productionTypesRawValues` et al.) — not a single optional `String?`
+    /// (an earlier revision of this field, back when the domain field was
+    /// itself a single `PersonIntendedRole?`; see `docs/DECISIONS.md`).
+    var intendedRolesRawValues: [String]
 
     var project: ProjectEntity?
 
@@ -59,7 +63,7 @@ final class PersonEntity {
         addressCountry: String?,
         email: String?,
         swissPerformNumber: String?,
-        intendedRoleRawValue: String?
+        intendedRolesRawValues: [String]
     ) {
         self.id = id
         self.order = order
@@ -72,7 +76,7 @@ final class PersonEntity {
         self.addressCountry = addressCountry
         self.email = email
         self.swissPerformNumber = swissPerformNumber
-        self.intendedRoleRawValue = intendedRoleRawValue
+        self.intendedRolesRawValues = intendedRolesRawValues
         project = nil
     }
 }

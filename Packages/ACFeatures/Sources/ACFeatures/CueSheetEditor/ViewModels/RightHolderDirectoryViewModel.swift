@@ -6,11 +6,20 @@ import Foundation
 /// edit flow and `PartyPickerView`'s listing. Calls Use Cases only, per
 /// `CONTRIBUTING.md` §6.
 ///
-/// Holds a full `Project` snapshot (not just `people`/`labels`), because
-/// `DeleteRightHolderUseCase.deletePerson`/`.deleteLabel` need the whole
-/// `Project` to scan for references (SPEC.md §4.12) — this ViewModel doesn't
-/// reimplement that scan, it supplies the data the existing Use Case's
-/// pre-built guard already checks.
+/// **Does not hold a cached `Project` snapshot.** An earlier version of this
+/// ViewModel held one (populated once by `loadDirectory()`, refreshed only
+/// by this ViewModel's own `savePerson`/`saveLabel`/`deletePerson`/
+/// `deleteLabel` mutations) so `DeleteRightHolderUseCase` would have a
+/// `Project` to scan for references. That was a real, confirmed bug: a
+/// `Setup` field edit that clears a `Person`/`Label` reference happens
+/// through `SetupViewModel`/`UpdateSetupUseCase` — a completely different
+/// ViewModel and Use Case — which never touched this ViewModel's cached
+/// copy, so an immediately-following delete attempt saw a stale reference
+/// and blocked a deletion that should have succeeded. `people`/`labels`
+/// stay published for the directory listing/picker, but the guard-check
+/// itself now happens inside `DeleteRightHolderUseCase`, atomically against
+/// the truly-current persisted `Project` — see that Use Case's doc comment
+/// and `docs/DECISIONS.md`.
 ///
 /// **`Settings()` (all defaults) is passed to `DeleteRightHolderUseCase`,
 /// not a real fetched value.** No `SettingsRepository` exists yet
@@ -37,8 +46,6 @@ public final class RightHolderDirectoryViewModel {
     /// (SPEC.md §4.12), rather than a generic "can't delete" message.
     public private(set) var blockedDeleteLocations: [PartyReferenceLocation]?
 
-    private var project: Project?
-
     private let observeProjectsUseCase: ObserveProjectsUseCase
     private let updateRightHolderDirectoryUseCase: UpdateRightHolderDirectoryUseCase
     private let deleteRightHolderUseCase: DeleteRightHolderUseCase
@@ -60,7 +67,6 @@ public final class RightHolderDirectoryViewModel {
     public func loadDirectory() async {
         for await projects in observeProjectsUseCase.observeAll() {
             guard let matched = projects.first(where: { $0.id == projectID }) else { continue }
-            project = matched
             people = matched.people
             labels = matched.labels
             break
@@ -71,29 +77,42 @@ public final class RightHolderDirectoryViewModel {
     /// `id` — a single sheet handles both "add new" and "edit existing"
     /// (`UpdateRightHolderDirectoryUseCase`'s own doc comment). Immediate
     /// save: a discrete, complete action, not continuous typing.
+    ///
+    /// Returns the Use Case's `SavePersonResult` as-is (rather than
+    /// collapsing it to a `Bool`, as an earlier version of this method did)
+    /// so the caller — `PersonEditorSheet`, via `PartyPickerView`/
+    /// `SetupView+CollaboratorsSection` — can distinguish "saved" from
+    /// "blocked because this name already exists in the directory" and keep
+    /// the sheet open with an inline message instead of the earlier
+    /// behavior, silently creating a duplicate `Person`.
     @discardableResult
-    public func savePerson(_ person: Person) async -> Bool {
+    public func savePerson(_ person: Person) async -> SavePersonResult? {
+        print("DIAG RightHolderDirectoryViewModel.savePerson ENTER \(person.firstName) \(person.lastName)")
         do {
-            let updated = try await updateRightHolderDirectoryUseCase.savePerson(person, in: projectID)
-            project = updated
-            people = updated.people
-            return true
+            let result = try await updateRightHolderDirectoryUseCase.savePerson(person, in: projectID)
+            print("DIAG RightHolderDirectoryViewModel.savePerson got result \(result)")
+            if case let .saved(updated) = result {
+                people = updated.people
+            }
+            return result
         } catch {
+            print("DIAG RightHolderDirectoryViewModel.savePerson THREW \(error)")
             errorMessage = error.localizedDescription
-            return false
+            return nil
         }
     }
 
     @discardableResult
-    public func saveLabel(_ label: Label) async -> Bool {
+    public func saveLabel(_ label: Label) async -> SaveLabelResult? {
         do {
-            let updated = try await updateRightHolderDirectoryUseCase.saveLabel(label, in: projectID)
-            project = updated
-            labels = updated.labels
-            return true
+            let result = try await updateRightHolderDirectoryUseCase.saveLabel(label, in: projectID)
+            if case let .saved(updated) = result {
+                labels = updated.labels
+            }
+            return result
         } catch {
             errorMessage = error.localizedDescription
-            return false
+            return nil
         }
     }
 
@@ -104,14 +123,12 @@ public final class RightHolderDirectoryViewModel {
     }
 
     public func deletePerson(_ personID: Person.ID) async {
-        guard let project else { return }
         do {
             let result = try await deleteRightHolderUseCase.deletePerson(
-                personID, from: project, settings: Settings()
+                personID, from: projectID, settings: Settings()
             )
             switch result {
             case let .deleted(updated):
-                self.project = updated
                 people = updated.people
                 blockedDeleteLocations = nil
             case let .blocked(locations):
@@ -123,12 +140,12 @@ public final class RightHolderDirectoryViewModel {
     }
 
     public func deleteLabel(_ labelID: Label.ID) async {
-        guard let project else { return }
         do {
-            let result = try await deleteRightHolderUseCase.deleteLabel(labelID, from: project, settings: Settings())
+            let result = try await deleteRightHolderUseCase.deleteLabel(
+                labelID, from: projectID, settings: Settings()
+            )
             switch result {
             case let .deleted(updated):
-                self.project = updated
                 labels = updated.labels
                 blockedDeleteLocations = nil
             case let .blocked(locations):

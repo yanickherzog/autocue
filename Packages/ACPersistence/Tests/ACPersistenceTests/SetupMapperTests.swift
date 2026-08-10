@@ -95,11 +95,13 @@ final class SetupMapperTests: XCTestCase {
         }
     }
 
-    func test_nilProducerDirectorDeclarant_roundTripToNilNotAThrownError() throws {
-        // Setup.producer/.directorOrPrincipal/.declarant are Party? — a
-        // brand-new Project genuinely has none chosen yet (docs/DECISIONS.md,
-        // "Setup's three Party fields become optional"). The persisted
-        // column pair must round-trip that absence as nil, not as an error.
+    func test_emptyProducerDirector_nilDeclarant_roundTripToTheirOwnUnsetValuesNotAThrownError() throws {
+        // Setup.producer/.directorOrPrincipal are [Party] (ROADMAP.md D7,
+        // later round) — an empty array is their own honest "not yet
+        // chosen" value, the same as Set<ProductionType>'s []. declarant
+        // stays Party? — a brand-new Project genuinely has none chosen yet
+        // (docs/DECISIONS.md, "Setup's three Party fields become optional").
+        // Both shapes must round-trip their own unset value without error.
         let setup = Setup(
             title: "Test",
             productionRuntime: MediaDuration(seconds: 60),
@@ -111,17 +113,41 @@ final class SetupMapperTests: XCTestCase {
             declarationDate: Date(timeIntervalSince1970: 1_699_000_000)
         )
         let entity = SetupMapper.toEntity(setup)
-        XCTAssertNil(entity.producerPartyKind)
-        XCTAssertNil(entity.producerPartyID)
-        XCTAssertNil(entity.directorPartyKind)
-        XCTAssertNil(entity.directorPartyID)
+        XCTAssertEqual(entity.producerPartyKinds, [])
+        XCTAssertEqual(entity.producerPartyIDs, [])
+        XCTAssertEqual(entity.directorPartyKinds, [])
+        XCTAssertEqual(entity.directorPartyIDs, [])
         XCTAssertNil(entity.declarantPartyKind)
         XCTAssertNil(entity.declarantPartyID)
 
         let roundTripped = try SetupMapper.toDomain(entity)
-        XCTAssertNil(roundTripped.producer)
-        XCTAssertNil(roundTripped.directorOrPrincipal)
+        XCTAssertEqual(roundTripped.producer, [])
+        XCTAssertEqual(roundTripped.directorOrPrincipal, [])
         XCTAssertNil(roundTripped.declarant)
+    }
+
+    func test_multipleProducersAndDirectors_roundTripInOrder() throws {
+        let firstProducer = UUID()
+        let secondProducer = UUID()
+        let director = UUID()
+        let setup = Setup(
+            title: "Test",
+            producer: [.person(firstProducer), .label(secondProducer)],
+            directorOrPrincipal: [.person(director)],
+            productionRuntime: MediaDuration(seconds: 60),
+            totalMusicRuntime: .zero,
+            productionYear: 2026,
+            containsAdditionalUndeclaredWorks: .no,
+            productionTypes: [.other],
+            otherProductionTypeDescription: "n/a",
+            declarationDate: Date(timeIntervalSince1970: 1_699_000_000)
+        )
+
+        let entity = SetupMapper.toEntity(setup)
+        let roundTripped = try SetupMapper.toDomain(entity)
+
+        XCTAssertEqual(roundTripped.producer, [.person(firstProducer), .label(secondProducer)])
+        XCTAssertEqual(roundTripped.directorOrPrincipal, [.person(director)])
     }
 
     private func makeSetup(
@@ -136,8 +162,8 @@ final class SetupMapperTests: XCTestCase {
         let partyID = UUID()
         return Setup(
             title: "Test",
-            producer: .person(partyID),
-            directorOrPrincipal: .person(partyID),
+            producer: [.person(partyID)],
+            directorOrPrincipal: [.person(partyID)],
             productionRuntime: MediaDuration(seconds: 60),
             totalMusicRuntime: .zero,
             productionYear: 2026,

@@ -16,8 +16,8 @@ final class RightHolderDirectoryViewModelTests: XCTestCase {
             updatedAt: Date(),
             setup: Setup(
                 title: "A Swiss Story",
-                producer: producer,
-                directorOrPrincipal: .person(UUID()),
+                producer: [producer],
+                directorOrPrincipal: [.person(UUID())],
                 productionRuntime: MediaDuration(seconds: 5400),
                 totalMusicRuntime: .zero,
                 productionYear: 2026,
@@ -65,9 +65,11 @@ final class RightHolderDirectoryViewModelTests: XCTestCase {
         let viewModel = makeViewModel(project: project, repository: repository)
         await viewModel.loadDirectory()
 
-        let saved = await viewModel.savePerson(Person(firstName: "Ada", lastName: "Lovelace"))
+        let result = await viewModel.savePerson(Person(firstName: "Ada", lastName: "Lovelace"))
 
-        XCTAssertTrue(saved)
+        guard case .saved = result else {
+            return XCTFail("expected .saved, got \(String(describing: result))")
+        }
         XCTAssertEqual(viewModel.people.map(\.firstName), ["Ada"])
         let persisted = try await repository.fetch(id: project.id)
         XCTAssertEqual(persisted?.people.map(\.firstName), ["Ada"])
@@ -80,10 +82,68 @@ final class RightHolderDirectoryViewModelTests: XCTestCase {
         await viewModel.loadDirectory()
         let address = PostalAddress(street: "Bahnhofstrasse 1", postalCode: "8001", city: "Zürich", country: "CH")
 
-        let saved = await viewModel.saveLabel(Label(name: "Studio AG", address: address))
+        let result = await viewModel.saveLabel(Label(name: "Studio AG", address: address))
 
-        XCTAssertTrue(saved)
+        guard case .saved = result else {
+            return XCTFail("expected .saved, got \(String(describing: result))")
+        }
         XCTAssertEqual(viewModel.labels.map(\.name), ["Studio AG"])
+    }
+
+    /// Reproduces the reported bug: re-adding a `Person` under a name that
+    /// already exists in the directory must be flagged, not silently
+    /// duplicated (`docs/DECISIONS.md`).
+    func test_savePerson_withADuplicateName_isBlocked_andDoesNotAddASecondEntry() async {
+        let existing = Person(firstName: "Ada", lastName: "Lovelace")
+        let project = makeProject(people: [existing])
+        let repository = InMemoryProjectRepository(projects: [project])
+        let viewModel = makeViewModel(project: project, repository: repository)
+        await viewModel.loadDirectory()
+
+        // Case/whitespace-insensitive: a real duplicate-entry mistake rarely
+        // types the name with byte-identical casing/spacing.
+        let result = await viewModel.savePerson(Person(firstName: " ada ", lastName: " LOVELACE "))
+
+        guard case let .duplicateName(matched) = result else {
+            return XCTFail("expected .duplicateName, got \(String(describing: result))")
+        }
+        XCTAssertEqual(matched, existing)
+        XCTAssertEqual(viewModel.people, [existing], "no second entry should have been added")
+    }
+
+    /// Editing an existing `Person` (same id) must not be blocked as a
+    /// "duplicate" of itself.
+    func test_savePerson_editingTheSameEntry_isNotTreatedAsADuplicate() async {
+        let existing = Person(firstName: "Ada", lastName: "Lovelace")
+        let project = makeProject(people: [existing])
+        let repository = InMemoryProjectRepository(projects: [project])
+        let viewModel = makeViewModel(project: project, repository: repository)
+        await viewModel.loadDirectory()
+
+        let edited = Person(id: existing.id, firstName: "Ada", lastName: "Lovelace", ipiNumber: "12345")
+        let result = await viewModel.savePerson(edited)
+
+        guard case .saved = result else {
+            return XCTFail("expected .saved, got \(String(describing: result))")
+        }
+        XCTAssertEqual(viewModel.people, [edited])
+    }
+
+    func test_saveLabel_withADuplicateName_isBlocked_andDoesNotAddASecondEntry() async {
+        let address = PostalAddress(street: "Bahnhofstrasse 1", postalCode: "8001", city: "Zürich", country: "CH")
+        let existing = Label(name: "Studio AG", address: address)
+        let project = makeProject(labels: [existing])
+        let repository = InMemoryProjectRepository(projects: [project])
+        let viewModel = makeViewModel(project: project, repository: repository)
+        await viewModel.loadDirectory()
+
+        let result = await viewModel.saveLabel(Label(name: " studio ag ", address: address))
+
+        guard case let .duplicateName(matched) = result else {
+            return XCTFail("expected .duplicateName, got \(String(describing: result))")
+        }
+        XCTAssertEqual(matched, existing)
+        XCTAssertEqual(viewModel.labels, [existing], "no second entry should have been added")
     }
 
     func test_deletePerson_whenUnreferenced_removesFromTheDirectory() async {

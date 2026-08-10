@@ -44,6 +44,23 @@ public actor InMemoryProjectRepository: ProjectRepository {
         publish()
     }
 
+    /// No `await` between reading `projects[id]` and writing it back, so
+    /// this is atomic under actor isolation the same way
+    /// `ProjectRepositoryImpl`'s real implementation is via its
+    /// `writeTails` queue — see `ProjectRepository`'s doc comment for why
+    /// that matters.
+    @discardableResult
+    public func update(
+        id: Project.ID,
+        transform: @escaping @Sendable (Project) throws -> Project
+    ) async throws -> Project? {
+        guard let current = projects[id] else { return nil }
+        let updated = try transform(current)
+        projects[id] = updated
+        publish()
+        return updated
+    }
+
     public func delete(id: Project.ID) async throws {
         projects.removeValue(forKey: id)
         publish()

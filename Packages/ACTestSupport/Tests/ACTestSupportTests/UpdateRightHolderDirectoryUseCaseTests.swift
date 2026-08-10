@@ -13,8 +13,8 @@ final class UpdateRightHolderDirectoryUseCaseTests: XCTestCase {
             updatedAt: Date(timeIntervalSince1970: 0),
             setup: Setup(
                 title: "A Swiss Story",
-                producer: .person(UUID()),
-                directorOrPrincipal: .person(UUID()),
+                producer: [.person(UUID())],
+                directorOrPrincipal: [.person(UUID())],
                 productionRuntime: MediaDuration(seconds: 5400),
                 totalMusicRuntime: MediaDuration(seconds: 600),
                 productionYear: 2026,
@@ -36,8 +36,11 @@ final class UpdateRightHolderDirectoryUseCaseTests: XCTestCase {
         let useCase = UpdateRightHolderDirectoryUseCase(projectRepository: repository)
         let person = Person(firstName: "Ada", lastName: "Lovelace")
 
-        let updated = try await useCase.savePerson(person, in: project.id)
+        let result = try await useCase.savePerson(person, in: project.id)
 
+        guard case let .saved(updated) = result else {
+            return XCTFail("expected .saved, got \(result)")
+        }
         XCTAssertEqual(updated.people, [person])
         XCTAssertGreaterThan(updated.updatedAt, project.updatedAt)
         let persisted = try await repository.fetch(id: project.id)
@@ -52,8 +55,11 @@ final class UpdateRightHolderDirectoryUseCaseTests: XCTestCase {
         let useCase = UpdateRightHolderDirectoryUseCase(projectRepository: repository)
         let editedFirst = Person(id: first.id, firstName: "Ada", lastName: "Byron", ipiNumber: "00123456789")
 
-        let updated = try await useCase.savePerson(editedFirst, in: project.id)
+        let result = try await useCase.savePerson(editedFirst, in: project.id)
 
+        guard case let .saved(updated) = result else {
+            return XCTFail("expected .saved, got \(result)")
+        }
         XCTAssertEqual(updated.people, [editedFirst, second])
     }
 
@@ -83,8 +89,11 @@ final class UpdateRightHolderDirectoryUseCaseTests: XCTestCase {
             address: PostalAddress(street: "Bahnhofstrasse 1", postalCode: "8001", city: "Zürich", country: "CH")
         )
 
-        let updated = try await useCase.saveLabel(label, in: project.id)
+        let result = try await useCase.saveLabel(label, in: project.id)
 
+        guard case let .saved(updated) = result else {
+            return XCTFail("expected .saved, got \(result)")
+        }
         XCTAssertEqual(updated.labels, [label])
         let persisted = try await repository.fetch(id: project.id)
         XCTAssertEqual(persisted?.labels, [label])
@@ -98,8 +107,11 @@ final class UpdateRightHolderDirectoryUseCaseTests: XCTestCase {
         let useCase = UpdateRightHolderDirectoryUseCase(projectRepository: repository)
         let editedLabel = Label(id: label.id, name: "Studio AG International", address: address)
 
-        let updated = try await useCase.saveLabel(editedLabel, in: project.id)
+        let result = try await useCase.saveLabel(editedLabel, in: project.id)
 
+        guard case let .saved(updated) = result else {
+            return XCTFail("expected .saved, got \(result)")
+        }
         XCTAssertEqual(updated.labels, [editedLabel])
     }
 
