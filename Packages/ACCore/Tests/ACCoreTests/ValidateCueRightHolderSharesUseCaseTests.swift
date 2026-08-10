@@ -91,6 +91,34 @@ final class ValidateCueRightHolderSharesUseCaseTests: XCTestCase {
         ])
     }
 
+    // MARK: - .performer role exclusion (docs/DECISIONS.md)
+
+    func test_performerRow_isExcludedFromBothShareSums_evenWithNonZeroShareValues() {
+        // A .performer row's share values are meaningless (SUISA's WA Film
+        // form has no percentage column for performers) — without the
+        // exclusion, this 50 would silently count toward the 100% sum
+        // alongside the composer's own 100, producing a false "150%" flag.
+        let composer = CueRightHolder(
+            party: .person(UUID()), role: .composer, performanceBroadcastShare: 100, mechanicalRightsShare: 100
+        )
+        let performer = CueRightHolder(
+            party: .person(UUID()), role: .performer, performanceBroadcastShare: 50, mechanicalRightsShare: 50
+        )
+        let issues = ValidateCueRightHolderSharesUseCase.validate(makeCue(rightHolders: [composer, performer]))
+        XCTAssertTrue(issues.isEmpty)
+    }
+
+    func test_onlyPerformerRows_stillFlagsBothShareSumsAsZero_conditionAppliesAsIfAbsent() {
+        let performer = CueRightHolder(
+            party: .person(UUID()), role: .performer, performanceBroadcastShare: 100, mechanicalRightsShare: 100
+        )
+        let issues = ValidateCueRightHolderSharesUseCase.validate(makeCue(rightHolders: [performer]))
+        XCTAssertEqual(issues, [
+            .performanceBroadcastSharesDoNotSumTo100(total: 0),
+            .mechanicalRightsSharesDoNotSumTo100(total: 0),
+        ])
+    }
+
     // MARK: - publishingContractAttached
 
     func test_publisherRole_withoutAttachedContract_isFlagged() {

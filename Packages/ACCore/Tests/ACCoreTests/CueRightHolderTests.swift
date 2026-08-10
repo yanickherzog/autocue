@@ -56,12 +56,16 @@ final class CueRightHolderTests: XCTestCase {
 }
 
 final class CueRightHolderRoleTests: XCTestCase {
-    func test_allFourFormRolesAreDistinct() {
-        XCTAssertNotEqual(CueRightHolderRole.composer, .author)
-        XCTAssertNotEqual(CueRightHolderRole.composer, .arranger)
-        XCTAssertNotEqual(CueRightHolderRole.composer, .publisher)
-        XCTAssertNotEqual(CueRightHolderRole.author, .arranger)
-        XCTAssertNotEqual(CueRightHolderRole.author, .publisher)
-        XCTAssertNotEqual(CueRightHolderRole.arranger, .publisher)
+    func test_allFiveRolesAreDistinct() {
+        let cases: [CueRightHolderRole] = [.composer, .author, .arranger, .publisher, .performer]
+        for (leftIndex, left) in cases.enumerated() {
+            for right in cases[(leftIndex + 1)...] {
+                XCTAssertNotEqual(left, right)
+            }
+        }
+    }
+
+    func test_allCasesIncludesAllFiveRoles() {
+        XCTAssertEqual(CueRightHolderRole.allCases.count, 5)
     }
 }

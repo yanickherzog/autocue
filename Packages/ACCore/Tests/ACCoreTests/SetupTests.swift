@@ -87,6 +87,13 @@ final class SetupTests: XCTestCase {
         XCTAssertNil(setup.productionCountry)
         XCTAssertNil(setup.language)
         XCTAssertNil(setup.otherAttachmentDescription)
+        XCTAssertNil(setup.beitrag)
+        XCTAssertNil(setup.otherExploitationTypeDescription)
+        XCTAssertNil(setup.broadcastDetails)
+    }
+
+    func test_exploitationTypes_defaultsToEmptySetWhenOmittedAtTheInitializer() {
+        XCTAssertTrue(Self.makeSetup().exploitationTypes.isEmpty)
     }
 
     func test_producerDirectorDeclarant_defaultToNilWhenOmitted() {
@@ -114,6 +121,7 @@ final class SetupTests: XCTestCase {
         let director: Party
         let declarant: Party
         let declarationDate: Date
+        let broadcastDate: Date
         let setup: Setup
 
         init() {
@@ -121,6 +129,7 @@ final class SetupTests: XCTestCase {
             director = .label(UUID())
             declarant = .person(UUID())
             declarationDate = Date(timeIntervalSince1970: 1_000_000)
+            broadcastDate = Date(timeIntervalSince1970: 1_100_000)
             setup = Setup(
                 title: "A Swiss Story",
                 subtitle: "Part Two",
@@ -144,7 +153,10 @@ final class SetupTests: XCTestCase {
                 declarant: declarant,
                 declarationDate: declarationDate,
                 attachmentTypes: [.score, .other],
-                otherAttachmentDescription: "Location release forms"
+                otherAttachmentDescription: "Location release forms",
+                beitrag: "Bergwelt, Folge 5",
+                exploitationTypes: [.tv, .festival],
+                broadcastDetails: BroadcastDetails(broadcaster: "SRF", programmeName: "Bergwelt", date: broadcastDate)
             )
         }
     }
@@ -182,6 +194,12 @@ final class SetupTests: XCTestCase {
         XCTAssertEqual(setup.declarationDate, fixture.declarationDate)
         XCTAssertEqual(setup.attachmentTypes, [.score, .other])
         XCTAssertEqual(setup.otherAttachmentDescription, "Location release forms")
+        XCTAssertEqual(setup.beitrag, "Bergwelt, Folge 5")
+        XCTAssertEqual(setup.exploitationTypes, [.tv, .festival])
+        XCTAssertEqual(
+            setup.broadcastDetails,
+            BroadcastDetails(broadcaster: "SRF", programmeName: "Bergwelt", date: fixture.broadcastDate)
+        )
     }
 
     func test_productionTypes_canRepresentMultipleSimultaneousCheckboxes() {
@@ -218,5 +236,40 @@ final class AttachmentTypeTests: XCTestCase {
         let expected: [AttachmentType] = [.score, .agreement, .soundOrVideoCarrier, .other]
         XCTAssertEqual(Set(expected).count, expected.count)
         XCTAssertEqual(AttachmentType.allCases.count, expected.count)
+    }
+}
+
+final class ExploitationTypeTests: XCTestCase {
+    func test_allFourCasesExistAndAreDistinct() {
+        let expected: [ExploitationType] = [.cinema, .tv, .festival, .other]
+        XCTAssertEqual(Set(expected).count, expected.count)
+        XCTAssertEqual(ExploitationType.allCases.count, expected.count)
+    }
+}
+
+final class BroadcastDetailsTests: XCTestCase {
+    func test_equatableRoundTrip_copyEqualsOriginal() {
+        let original = BroadcastDetails(
+            broadcaster: "SRF",
+            programmeName: "Bergwelt",
+            date: Date(timeIntervalSince1970: 0)
+        )
+        let copy = original
+        XCTAssertEqual(original, copy)
+    }
+
+    func test_allFieldsDefaultToNilWhenOmitted() {
+        let details = BroadcastDetails()
+        XCTAssertNil(details.broadcaster)
+        XCTAssertNil(details.programmeName)
+        XCTAssertNil(details.date)
+    }
+
+    func test_fieldsArePreservedExactlyAsInitialized() {
+        let date = Date(timeIntervalSince1970: 1_000_000)
+        let details = BroadcastDetails(broadcaster: "SRF", programmeName: "Bergwelt", date: date)
+        XCTAssertEqual(details.broadcaster, "SRF")
+        XCTAssertEqual(details.programmeName, "Bergwelt")
+        XCTAssertEqual(details.date, date)
     }
 }

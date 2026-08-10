@@ -18,6 +18,7 @@ enum ProjectFixture {
         let producerPersonID = UUID()
         let directorPersonID = UUID()
         let declarantLabelID = UUID()
+        let performerID = UUID()
     }
 
     static func make() -> Project {
@@ -81,7 +82,8 @@ enum ProjectFixture {
         )
         let producer = Person(id: ids.producerPersonID, firstName: "Grace", lastName: "Hopper")
         let director = Person(id: ids.directorPersonID, firstName: "Alan", lastName: "Turing")
-        return [composer, producer, director]
+        let performer = Person(id: ids.performerID, firstName: "Nina", lastName: "Simone")
+        return [composer, producer, director, performer]
     }
 
     private static func makeLabels(ids: Identities) -> [Label] {
@@ -134,6 +136,16 @@ enum ProjectFixture {
                     performanceBroadcastShare: decimal("40.00"),
                     mechanicalRightsShare: decimal("40.00"),
                     publishingContractAttached: true
+                ),
+                // .performer is excluded from the 100%-sum checks
+                // (ValidateCueRightHolderSharesUseCase, docs/DECISIONS.md) —
+                // its 0/0 shares here are deliberately meaningless, not a
+                // fixture oversight, and don't affect the 60/40 split above.
+                CueRightHolder(
+                    party: .person(ids.performerID),
+                    role: .performer,
+                    performanceBroadcastShare: 0,
+                    mechanicalRightsShare: 0
                 ),
             ],
             isArrangementOfProtectedOriginal: false,
@@ -236,7 +248,14 @@ enum ProjectFixture {
             declarant: .label(ids.declarantLabelID),
             declarationDate: Date(timeIntervalSince1970: 1_700_001_000),
             attachmentTypes: [.score, .other],
-            otherAttachmentDescription: "Cue sheet appendix"
+            otherAttachmentDescription: "Cue sheet appendix",
+            beitrag: "Bergwelt, Folge 5",
+            exploitationTypes: [.tv, .festival],
+            broadcastDetails: BroadcastDetails(
+                broadcaster: "SRF",
+                programmeName: "Bergwelt",
+                date: Date(timeIntervalSince1970: 1_700_002_000)
+            )
         )
     }
 

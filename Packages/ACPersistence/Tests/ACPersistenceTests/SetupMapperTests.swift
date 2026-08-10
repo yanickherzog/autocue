@@ -29,6 +29,54 @@ final class SetupMapperTests: XCTestCase {
         }
     }
 
+    func test_everyExploitationTypeCaseRoundTripsThroughSetup() throws {
+        for exploitationType in ExploitationType.allCases {
+            let setup = makeSetup(exploitationTypes: [exploitationType])
+            let entity = SetupMapper.toEntity(setup)
+            let roundTripped = try SetupMapper.toDomain(entity)
+            XCTAssertEqual(roundTripped.exploitationTypes, [exploitationType])
+        }
+    }
+
+    func test_beitragRoundTripsThroughSetup() throws {
+        let setup = makeSetup(beitrag: "Bergwelt, Folge 5")
+        let entity = SetupMapper.toEntity(setup)
+        let roundTripped = try SetupMapper.toDomain(entity)
+        XCTAssertEqual(roundTripped.beitrag, "Bergwelt, Folge 5")
+    }
+
+    func test_nilBeitrag_roundTripsToNil() throws {
+        let entity = SetupMapper.toEntity(makeSetup(beitrag: nil))
+        XCTAssertNil(entity.beitrag)
+        XCTAssertNil(try SetupMapper.toDomain(entity).beitrag)
+    }
+
+    func test_nilBroadcastDetails_roundTripsToNilNotAThrownError() throws {
+        let entity = SetupMapper.toEntity(makeSetup(broadcastDetails: nil))
+        XCTAssertNil(entity.broadcaster)
+        XCTAssertNil(entity.broadcastProgrammeName)
+        XCTAssertNil(entity.broadcastDate)
+        XCTAssertNil(try SetupMapper.toDomain(entity).broadcastDetails)
+    }
+
+    func test_partiallyPopulatedBroadcastDetails_roundTripsWithOnlyThoseFieldsSet() throws {
+        // BroadcastDetails allows partial data (a confirmed broadcaster
+        // before an exact date is known) — the mapper must not require all
+        // three flat columns to be non-nil to reconstruct a non-nil value.
+        let partial = BroadcastDetails(broadcaster: "SRF", programmeName: nil, date: nil)
+        let entity = SetupMapper.toEntity(makeSetup(broadcastDetails: partial))
+        let roundTripped = try SetupMapper.toDomain(entity)
+        XCTAssertEqual(roundTripped.broadcastDetails, partial)
+    }
+
+    func test_fullyPopulatedBroadcastDetails_roundTripsExactly() throws {
+        let date = Date(timeIntervalSince1970: 1_700_002_000)
+        let details = BroadcastDetails(broadcaster: "SRF", programmeName: "Bergwelt", date: date)
+        let entity = SetupMapper.toEntity(makeSetup(broadcastDetails: details))
+        let roundTripped = try SetupMapper.toDomain(entity)
+        XCTAssertEqual(roundTripped.broadcastDetails, details)
+    }
+
     func test_everyTimecodeFrameRateCaseRoundTripsThroughSetup() throws {
         for frameRate in TimecodeFrameRate.allCases {
             let setup = makeSetup(timecodeFrameRate: frameRate)
@@ -80,7 +128,10 @@ final class SetupMapperTests: XCTestCase {
         productionTypes: Set<ProductionType> = [.other],
         attachmentTypes: Set<AttachmentType> = [],
         timecodeFrameRate: TimecodeFrameRate = .fps25,
-        containsAdditionalUndeclaredWorks: AdditionalWorksDeclaration = .no
+        containsAdditionalUndeclaredWorks: AdditionalWorksDeclaration = .no,
+        exploitationTypes: Set<ExploitationType> = [],
+        beitrag: String? = nil,
+        broadcastDetails: BroadcastDetails? = nil
     ) -> Setup {
         let partyID = UUID()
         return Setup(
@@ -97,7 +148,11 @@ final class SetupMapperTests: XCTestCase {
             declarant: .person(partyID),
             declarationDate: Date(timeIntervalSince1970: 1_699_000_000),
             attachmentTypes: attachmentTypes,
-            otherAttachmentDescription: attachmentTypes.contains(.other) ? "n/a" : nil
+            otherAttachmentDescription: attachmentTypes.contains(.other) ? "n/a" : nil,
+            beitrag: beitrag,
+            exploitationTypes: exploitationTypes,
+            otherExploitationTypeDescription: exploitationTypes.contains(.other) ? "n/a" : nil,
+            broadcastDetails: broadcastDetails
         )
     }
 }

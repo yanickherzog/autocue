@@ -50,6 +50,19 @@ final class SetupEntity {
     var declarationDate: Date
     var attachmentTypesRawValues: [String]
     var otherAttachmentDescription: String?
+    var beitrag: String?
+    var exploitationTypesRawValues: [String]
+    var otherExploitationTypeDescription: String?
+    /// Flat columns for `Setup.broadcastDetails: BroadcastDetails?`
+    /// ("Sendedatum"/"Sender, Sendung") — reconstructed as `nil` only when
+    /// all three are `nil`, otherwise a `BroadcastDetails` with whichever of
+    /// its own three sub-fields are present (`SetupMapper`). No single
+    /// "is this section active" boolean, since `BroadcastDetails` itself
+    /// allows partial data (a confirmed broadcaster before an exact date is
+    /// known).
+    var broadcaster: String?
+    var broadcastProgrammeName: String?
+    var broadcastDate: Date?
 
     init(
         title: String,
@@ -78,7 +91,13 @@ final class SetupEntity {
         declarantPartyID: UUID?,
         declarationDate: Date,
         attachmentTypesRawValues: [String],
-        otherAttachmentDescription: String?
+        otherAttachmentDescription: String?,
+        beitrag: String?,
+        exploitationTypesRawValues: [String],
+        otherExploitationTypeDescription: String?,
+        broadcaster: String?,
+        broadcastProgrammeName: String?,
+        broadcastDate: Date?
     ) {
         self.title = title
         self.subtitle = subtitle
@@ -107,5 +126,11 @@ final class SetupEntity {
         self.declarationDate = declarationDate
         self.attachmentTypesRawValues = attachmentTypesRawValues
         self.otherAttachmentDescription = otherAttachmentDescription
+        self.beitrag = beitrag
+        self.exploitationTypesRawValues = exploitationTypesRawValues
+        self.otherExploitationTypeDescription = otherExploitationTypeDescription
+        self.broadcaster = broadcaster
+        self.broadcastProgrammeName = broadcastProgrammeName
+        self.broadcastDate = broadcastDate
     }
 }
