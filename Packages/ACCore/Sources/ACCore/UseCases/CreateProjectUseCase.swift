@@ -38,7 +38,17 @@ public struct CreateProjectUseCase: Sendable {
             // deliberately, visibly wrong, so it reads as incomplete rather
             // than as real data.
             productionYear: 0,
-            containsAdditionalUndeclaredWorks: .notKnown,
+            // .no, not .notKnown — a deliberate default change from this
+            // Use Case's original choice (docs/DECISIONS.md's "Setup's
+            // three Party fields become optional" entry reasoned .notKnown
+            // was the more honest starting value). The project owner
+            // changed this specifically as a real-workflow default: "no
+            // additional undeclared works" is the common case in practice,
+            // and reduces friction for every new Project — the user can
+            // still change it when it's actually true. .notKnown remains a
+            // real, valid SUISA-form answer, just no longer this Use
+            // Case's default; see docs/DECISIONS.md.
+            containsAdditionalUndeclaredWorks: .no,
             productionTypes: [],
             declarationDate: now
         )

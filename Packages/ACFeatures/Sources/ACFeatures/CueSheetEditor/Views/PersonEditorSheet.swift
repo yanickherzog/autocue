@@ -9,8 +9,25 @@ import SwiftUI
 /// adapter-at-the-edge pattern `ProjectLibraryView`'s `NewProjectSheet`
 /// already establishes; the caller (`SetupView`) wires `onSave` to the
 /// ViewModel.
+///
+/// **Deliberately has no address field.** `Person.address` is optional
+/// generally (SPEC.md §4.5) — required only when a `Person` is used as
+/// `Setup.producer`/`.directorOrPrincipal`/`.declarant`, unlike `Label`,
+/// whose address is always required. Prompting for it on every ordinary
+/// collaborator (a composer, an arranger) doesn't match that — this sheet
+/// leaves `address` untouched, never showing UI for it. On an *edit* of an
+/// existing `Person` that already has an address (e.g. one previously used
+/// as a producer), `save()` preserves `existing?.address` unchanged rather
+/// than silently clearing it — this sheet just never offers to *set* one.
 struct PersonEditorSheet: View {
     let existing: Person?
+    /// Pre-fills `Person.intendedRole` when creating a new `Person` from one
+    /// of the Setup screen's collaborator-roster buckets (`ROADMAP.md` D7) —
+    /// ignored when `existing != nil`, since editing preserves whatever role
+    /// hint the person already has. No UI control for this field in this
+    /// sheet: it's set entirely by which roster bucket's "+ Add" button was
+    /// used, not something this form exposes for reassignment.
+    let initialIntendedRole: PersonIntendedRole?
     let onSave: (Person) -> Void
     let onCancel: () -> Void
 
@@ -19,14 +36,15 @@ struct PersonEditorSheet: View {
     @State private var ipiNumber: String
     @State private var email: String
     @State private var swissPerformNumber: String
-    @State private var hasAddress: Bool
-    @State private var street: String
-    @State private var postalCode: String
-    @State private var city: String
-    @State private var country: String
 
-    init(existing: Person?, onSave: @escaping (Person) -> Void, onCancel: @escaping () -> Void) {
+    init(
+        existing: Person?,
+        initialIntendedRole: PersonIntendedRole? = nil,
+        onSave: @escaping (Person) -> Void,
+        onCancel: @escaping () -> Void
+    ) {
         self.existing = existing
+        self.initialIntendedRole = initialIntendedRole
         self.onSave = onSave
         self.onCancel = onCancel
         _firstName = State(initialValue: existing?.firstName ?? "")
@@ -34,12 +52,6 @@ struct PersonEditorSheet: View {
         _ipiNumber = State(initialValue: existing?.ipiNumber ?? "")
         _email = State(initialValue: existing?.email ?? "")
         _swissPerformNumber = State(initialValue: existing?.swissPerformNumber ?? "")
-        let address = existing?.address
-        _hasAddress = State(initialValue: address != nil)
-        _street = State(initialValue: address?.street ?? "")
-        _postalCode = State(initialValue: address?.postalCode ?? "")
-        _city = State(initialValue: address?.city ?? "")
-        _country = State(initialValue: address?.country ?? "")
     }
 
     private var trimmedFirstName: String {
@@ -50,12 +62,8 @@ struct PersonEditorSheet: View {
         lastName.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    private var currentAddress: PostalAddress {
-        PostalAddress(street: street, postalCode: postalCode, city: city, country: country)
-    }
-
     private var canSave: Bool {
-        !trimmedFirstName.isEmpty && !trimmedLastName.isEmpty && (!hasAddress || currentAddress.isComplete)
+        !trimmedFirstName.isEmpty && !trimmedLastName.isEmpty
     }
 
     var body: some View {
@@ -72,13 +80,6 @@ struct PersonEditorSheet: View {
             GhostTextField(placeholder: "Email (optional)", text: $email)
             GhostTextField(placeholder: "SWISSPERFORM Number (optional)", text: $swissPerformNumber)
 
-            Toggle("Address", isOn: $hasAddress)
-                .toggleStyle(.checkbox)
-                .foregroundStyle(Theme.Surface.primary.foreground)
-            if hasAddress {
-                PostalAddressFields(street: $street, postalCode: $postalCode, city: $city, country: $country)
-            }
-
             HStack {
                 Spacer()
                 Button("Cancel", action: onCancel)
@@ -91,6 +92,7 @@ struct PersonEditorSheet: View {
         .padding(Theme.Spacing.lg)
         .frame(width: 360)
         .background(Theme.Surface.primary.background)
+        .fixedAppearance(for: .primary)
     }
 
     private func save() {
@@ -99,9 +101,10 @@ struct PersonEditorSheet: View {
             firstName: trimmedFirstName,
             lastName: trimmedLastName,
             ipiNumber: ipiNumber.isEmpty ? nil : ipiNumber,
-            address: hasAddress ? currentAddress : nil,
+            address: existing?.address,
             email: email.isEmpty ? nil : email,
-            swissPerformNumber: swissPerformNumber.isEmpty ? nil : swissPerformNumber
+            swissPerformNumber: swissPerformNumber.isEmpty ? nil : swissPerformNumber,
+            intendedRole: existing?.intendedRole ?? initialIntendedRole
         )
         onSave(person)
     }

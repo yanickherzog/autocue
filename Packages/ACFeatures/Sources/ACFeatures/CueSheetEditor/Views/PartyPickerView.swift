@@ -48,6 +48,15 @@ struct PartyPickerView: View {
                     }
                 }
                 .listStyle(.plain)
+                // List paints its own native background material behind
+                // rows on macOS, which a plain .background() on the List
+                // does not override (the exact bug D6's ProjectLibraryView
+                // already hit and fixed this same way) — without this, row
+                // text renders on that native material instead of this
+                // app's fixed white surface, unreadable under system Dark
+                // Mode. Confirmed via a real rendered window, not assumed.
+                .scrollContentBackground(.hidden)
+                .background(Theme.Surface.primary.background)
                 .frame(height: 220)
             }
 
@@ -64,7 +73,18 @@ struct PartyPickerView: View {
         .padding(Theme.Spacing.lg)
         .frame(width: 380)
         .background(Theme.Surface.primary.background)
-        .task { await directoryViewModel.loadDirectory() }
+        .fixedAppearance(for: .primary)
+        // Deliberately does NOT call directoryViewModel.loadDirectory() on
+        // appear. SetupView already loads it once, and every RightHolder-
+        // DirectoryViewModel mutation (savePerson/saveLabel/deletePerson/
+        // deleteLabel) updates people/labels in place — a second, redundant
+        // subscription here raced against the "+ New Person" save flow: if
+        // this task's own `for await ... break` happened to capture the
+        // stream's pre-save snapshot (a real, confirmed ordering hazard,
+        // not hypothetical — see docs/DECISIONS.md), it would silently
+        // overwrite the optimistic post-save update, which is exactly what
+        // produced "selecting closes the sheet but shows the old/blank
+        // state until the picker is reopened."
         .sheet(isPresented: $isShowingNewPersonSheet) {
             PersonEditorSheet(
                 existing: nil,

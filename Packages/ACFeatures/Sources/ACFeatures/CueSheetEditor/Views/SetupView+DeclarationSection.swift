@@ -3,9 +3,16 @@ import ACDesignSystem
 import SwiftUI
 
 /// `SetupView`'s "Declaration" section — additional-undeclared-works
-/// tri-state, ISAN/SUISA registration numbers, declarant, declaration date,
-/// attachments. See `SetupView`'s own doc comment for why this screen is
-/// split across files.
+/// tri-state, ISAN/SUISA registration numbers, declarant, declaration date.
+/// See `SetupView`'s own doc comment for why this screen is split across
+/// files.
+///
+/// **Deliberately does not show `AttachmentTypePicker`.** `attachmentTypes`
+/// is optional per SPEC.md §4.2 ("informational flags only") and unused in
+/// practice — hidden from the UI rather than removed from the domain model,
+/// per `docs/DECISIONS.md`. Flagged alongside the other items already
+/// queued for `ROADMAP.md` D11/T11.3's SUISA revalidation checkpoint, in
+/// case the real form does need it after all.
 extension SetupView {
     var declarationSection: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.md) {
@@ -34,14 +41,12 @@ extension SetupView {
                 selection: field({ $0.declarationDate }, { $0.updating(declarationDate: $1) }),
                 displayedComponents: .date
             )
+            // .field, not the .automatic default — .automatic renders a
+            // numeric-stepper affordance next to the date box on macOS,
+            // which reads as "increment/decrement a number," not "pick a
+            // date." Confirmed via a real rendered window, not assumed.
+            .datePickerStyle(.field)
             .foregroundStyle(Theme.Surface.primary.foreground)
-            AttachmentTypePicker(
-                selection: immediateField({ $0.attachmentTypes }, { $0.updating(attachmentTypes: $1) }),
-                otherDescription: field(
-                    { $0.otherAttachmentDescription ?? "" },
-                    { $0.updating(otherAttachmentDescription: .some($1.isEmpty ? nil : $1)) }
-                )
-            )
         }
     }
 

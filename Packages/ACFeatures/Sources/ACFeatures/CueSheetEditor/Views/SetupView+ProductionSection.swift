@@ -3,8 +3,14 @@ import ACDesignSystem
 import SwiftUI
 
 /// `SetupView`'s "Production" section — title, subtitle, producer/director,
-/// runtimes, production year/types, timecode frame rate, beitrag. See
+/// runtime, production year/types, timecode frame rate, beitrag. See
 /// `SetupView`'s own doc comment for why this screen is split across files.
+///
+/// **Deliberately does not show `totalMusicRuntime`.** It's owned by
+/// `UpdateCueUseCase`'s auto-recompute (SPEC.md §4.14) once D10 exists, and
+/// belongs on Review & Export instead — shown once the cue sheet is actually
+/// filled out, per the original product brief. The underlying field/
+/// recompute logic is unchanged; only where it's displayed moves.
 extension SetupView {
     var productionSection: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.md) {
@@ -17,15 +23,6 @@ extension SetupView {
             partyFieldRow(title: "Producer", party: draft.producer, field: .producer)
             partyFieldRow(title: "Director / Principal", party: draft.directorOrPrincipal, field: .directorOrPrincipal)
             productionRuntimeField
-            HStack {
-                Text("Total Music Runtime")
-                    .font(Theme.Typography.font(.regular, size: 13))
-                    .foregroundStyle(Theme.Surface.primary.foreground.opacity(0.6))
-                Spacer()
-                Text(draft.totalMusicRuntime.formatted)
-                    .font(Theme.Typography.font(.regular, size: 13))
-                    .foregroundStyle(Theme.Surface.primary.foreground)
-            }
             productionYearField
             ProductionTypePicker(
                 selection: immediateField({ $0.productionTypes }, { $0.updating(productionTypes: $1) }),

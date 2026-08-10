@@ -49,6 +49,24 @@ public final class SetupViewModel {
         setup.missingRequiredFields
     }
 
+    /// Gates the Setup screen's missing-field warning on the user having
+    /// actually touched something first. A brand-new `Setup` is *expected*
+    /// to be empty — showing validation errors before any interaction is
+    /// confusing, not helpful, and `ROADMAP.md` D7's own acceptance
+    /// criterion ("unmet-required fields are visibly indicated") doesn't
+    /// require showing them from the very first render, only that the
+    /// mechanism exists and works once there's something to validate
+    /// against. Full deferral to D11's export-readiness check would also
+    /// satisfy the letter of that criterion but not really its point — D7
+    /// is explicitly scoped to show this, just not prematurely.
+    public var shouldShowMissingFieldsWarning: Bool {
+        hasStartedEditing && !missingRequiredFields.isEmpty
+    }
+
+    /// Set by the first `updateDebounced`/`updateImmediately` call — see
+    /// `shouldShowMissingFieldsWarning`.
+    public private(set) var hasStartedEditing = false
+
     private let observeProjectsUseCase: ObserveProjectsUseCase
     private let updateSetupUseCase: UpdateSetupUseCase
     private let debounceNanoseconds: UInt64
@@ -106,6 +124,7 @@ public final class SetupViewModel {
     }
 
     public func updateDebounced(_ newSetup: Setup) {
+        hasStartedEditing = true
         setup = newSetup
         saveTask?.cancel()
         saveTask = Task { [weak self, debounceNanoseconds] in
@@ -116,6 +135,7 @@ public final class SetupViewModel {
     }
 
     public func updateImmediately(_ newSetup: Setup) async {
+        hasStartedEditing = true
         saveTask?.cancel()
         saveTask = nil
         setup = newSetup

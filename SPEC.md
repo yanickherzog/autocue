@@ -185,6 +185,9 @@ The SUISA form allows "Name, first name **or publishing company**" everywhere a 
 | `address` | `PostalAddress?` | optional generally; **required** when this `Person` is used as `Setup.producer`, `Setup.directorOrPrincipal`, or `Setup.declarant` | form mandates "complete address" for those roles only |
 | `email` | `String?` | optional | app convenience, not on the form |
 | `swissPerformNumber` | `String?` | optional | for individuals who also self-register AV participation with SWISSPERFORM (§2.2) |
+| `intendedRole` | `PersonIntendedRole?` | optional, app-internal only | **never exported to the SUISA document; not a SUISA field at all.** A UI-organizing hint only — which of the Setup screen's collaborator-roster buckets (Komponist\*in/Arrangeur\*in/Interpret\*in) this `Person` was added under (`ROADMAP.md` D7). Does **not** determine or default any `Cue`-level `CueRightHolder.role` assignment (§4.4) — that's a separate, explicit, per-Cue decision made later at D10. See `docs/DECISIONS.md`. |
+
+`PersonIntendedRole` (enum): `.composer`, `.arranger`, `.performer` — deliberately a smaller, distinct set from `CueRightHolderRole` (§4.4), which also has `.author`/`.publisher` and is a real, exported, per-Cue-per-right-holder assignment. `PersonIntendedRole` is neither of those things — it's a directory-level memory aid, nothing more.
 
 **`Label`** (corporate right-holder: publisher, production company, broadcaster):
 

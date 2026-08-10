@@ -42,9 +42,12 @@ final class CreateProjectUseCaseTests: XCTestCase {
         XCTAssertTrue(setup.productionTypes.isEmpty)
     }
 
-    func test_makeDefaultSetup_containsAdditionalUndeclaredWorksIsNotKnown() {
+    func test_makeDefaultSetup_containsAdditionalUndeclaredWorksIsNo() {
+        // .no, not .notKnown — a deliberate default change; see
+        // CreateProjectUseCase.makeDefaultSetup's own comment and
+        // docs/DECISIONS.md.
         let setup = CreateProjectUseCase.makeDefaultSetup(title: "Reel One", now: Date(timeIntervalSince1970: 0))
-        XCTAssertEqual(setup.containsAdditionalUndeclaredWorks, .notKnown)
+        XCTAssertEqual(setup.containsAdditionalUndeclaredWorks, .no)
     }
 
     func test_makeDefaultSetup_declarationDateIsTheGivenNow() {

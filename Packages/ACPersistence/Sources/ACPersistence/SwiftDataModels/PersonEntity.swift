@@ -40,6 +40,10 @@ final class PersonEntity {
     var addressCountry: String?
     var email: String?
     var swissPerformNumber: String?
+    /// `PersonIntendedRole?` (SPEC.md §4.5) — app-internal roster-organizing
+    /// hint, never exported. Stored as a raw `String?`, same pattern as
+    /// every other `ACCore` enum this package persists.
+    var intendedRoleRawValue: String?
 
     var project: ProjectEntity?
 
@@ -54,7 +58,8 @@ final class PersonEntity {
         addressCity: String?,
         addressCountry: String?,
         email: String?,
-        swissPerformNumber: String?
+        swissPerformNumber: String?,
+        intendedRoleRawValue: String?
     ) {
         self.id = id
         self.order = order
@@ -67,6 +72,7 @@ final class PersonEntity {
         self.addressCountry = addressCountry
         self.email = email
         self.swissPerformNumber = swissPerformNumber
+        self.intendedRoleRawValue = intendedRoleRawValue
         project = nil
     }
 }

@@ -33,7 +33,8 @@ final class PersonTests: XCTestCase {
             ipiNumber: "00123456789",
             address: address,
             email: "ada@example.com",
-            swissPerformNumber: "SP-42"
+            swissPerformNumber: "SP-42",
+            intendedRole: .composer
         )
 
         XCTAssertEqual(person.id, id)
@@ -43,6 +44,7 @@ final class PersonTests: XCTestCase {
         XCTAssertEqual(person.address, address)
         XCTAssertEqual(person.email, "ada@example.com")
         XCTAssertEqual(person.swissPerformNumber, "SP-42")
+        XCTAssertEqual(person.intendedRole, .composer)
     }
 
     func test_optionalFields_defaultToNil() {
@@ -52,11 +54,24 @@ final class PersonTests: XCTestCase {
         XCTAssertNil(person.address)
         XCTAssertNil(person.email)
         XCTAssertNil(person.swissPerformNumber)
+        XCTAssertNil(person.intendedRole)
     }
 
     func test_omittedID_generatesAFreshUUIDPerInstance() {
         let first = Person(firstName: "Ada", lastName: "Lovelace")
         let second = Person(firstName: "Ada", lastName: "Lovelace")
         XCTAssertNotEqual(first.id, second.id)
+    }
+}
+
+final class PersonIntendedRoleTests: XCTestCase {
+    func test_allThreeCasesExistAndAreDistinct() {
+        let expected: [PersonIntendedRole] = [.composer, .arranger, .performer]
+        for (leftIndex, left) in expected.enumerated() {
+            for right in expected[(leftIndex + 1)...] {
+                XCTAssertNotEqual(left, right)
+            }
+        }
+        XCTAssertEqual(PersonIntendedRole.allCases.count, expected.count)
     }
 }

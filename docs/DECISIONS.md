@@ -577,3 +577,63 @@ Before choosing, every field in `SPEC.md` §4.2 was checked individually against
 **Consequences:** Every future `ROADMAP.md` Deliverable building a ViewModel that needs single-`Project` data at construction (D9's `CueDetectionViewModel`, D10's `CueSheetEditorViewModel`, D11's `ReviewAndExportViewModel`) hits the same synchronous-factory-vs-async-fetch shape and should follow this same pattern rather than rediscovering it — placeholder/default value at construction, real value via an explicit `load()`-style method the View calls from `.task`, with an internal "populate once" guard on any single-owner field. `SetupViewModelTests` were updated to cover both the placeholder-at-construction state and the once-only-population guarantee directly (`test_load_calledASecondTime_refreshesDirectory_butNeverOverwritesSetupAgain`).
 
 **Full detail:** `Packages/ACFeatures/Sources/ACFeatures/CueSheetEditor/ViewModels/SetupViewModel.swift`; `Packages/ACFeatures/Sources/ACFeatures/CueSheetEditor/Views/SetupView.swift`; `AutoCue/DependencyContainer.swift`; `AutoCue/ProjectWindowView.swift`. `ROADMAP.md` D7.
+
+---
+
+## 2026-08-10 — Native AppKit-backed controls need `.environment(\.colorScheme:)` forced; `.foregroundStyle()` alone doesn't reach them
+
+**Decision:** Every primary-surface screen forces `.fixedAppearance(for: .primary)` (a new `ACDesignSystem` modifier wrapping `.environment(\.colorScheme, .light)`) at its root — `SetupView` and its sheets (`PartyPickerView`/`PersonEditorSheet`/`LabelEditorSheet`) are the first real users. Reversed-surface screens (Review & Export, D11) will use `.fixedAppearance(for: .reversed)` (`.dark`) once they exist.
+
+**Context:** The user's manual click-through of D7's Setup screen found ghost/placeholder text missing on every field, a `List` rendering unreadable black-on-black, a `Picker`'s selected value invisible, and (separately) stepper arrows on `DatePicker`. Rather than guess at fixes, each was reproduced and diagnosed with a real, live, windowed test app (a throwaway SwiftPM executable target using SwiftUI's own `App`/`WindowGroup`, launched and screenshotted the same way `docs/REVIEW.md`'s D6 entries already established for this session's Accessibility-permission-less environment) — `ImageRenderer` was tried first but cannot render `TextField`/`Picker`/`DatePicker` at all outside a live app window (confirmed: a plain `Text` renders fine via `ImageRenderer`, proving the harness itself works; every AppKit-backed control renders as a "content unsupported" placeholder glyph instead).
+
+The real, confirmed cause: this session's system is in Dark Mode, and several native-control rendering paths — a `TextField`'s `prompt:` placeholder, a `Picker`'s own selected-value label — follow the *system's actual* Dark/Light Mode setting internally, via AppKit, regardless of any SwiftUI-level `.foregroundStyle()` applied to them. This is different from, and not fixed by, the same techniques that already worked for D6's bugs (a `TextField`'s *typed* text, and a `List`'s background material) — those follow SwiftUI's own rendering path and respond correctly to `.foregroundStyle()`/`.scrollContentBackground(.hidden)`. Confirmed directly, not inferred: a manual-overlay placeholder (`ZStack` + conditional `Text`, bypassing `prompt:` entirely) rendered correctly; the exact same `GhostTextField` code, unchanged, rendered correctly too once `.environment(\.colorScheme, .light)` was applied to the screen — proving the mechanism, not just patching the symptom.
+
+**Alternatives Considered:**
+- **Rebuild `GhostTextField` to use a manual `ZStack` overlay instead of `TextField`'s `prompt:` parameter.** Considered and confirmed to work in isolation — but doesn't fix `Picker`'s selected-value display (which has no `prompt:`-equivalent escape hatch to work around at all), so it would only have solved one of the three affected control types, leaving Picker's blank-value bug as a separate, unexplained mystery. Rejected once the more general fix was found and confirmed to also fix the placeholder case.
+- **Patch each affected control individually** (e.g. hardcode a light-appearance override only on the specific `Picker`/`TextField` instances that were reported broken). Rejected — this is a real, general property of every native AppKit-backed control this fixed-appearance app will ever use, not a per-control quirk; a screen-level fix prevents the same bug recurring silently on the next Picker/DatePicker/ColorPicker/etc. a future Deliverable adds.
+- **Force `.environment(\.colorScheme:)` once, screen-wide** *(chosen)*.
+
+**Reason for Choice:** `CLAUDE.md`'s Visual Language already commits this app to a fixed, non-adaptive appearance — this decision doesn't change that commitment, it closes a real gap in how it was being enforced. D6 fixed the SwiftUI-level instances of "doesn't respect our fixed palette" (typed-text color, List background material) that its own manual click-through happened to exercise; D7's Setup screen was the first to exercise enough *native-control* surface area (Picker, DatePicker, TextField placeholders) to expose that a second, AppKit-level enforcement mechanism was still missing entirely.
+
+**Consequences:** Every future primary-surface screen (Cue Sheet Editor, D10) should apply `.fixedAppearance(for: .primary)` at its own root from the start, not rediscover this after a similar bug report — flagged here so it isn't. D6's `ProjectLibraryView`/`LibraryWindowView` don't currently use any `Picker`/`DatePicker`, so they're not retroactively broken by this finding, but would benefit from the same modifier if either is ever added there. `List`'s background material still needs its own separate `.scrollContentBackground(.hidden)` + explicit `.background()` fix regardless of this modifier — the two address genuinely different rendering paths that happened to share the same underlying "follows real system appearance" cause.
+
+**Full detail:** `Packages/ACDesignSystem/Sources/ACDesignSystem/Modifiers/FixedAppearanceModifier.swift`. `ROADMAP.md` D7.
+
+---
+
+## 2026-08-10 — `Person.intendedRole`: a real, app-internal schema addition for the collaborator-roster UI
+
+**Decision:** `Person` (SPEC.md §4.5) gains `intendedRole: PersonIntendedRole?` — `.composer`/`.arranger`/`.performer`, app-internal only, never exported. The Setup screen's right-holder directory (`ROADMAP.md` D7/T7.3) is reorganized into four buckets matching the original product brief — Komponist\*in, Arrangeur\*in, Interpret\*in, Label — each Person-bucket filtering `Project.people` by this field; the Label bucket lists `Project.labels` directly (no equivalent field needed, only one kind of `Label` entry exists).
+
+**Context:** The user's manual click-through of D7 found the single, generic `PartyPickerView` (built for `Setup.producer`/`.directorOrPrincipal`/`.declarant`) confusing when reused as the *only* place `Person`/`Label` creation happened at all — a director's name could appear in a list with no organizing structure. Diagnosis, reported back before implementing: `Setup`'s three `Party` fields legitimately share one directory per SPEC.md (no role restriction exists for Producer/Director/Declarant) — that part was correct, not a bug. The real gap was that no dedicated T7.3 roster screen had actually been built yet. Rebuilding the brief's four-bucket structure hit a real tension: `Person` has no role field (`CueRightHolderRole`, SPEC.md §4.4, is a real, exported, per-Cue assignment made later at D10) — so nothing existed for the three Person-buckets to filter by.
+
+**Alternatives Considered:**
+- **Four create-only shortcuts + one flat, unfiltered roster list.** Avoids any schema change — each bucket's "+ Add" always creates a new `Person` (no shared picker to contaminate), with a single flat list underneath showing everything, since that's genuinely all the data supports. Rejected by the project owner in favor of real per-bucket filtering.
+- **One shared roster list, four buckets as visual-only labels**, closer to a relabeled version of the original single-picker design. Rejected — reintroduces the original cross-contamination complaint, just cosmetically regrouped.
+- **Add `Person.intendedRole: PersonIntendedRole?`, app-internal, real per-bucket filtering** *(chosen)*.
+
+**Reason for Choice:** The project owner's explicit choice, confirmed before implementation began (this session presented the tension and three concrete options rather than guessing at one). A small, real, clearly-scoped schema addition that lets each bucket genuinely show only what was added under it — the actual thing "organizing collaborators into four buckets" requires, not an approximation of it.
+
+**Why this is safe against confusion with `CueRightHolderRole` (SPEC.md §4.4):** deliberately a smaller, distinctly-named case set (`PersonIntendedRole`, not reusing or extending `CueRightHolderRole`), with no `.author`/`.publisher` cases and no export path. Setting it never assigns or defaults a `Cue`'s `CueRightHolder.role` — that remains a real, explicit, per-Cue decision at D10, untouched by this field. `PersonEditorSheet` doesn't even expose it as an editable form field — it's set only by which roster bucket's "+ Add" button was used, and preserved unchanged on edit.
+
+**Consequences:** `PersonEntity`/`PersonMapper` (`ACPersistence`, already-shipped D4 code) needed a new `intendedRoleRawValue: String?` column and round-trip logic — `PersonMapper.toDomain` is now `throws` (an unknown raw value case), same pattern `SetupMapper`/`CueRightHolderMapper` already establish; `ProjectMapper.toDomain`'s people-mapping line needed `try` added accordingly. `Setup.producer`/`.directorOrPrincipal`/`.declarant`'s own picker (`PartyPickerView`) is unaffected — it still lists the *whole* directory, correctly, since no SPEC.md rule restricts who can fill those three roles.
+
+**Full detail:** `SPEC.md` §4.5. Implementation: `Packages/ACCore/Sources/ACCore/Models/Person.swift`; `Packages/ACPersistence/Sources/ACPersistence/{SwiftDataModels/PersonEntity,Mappers/PersonMapper}.swift`; `Packages/ACFeatures/Sources/ACFeatures/CueSheetEditor/Views/SetupView+CollaboratorsSection.swift`. `ROADMAP.md` D7.
+
+---
+
+## 2026-08-10 — `CreateProjectUseCase`'s `containsAdditionalUndeclaredWorks` default changes from `.notKnown` to `.no`
+
+**Decision:** A brand-new `Project`'s default `Setup.containsAdditionalUndeclaredWorks` (SPEC.md §4.2) is `.no`, not `.notKnown`.
+
+**Context:** The "`Setup`'s three `Party` fields become optional" entry (above, 2026-08-10) reasoned `.notKnown` was the more *honest* default for this field — a real, valid SUISA-form answer rather than a guessed one. That reasoning still holds as a statement about honesty; it was never a claim about which honest default is *better for the common case*. The project owner, during D7's manual click-through, asked for `.no` specifically as a workflow default: in practice, "no additional undeclared works" is the common case, and defaulting to it reduces friction on every new `Project` — the user can still change it when it's actually true that they don't know.
+
+**Alternatives Considered:**
+- **Keep `.notKnown`.** Rejected by the project owner — not on correctness grounds (both are equally "real" SUISA answers), on workflow-friction grounds.
+- **Default to `.no`** *(chosen)*.
+
+**Reason for Choice:** A legitimate product decision within the project owner's own authority — `.notKnown` and `.no` are both real, honest, non-fabricated answers to this field (neither is the "silently-satisfying placeholder" pattern rule 7/D2's acceptance criteria warn against), so this is a pure UX-default choice, not a re-opening of the earlier entry's actual argument.
+
+**Consequences:** `CreateProjectUseCaseTests`'s test for this default renamed/updated (`test_makeDefaultSetup_containsAdditionalUndeclaredWorksIsNo`). No other field's default changes; the earlier entry's field-by-field audit table is otherwise unaffected.
+
+**Full detail:** `Packages/ACCore/Sources/ACCore/UseCases/CreateProjectUseCase.swift`. `ROADMAP.md` D7.

@@ -47,10 +47,12 @@ public struct SetupView: View {
     public var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
-                if !viewModel.missingRequiredFields.isEmpty {
+                if viewModel.shouldShowMissingFieldsWarning {
                     missingFieldsBanner
                 }
                 productionSection
+                Divider().overlay(Theme.Colors.dividerPrimary)
+                collaboratorsSection
                 Divider().overlay(Theme.Colors.dividerPrimary)
                 broadcastSection
                 Divider().overlay(Theme.Colors.dividerPrimary)
@@ -59,6 +61,12 @@ public struct SetupView: View {
             .padding(Theme.Spacing.lg)
         }
         .background(Theme.Surface.primary.background)
+        // See FixedAppearanceModifier's doc comment: native controls
+        // (TextField's prompt, Picker's selected-value display, List's
+        // background) don't respect this app's fixed non-adaptive palette
+        // via .foregroundStyle() alone — confirmed via direct rendering
+        // tests, not assumed.
+        .fixedAppearance(for: .primary)
         .errorAlert(message: $viewModel.errorMessage)
         .task {
             await viewModel.load()

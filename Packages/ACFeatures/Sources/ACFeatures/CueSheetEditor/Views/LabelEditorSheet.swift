@@ -73,6 +73,7 @@ struct LabelEditorSheet: View {
         .padding(Theme.Spacing.lg)
         .frame(width: 360)
         .background(Theme.Surface.primary.background)
+        .fixedAppearance(for: .primary)
     }
 
     private var kindPicker: some View {

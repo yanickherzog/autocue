@@ -15,12 +15,13 @@ enum PersonMapper {
             addressCity: person.address?.city,
             addressCountry: person.address?.country,
             email: person.email,
-            swissPerformNumber: person.swissPerformNumber
+            swissPerformNumber: person.swissPerformNumber,
+            intendedRoleRawValue: person.intendedRole.map(rawValue(for:))
         )
     }
 
-    static func toDomain(_ entity: PersonEntity) -> Person {
-        Person(
+    static func toDomain(_ entity: PersonEntity) throws -> Person {
+        try Person(
             id: entity.id,
             firstName: entity.firstName,
             lastName: entity.lastName,
@@ -32,8 +33,26 @@ enum PersonMapper {
                 country: entity.addressCountry
             ),
             email: entity.email,
-            swissPerformNumber: entity.swissPerformNumber
+            swissPerformNumber: entity.swissPerformNumber,
+            intendedRole: entity.intendedRoleRawValue.map(intendedRole(from:))
         )
+    }
+
+    private static func rawValue(for value: PersonIntendedRole) -> String {
+        switch value {
+        case .composer: "composer"
+        case .arranger: "arranger"
+        case .performer: "performer"
+        }
+    }
+
+    private static func intendedRole(from rawValue: String) throws -> PersonIntendedRole {
+        switch rawValue {
+        case "composer": .composer
+        case "arranger": .arranger
+        case "performer": .performer
+        default: throw MappingError.unknownRawValue(type: "PersonIntendedRole", rawValue: rawValue)
+        }
     }
 
     /// `PostalAddress` is all-or-nothing at the domain level — reconstructed

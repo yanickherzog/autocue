@@ -122,6 +122,7 @@ extension SetupView {
                     ),
                     displayedComponents: .date
                 )
+                .datePickerStyle(.field)
                 .foregroundStyle(Theme.Surface.primary.foreground)
             }
         }

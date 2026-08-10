@@ -180,6 +180,67 @@ final class SetupViewModelTests: XCTestCase {
         XCTAssertTrue(viewModel.missingRequiredFields.contains(.producer))
     }
 
+    // MARK: - shouldShowMissingFieldsWarning
+
+    func test_shouldShowMissingFieldsWarning_falseOnAFreshUntouchedScreen_evenWithMissingFields() async {
+        // A brand-new Setup is expected to be empty — showing validation
+        // errors before the user has touched anything is confusing, not
+        // helpful.
+        let repository = InMemoryProjectRepository()
+        let project = Project(
+            name: "Reel One",
+            createdAt: Date(),
+            updatedAt: Date(),
+            setup: Setup(
+                title: "",
+                productionRuntime: .zero,
+                totalMusicRuntime: .zero,
+                productionYear: 0,
+                containsAdditionalUndeclaredWorks: .notKnown,
+                productionTypes: [],
+                declarationDate: Date()
+            )
+        )
+        try? await repository.create(project)
+        let viewModel = makeViewModel(project: project, repository: repository)
+        await viewModel.load()
+
+        XCTAssertFalse(viewModel.missingRequiredFields.isEmpty)
+        XCTAssertFalse(viewModel.shouldShowMissingFieldsWarning)
+    }
+
+    func test_shouldShowMissingFieldsWarning_trueOnceUserHasEditedAndFieldsAreStillMissing() async {
+        let project = makeProject(setup: makeSetup())
+        let repository = InMemoryProjectRepository(projects: [project])
+        let viewModel = makeViewModel(project: project, repository: repository)
+        await viewModel.load()
+
+        viewModel.updateDebounced(
+            Setup(
+                title: "",
+                productionRuntime: MediaDuration(seconds: 5400),
+                totalMusicRuntime: .zero,
+                productionYear: 2026,
+                containsAdditionalUndeclaredWorks: .notKnown,
+                productionTypes: [.documentaryFilm],
+                declarationDate: Date(timeIntervalSince1970: 0)
+            )
+        )
+
+        XCTAssertTrue(viewModel.shouldShowMissingFieldsWarning)
+    }
+
+    func test_shouldShowMissingFieldsWarning_falseOnceUserHasEditedAndNoFieldsAreMissing() async {
+        let project = makeProject(setup: makeSetup())
+        let repository = InMemoryProjectRepository(projects: [project])
+        let viewModel = makeViewModel(project: project, repository: repository)
+        await viewModel.load()
+
+        viewModel.updateDebounced(makeSetup(title: "A Different Title"))
+
+        XCTAssertFalse(viewModel.shouldShowMissingFieldsWarning)
+    }
+
     // MARK: - Errors
 
     func test_saveFailure_setsErrorMessage() async {
