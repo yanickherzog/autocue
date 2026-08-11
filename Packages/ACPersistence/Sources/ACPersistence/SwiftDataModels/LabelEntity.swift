@@ -24,6 +24,11 @@ final class LabelEntity {
     var addressCountry: String
     var ipiNumber: String?
     var kind: String?
+    /// `ACCore.Label.intendedForLabelRoster` — see that field's own doc
+    /// comment. A flat `Bool` column — unlike `Person.intendedRoles`
+    /// (`Set<PersonIntendedRole>`, stored as `[String]` raw values), this is
+    /// a single flag, not a set, so no raw-value encoding is needed.
+    var intendedForLabelRoster: Bool
 
     var project: ProjectEntity?
 
@@ -36,7 +41,8 @@ final class LabelEntity {
         addressCity: String,
         addressCountry: String,
         ipiNumber: String?,
-        kind: String?
+        kind: String?,
+        intendedForLabelRoster: Bool
     ) {
         self.id = id
         self.order = order
@@ -47,6 +53,7 @@ final class LabelEntity {
         self.addressCountry = addressCountry
         self.ipiNumber = ipiNumber
         self.kind = kind
+        self.intendedForLabelRoster = intendedForLabelRoster
         project = nil
     }
 }

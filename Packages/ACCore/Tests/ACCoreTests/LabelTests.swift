@@ -49,6 +49,16 @@ final class LabelTests: XCTestCase {
         XCTAssertNil(label.kind)
     }
 
+    func test_intendedForLabelRoster_defaultsToFalseWhenOmitted() {
+        let label = Label(name: "Universal Music Publishing", address: Self.sampleAddress)
+        XCTAssertFalse(label.intendedForLabelRoster)
+    }
+
+    func test_intendedForLabelRoster_isOverridableExplicitly() {
+        let label = Label(name: "Universal Music Publishing", address: Self.sampleAddress, intendedForLabelRoster: true)
+        XCTAssertTrue(label.intendedForLabelRoster)
+    }
+
     func test_omittedID_generatesAFreshUUIDPerInstance() {
         let first = Label(name: "Universal Music Publishing", address: Self.sampleAddress)
         let second = Label(name: "Universal Music Publishing", address: Self.sampleAddress)

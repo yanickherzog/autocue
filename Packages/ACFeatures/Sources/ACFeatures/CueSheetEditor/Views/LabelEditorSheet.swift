@@ -43,12 +43,34 @@ struct LabelEditorSheet: View {
     /// selection. `nil` (every other call site) preserves the original
     /// "Unspecified"-default, "Unspecified"-always-offered behavior.
     var newEntryDefaultKind: LabelKind?
+    /// Pre-fills a newly-created `Label`'s `intendedForLabelRoster` — `true`
+    /// only for the standalone Label roster bucket's own "+ New Company"
+    /// sub-sheet (`CollaboratorLabelBucket`); `false` (default) everywhere
+    /// else, including Producer*in's "+ New Company." Ignored when
+    /// `existing != nil` — editing preserves whatever the entry's flag
+    /// already is, the same "not something this form exposes for
+    /// reassignment directly" reasoning `PersonEditorSheet.initialIntendedRole`
+    /// already establishes for `Person`. See `ACCore.Label.intendedForLabelRoster`'s
+    /// own doc comment and `docs/DECISIONS.md`.
+    var initialIntendedForLabelRoster = false
     /// `async`, returning `SaveLabelResult` — see `PersonEditorSheet.onSave`'s
     /// doc comment for the full reasoning; same shape here.
     let onSave: (ACCore.Label) async -> SaveLabelResult?
     let onCancel: () -> Void
 
     @State private var name: String
+    /// **No UI field for this — deliberately.** Companies never carry an IPI
+    /// number under any circumstances (unlike `Person`, where IPI-Nr is only
+    /// conditionally hidden for the Producer*in/Regisseur*in creation flow
+    /// specifically) — confirmed directly, not assumed; SPEC.md §4.5's
+    /// original note describing this as a "publisher CAE/IPI number" was
+    /// itself the mistake, corrected in the same change this doc comment
+    /// belongs to. Still round-tripped unchanged on edit (seeded from
+    /// `existing`, written back as-is in `save()`), the same "hidden from
+    /// the form, never silently cleared" pattern already established for
+    /// `Person.swissPerformNumber`/`.address` (before this bucket's own
+    /// address addition) — an existing `Label` that already has a value here
+    /// from before this fix isn't silently wiped by opening this sheet.
     @State private var ipiNumber: String
     @State private var kind: LabelKind?
     @State private var street: String
@@ -63,6 +85,7 @@ struct LabelEditorSheet: View {
         displayName: String = "Label",
         showsKindField: Bool = true,
         newEntryDefaultKind: LabelKind? = nil,
+        initialIntendedForLabelRoster: Bool = false,
         onSave: @escaping (ACCore.Label) async -> SaveLabelResult?,
         onCancel: @escaping () -> Void
     ) {
@@ -70,6 +93,7 @@ struct LabelEditorSheet: View {
         self.displayName = displayName
         self.showsKindField = showsKindField
         self.newEntryDefaultKind = newEntryDefaultKind
+        self.initialIntendedForLabelRoster = initialIntendedForLabelRoster
         self.onSave = onSave
         self.onCancel = onCancel
         _name = State(initialValue: existing?.name ?? "")
@@ -101,7 +125,6 @@ struct LabelEditorSheet: View {
                 .foregroundStyle(Theme.Surface.primary.foreground)
 
             GhostTextField(placeholder: "Company Name", text: $name)
-            GhostTextField(placeholder: "IPI Number (optional)", text: $ipiNumber)
             if showsKindField {
                 kindPicker
             }
@@ -149,7 +172,8 @@ struct LabelEditorSheet: View {
             name: trimmedName,
             address: currentAddress,
             ipiNumber: ipiNumber.isEmpty ? nil : ipiNumber,
-            kind: kind
+            kind: kind,
+            intendedForLabelRoster: existing?.intendedForLabelRoster ?? initialIntendedForLabelRoster
         )
         isSaving = true
         Task {

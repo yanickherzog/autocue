@@ -50,7 +50,6 @@ public struct UpdateRightHolderDirectoryUseCase: Sendable {
     /// is written and `.duplicateName` is returned instead.
     @discardableResult
     public func savePerson(_ person: Person, in projectID: Project.ID) async throws -> SavePersonResult {
-        print("DIAG UpdateRightHolderDirectoryUseCase.savePerson ENTER projectID=\(projectID)")
         do {
             let updated = try await save(projectID: projectID) { project in
                 if let duplicate = Self.duplicate(of: person, among: project.people) {
@@ -58,14 +57,9 @@ public struct UpdateRightHolderDirectoryUseCase: Sendable {
                 }
                 return Self.upserting(person, into: project.people)
             } labels: { $0.labels }
-            print("DIAG UpdateRightHolderDirectoryUseCase.savePerson SUCCEEDED")
             return .saved(updated)
         } catch let error as DuplicatePersonNameError {
-            print("DIAG UpdateRightHolderDirectoryUseCase.savePerson DUPLICATE")
             return .duplicateName(existing: error.existing)
-        } catch {
-            print("DIAG UpdateRightHolderDirectoryUseCase.savePerson THREW OTHER \(error)")
-            throw error
         }
     }
 

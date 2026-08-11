@@ -18,13 +18,16 @@ import SwiftUI
 /// same "this window is the sole editor" reasoning `SetupViewModel`'s own
 /// doc comment already establishes.
 ///
-/// **Split across four files** (this one plus `SetupView+{Production,
-/// Broadcast,Declaration}Section.swift`) — the single-file version exceeded
-/// `CONTRIBUTING.md` §8's `SwiftLint` file-length/type-body-length
-/// thresholds (roughly two dozen §4.2 fields is genuinely a lot of form UI).
-/// Each extension file owns one of `SetupView`'s three logical sections; the
-/// shared binding helpers (`field`/`immediateField`), party-field plumbing,
-/// and `PartyField` stay here since all three sections use them.
+/// **Split across five files** (this one plus `SetupView+{Production,
+/// Collaborators,Series,Declaration}Section.swift`) — the single-file
+/// version exceeded `CONTRIBUTING.md` §8's `SwiftLint` file-length/
+/// type-body-length thresholds (roughly two dozen §4.2 fields is genuinely a
+/// lot of form UI). Each extension file owns one of `SetupView`'s logical
+/// sections; the shared binding helpers (`field`/`immediateField`),
+/// party-field plumbing, and `PartyField` stay here since every section
+/// uses them. Section order top-to-bottom (`body`, below): Production,
+/// Artists, Series & Broadcast (only when a series-type `ProductionType` is
+/// selected), Declaration.
 public struct SetupView: View {
     @Bindable var viewModel: SetupViewModel
     let directoryViewModel: RightHolderDirectoryViewModel
@@ -52,21 +55,19 @@ public struct SetupView: View {
         // real persisted value (`SetupViewModel`'s own doc comment explains
         // why the fetch can't happen synchronously here).
         _draft = State(initialValue: viewModel.setup)
-        _hasBroadcastDetails = State(initialValue: viewModel.setup.broadcastDetails != nil)
+        _hasBroadcastDetails = State(initialValue: !viewModel.setup.broadcastDetails.isEmpty)
     }
 
     public var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: Theme.Spacing.lg) {
-                if viewModel.shouldShowMissingFieldsWarning {
-                    missingFieldsBanner
-                }
                 productionSection
                 Divider().overlay(Theme.Colors.dividerPrimary)
                 collaboratorsSection
                 Divider().overlay(Theme.Colors.dividerPrimary)
-                broadcastSection
-                Divider().overlay(Theme.Colors.dividerPrimary)
+                if draft.productionTypes.contains(.series) {
+                    seriesSection
+                }
                 declarationSection
             }
             .padding(Theme.Spacing.lg)
@@ -85,7 +86,7 @@ public struct SetupView: View {
             // never again after this (see SetupView's own doc comment on
             // why `draft` isn't kept live-synced with `viewModel.setup`).
             draft = viewModel.setup
-            hasBroadcastDetails = viewModel.setup.broadcastDetails != nil
+            hasBroadcastDetails = !viewModel.setup.broadcastDetails.isEmpty
             await directoryViewModel.loadDirectory()
         }
         .onDisappear {
@@ -95,6 +96,7 @@ public struct SetupView: View {
         .sheet(item: $activePartyField) { partyField in
             PartyPickerView(
                 directoryViewModel: directoryViewModel,
+                isCurrentDirector: isDirector,
                 onSelect: { party in
                     apply(party, to: partyField)
                     activePartyField = nil
@@ -105,6 +107,7 @@ public struct SetupView: View {
         .sheet(item: $personBeingEdited) { person in
             PersonEditorSheet(
                 existing: person,
+                showsAddressField: isDirector(person.id),
                 onSave: { edited in
                     let result = await directoryViewModel.savePerson(edited)
                     if case .saved = result {
@@ -128,12 +131,6 @@ public struct SetupView: View {
                 onCancel: { labelBeingEdited = nil }
             )
         }
-    }
-
-    var missingFieldsBanner: some View {
-        Text("Missing: \(viewModel.missingRequiredFields.map(Self.displayName).joined(separator: ", "))")
-            .font(Theme.Typography.font(.regular, size: 12))
-            .foregroundStyle(Theme.Colors.accent)
     }
 
     // MARK: - Party fields
@@ -212,6 +209,26 @@ public struct SetupView: View {
     /// opens the matching edit sheet — a no-op if it fails to resolve (the
     /// dangling-reference edge case `resolvedDisplayName` already treats as
     /// "nothing to show," so there's nothing valid to edit either).
+    /// Whether `personID` currently holds the Regisseur*in role — i.e.
+    /// appears in `Setup.directorOrPrincipal`'s own live list, the real
+    /// source of truth for that relationship (`CLAUDE.md`, "Single Source of
+    /// Truth"). Drives `PersonEditorSheet.showsAddressField` for every edit
+    /// entry point on this screen, not just Regisseur*in's own bucket — a
+    /// person edited from *any* context (a roster row, Producer*in's list,
+    /// Declarant) still shows their address field correctly if they
+    /// currently hold this role, since the check is keyed off the actual
+    /// relationship rather than which picker happened to open the sheet.
+    /// Deliberately **not** driven by `Person.intendedRoles` — Regisseur*in
+    /// was never folded into that Person-only mechanism (`docs/DECISIONS.md`,
+    /// "`Setup.producer`/`.directorOrPrincipal` reversed... to `[Party]`"),
+    /// and mirroring `directorOrPrincipal` membership into a second,
+    /// separately-updated field would reintroduce exactly the
+    /// two-places-same-state problem `CLAUDE.md`'s "Single Source of Truth"
+    /// section warns against.
+    func isDirector(_ personID: Person.ID) -> Bool {
+        draft.directorOrPrincipal.contains(.person(personID))
+    }
+
     private func beginEditing(_ party: Party) {
         switch party {
         case let .person(id):
@@ -278,15 +295,54 @@ public struct SetupView: View {
             .foregroundStyle(Theme.Surface.primary.foreground)
     }
 
-    private static func displayName(_ field: SetupRequiredField) -> String {
-        switch field {
-        case .title: "Title"
+    /// A bold subtitle above a checkbox grid — styled identically to
+    /// `CollaboratorPersonBucket`'s own bucket-title Text
+    /// (`SetupView+CollaboratorsSection.swift`), reused here rather than
+    /// invented separately so "Genre"/"Verwertung" and "Komponist*in"/etc.
+    /// stay genuinely consistent, not just visually similar.
+    func checkboxGroupSubtitle(_ title: String) -> some View {
+        Text(title)
+            .font(Theme.Typography.font(.medium, size: 13))
+            .foregroundStyle(Theme.Surface.primary.foreground)
+    }
+}
+
+/// Display copy for a `SetupRequiredField` (`ACCore`) — presentation-layer
+/// UI strings for a Domain-layer type, so this lives in `ACFeatures`, not
+/// `ACCore` itself (`CLAUDE.md`'s dependency rule: Domain stays free of
+/// Presentation concerns). `public` — used both by `SetupView` (this
+/// package) and by `ProjectWindowView`'s (App target) gated-navigation
+/// alert, `ROADMAP.md` D7's later round — a single source of truth for this
+/// mapping, not two independently-maintained copies.
+public extension SetupRequiredField {
+    var displayName: String {
+        switch self {
+        case .title: "Project Title"
         case .producer: "Producer*in"
         case .directorOrPrincipal: "Regisseur*in"
         case .productionRuntime: "Production Runtime"
         case .productionYear: "Production Year"
         case .productionTypes: "Production Types"
         case .declarant: "Declarant"
+        }
+    }
+}
+
+/// Display copy for a `PartyReferenceLocation` (`ACCore`, SPEC.md §4.12) —
+/// presentation-layer UI strings for a Domain-layer type, same reasoning as
+/// `SetupRequiredField.displayName` above. `public` — used both by
+/// `SetupView+CollaboratorsSection`'s blocked-delete message (the roster
+/// buckets) and `PartyPickerView`'s own (`ROADMAP.md` D7's later round,
+/// adding delete directly to the picker's list) — one source of truth for
+/// this mapping, not two independently-maintained copies.
+public extension PartyReferenceLocation {
+    var displayName: String {
+        switch self {
+        case .setupProducer: "Producer*in"
+        case .setupDirectorOrPrincipal: "Regisseur*in"
+        case .setupDeclarant: "Declarant"
+        case .settingsDefaultDeclarant: "Default Declarant (Settings)"
+        case .cueRightHolder: "a Cue's right-holder list"
         }
     }
 }

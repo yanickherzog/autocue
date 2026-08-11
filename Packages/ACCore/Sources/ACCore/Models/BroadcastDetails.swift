@@ -12,10 +12,15 @@ import Foundation
 /// `PostalAddress`'s all-required fields being the exception, not the norm,
 /// for this project's value types.
 ///
+/// `Setup.broadcastDetails: [BroadcastDetails]` — one production can have
+/// more than one entry (different broadcasters/dates); see that field's own
+/// doc comment for the reversal from an originally single-instance scoping.
+///
 /// No `id` field: `BroadcastDetails` has no independent identity outside the
 /// one `Setup` that holds it, the same "no `id` field, no `Identifiable`"
 /// shape as `PostalAddress`/`Party` (`CLAUDE.md`, "Domain Model Value-Type
-/// Conformances").
+/// Conformances") — list identity for editing UI is by array position, the
+/// same as `Setup.producer`/`.directorOrPrincipal`.
 ///
 /// **Export-required-ness unresolved as of D7 planning** — see
 /// `ExploitationType`'s doc comment; the same flag applies here, confirm

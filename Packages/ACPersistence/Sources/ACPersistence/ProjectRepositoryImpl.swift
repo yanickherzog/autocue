@@ -129,22 +129,15 @@ public actor ProjectRepositoryImpl: ProjectRepository {
         id: Project.ID,
         transform: @escaping @Sendable (Project) throws -> Project
     ) async throws -> Project? {
-        print("DIAG ProjectRepositoryImpl.update(id:transform:) ENTER id=\(id)")
         let updated: Project? = try await enqueueWrite(for: id) { [modelContainer, writeHook] in
-            print("DIAG ProjectRepositoryImpl.update work() STARTED id=\(id)")
             await writeHook?(id)
             guard let current = try Self.fetchProject(id: id, in: modelContainer) else {
-                print("DIAG ProjectRepositoryImpl.update work() fetchProject returned nil id=\(id)")
                 return nil
             }
-            print("DIAG ProjectRepositoryImpl.update work() fetched current, calling transform")
             let updated = try transform(current)
-            print("DIAG ProjectRepositoryImpl.update work() transform returned, upserting")
             try Self.upsertProject(updated, in: modelContainer)
-            print("DIAG ProjectRepositoryImpl.update work() upsert DONE")
             return updated
         }
-        print("DIAG ProjectRepositoryImpl.update(id:transform:) EXIT updated=\(updated != nil)")
         if updated != nil {
             publishSnapshot()
         }

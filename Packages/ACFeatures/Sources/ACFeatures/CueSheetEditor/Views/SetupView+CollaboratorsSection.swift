@@ -49,19 +49,22 @@ extension SetupView {
                 title: "Komponist*in",
                 role: .composer,
                 emptyStateText: "No composers added yet.",
-                directoryViewModel: directoryViewModel
+                directoryViewModel: directoryViewModel,
+                isCurrentDirector: isDirector
             )
             CollaboratorPersonBucket(
                 title: "Arrangeur*in",
                 role: .arranger,
                 emptyStateText: "No arrangers added yet.",
-                directoryViewModel: directoryViewModel
+                directoryViewModel: directoryViewModel,
+                isCurrentDirector: isDirector
             )
             CollaboratorPersonBucket(
                 title: "Interpret*in",
                 role: .performer,
                 emptyStateText: "No performers added yet.",
-                directoryViewModel: directoryViewModel
+                directoryViewModel: directoryViewModel,
+                isCurrentDirector: isDirector
             )
             CollaboratorLabelBucket(directoryViewModel: directoryViewModel)
             MultiPartyFieldBucket(
@@ -72,6 +75,8 @@ extension SetupView {
                 scope: .any,
                 labelDisplayName: "Company",
                 newLabelDefaultKind: .productionCompany,
+                showsIPINumberFieldOnCreate: false,
+                isCurrentDirector: isDirector,
                 onAdd: { party in addParty(party, to: .producer) },
                 onRemove: { party in removeParty(party, from: .producer) }
             )
@@ -81,6 +86,9 @@ extension SetupView {
                 parties: draft.directorOrPrincipal,
                 directoryViewModel: directoryViewModel,
                 scope: .personOnly,
+                showsIPINumberFieldOnCreate: false,
+                showsAddressFieldOnCreate: true,
+                isCurrentDirector: isDirector,
                 onAdd: { party in addParty(party, to: .directorOrPrincipal) },
                 onRemove: { party in removeParty(party, from: .directorOrPrincipal) }
             )
@@ -117,7 +125,7 @@ extension SetupView {
                 guard let locations = directoryViewModel.blockedDeleteLocations, !locations.isEmpty else {
                     return nil
                 }
-                let described = locations.map(Self.describe).joined(separator: ", ")
+                let described = locations.map(\.displayName).joined(separator: ", ")
                 return "Can't delete — still referenced by: \(described)."
             },
             set: { newValue in
@@ -126,16 +134,6 @@ extension SetupView {
                 }
             }
         )
-    }
-
-    private static func describe(_ location: PartyReferenceLocation) -> String {
-        switch location {
-        case .setupProducer: "Producer*in"
-        case .setupDirectorOrPrincipal: "Regisseur*in"
-        case .setupDeclarant: "Declarant"
-        case .settingsDefaultDeclarant: "Default Declarant (Settings)"
-        case .cueRightHolder: "a Cue's right-holder list"
-        }
     }
 }
 
@@ -167,6 +165,15 @@ private struct CollaboratorPersonBucket: View {
     /// visual hint the row was intentionally blank rather than broken.
     let emptyStateText: String
     let directoryViewModel: RightHolderDirectoryViewModel
+    /// Forwarded to this bucket's own edit sheet and its "Select" picker's
+    /// pencil-edit sheet, as `PersonEditorSheet.showsAddressField` —
+    /// `SetupView.isDirector(_:)`, keyed off actual `Setup.directorOrPrincipal`
+    /// membership. A composer who's *also* currently a director still gets
+    /// their address field shown when edited from this bucket, not just from
+    /// Regisseur*in's own — the whole point of checking real role membership
+    /// instead of "which bucket opened this sheet." See
+    /// `PersonEditorSheet.showsAddressField`'s doc comment.
+    let isCurrentDirector: (Person.ID) -> Bool
 
     @State private var isShowingPicker = false
     /// Set to open that `Person` for editing — a roster row's name is
@@ -224,6 +231,7 @@ private struct CollaboratorPersonBucket: View {
                 directoryViewModel: directoryViewModel,
                 scope: .personOnly,
                 initialIntendedRole: role,
+                isCurrentDirector: isCurrentDirector,
                 onSelect: { party in
                     guard case let .person(personID) = party else { return }
                     isShowingPicker = false
@@ -235,6 +243,7 @@ private struct CollaboratorPersonBucket: View {
         .sheet(item: $personBeingEdited) { person in
             PersonEditorSheet(
                 existing: person,
+                showsAddressField: isCurrentDirector(person.id),
                 onSave: { edited in
                     let result = await directoryViewModel.savePerson(edited)
                     if case .saved = result {
@@ -284,83 +293,5 @@ private struct CollaboratorPersonBucket: View {
             swissPerformNumber: person.swissPerformNumber,
             intendedRoles: intendedRoles
         )
-    }
-}
-
-/// The Label bucket — no `intendedRoles` concept (there's only one kind of
-/// `Label` entry, so every `Label` in the directory already belongs here
-/// unconditionally); "Select" lets the user pick an existing `Label` (a
-/// no-op beyond dismissing, since it's already listed below) or create a
-/// brand-new one, via the same shared picker the Person buckets use, scoped
-/// to `.labelOnly`.
-private struct CollaboratorLabelBucket: View {
-    let directoryViewModel: RightHolderDirectoryViewModel
-
-    @State private var isShowingPicker = false
-    /// See `CollaboratorPersonBucket.personBeingEdited`'s doc comment — same
-    /// pattern, for `Label`.
-    @State private var labelBeingEdited: ACCore.Label?
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
-            HStack {
-                Text("Label")
-                    .font(Theme.Typography.font(.medium, size: 13))
-                    .foregroundStyle(Theme.Surface.primary.foreground)
-                Spacer()
-                Button("Select") { isShowingPicker = true }
-                    .buttonStyle(SharpButtonStyle(emphasis: .secondary, surface: .primary))
-            }
-            if directoryViewModel.labels.isEmpty {
-                Text("No labels added yet.")
-                    .font(Theme.Typography.font(.regular, size: 13))
-                    .foregroundStyle(Theme.Colors.ghostTextPrimary)
-            } else {
-                ForEach(directoryViewModel.labels) { label in
-                    HStack {
-                        Button {
-                            labelBeingEdited = label
-                        } label: {
-                            Text(label.name)
-                                .font(Theme.Typography.font(.regular, size: 13))
-                                .foregroundStyle(Theme.Surface.primary.foreground)
-                        }
-                        .buttonStyle(.plain)
-                        .pointingHandCursor()
-                        Spacer()
-                        Button {
-                            Task { await directoryViewModel.deleteLabel(label.id) }
-                        } label: {
-                            Text("✕").foregroundStyle(Theme.Surface.primary.foreground.opacity(0.6))
-                        }
-                        .buttonStyle(.plain)
-                        .pointingHandCursor()
-                    }
-                }
-            }
-        }
-        .sheet(isPresented: $isShowingPicker) {
-            PartyPickerView(
-                directoryViewModel: directoryViewModel,
-                scope: .labelOnly,
-                showsLabelKindField: false,
-                onSelect: { _ in isShowingPicker = false },
-                onCancel: { isShowingPicker = false }
-            )
-        }
-        .sheet(item: $labelBeingEdited) { label in
-            LabelEditorSheet(
-                existing: label,
-                showsKindField: false,
-                onSave: { edited in
-                    let result = await directoryViewModel.saveLabel(edited)
-                    if case .saved = result {
-                        labelBeingEdited = nil
-                    }
-                    return result
-                },
-                onCancel: { labelBeingEdited = nil }
-            )
-        }
     }
 }

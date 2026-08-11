@@ -57,16 +57,20 @@ final class SetupEntity {
     var beitrag: String?
     var exploitationTypesRawValues: [String]
     var otherExploitationTypeDescription: String?
-    /// Flat columns for `Setup.broadcastDetails: BroadcastDetails?`
-    /// ("Sendedatum"/"Sender, Sendung") — reconstructed as `nil` only when
-    /// all three are `nil`, otherwise a `BroadcastDetails` with whichever of
-    /// its own three sub-fields are present (`SetupMapper`). No single
-    /// "is this section active" boolean, since `BroadcastDetails` itself
-    /// allows partial data (a confirmed broadcaster before an exact date is
-    /// known).
-    var broadcaster: String?
-    var broadcastProgrammeName: String?
-    var broadcastDate: Date?
+    /// A production-level starting reference point for the editor UI's
+    /// timecode display (`ACCore.Setup.timecodeStart: Timecode?`) — stored as
+    /// a flat, optional offset, the same shape `CueEntity.startTimecodeOffsetSeconds`
+    /// already establishes for the same domain type.
+    var timecodeStartOffsetSeconds: Double?
+
+    /// `Setup.broadcastDetails: [BroadcastDetails]` ("Sendedatum"/"Sender,
+    /// Sendung") — a real to-many relationship, not flat columns on this
+    /// entity, since the domain field became a list (`docs/DECISIONS.md`).
+    /// Same pattern as `CueEntity.rightHolders`: children are built and
+    /// assigned by `SetupMapper`, back-references set only after that
+    /// assignment completes.
+    @Relationship(deleteRule: .cascade, inverse: \BroadcastDetailsEntity.setup)
+    var broadcastDetails: [BroadcastDetailsEntity]
 
     init(
         title: String,
@@ -99,9 +103,7 @@ final class SetupEntity {
         beitrag: String?,
         exploitationTypesRawValues: [String],
         otherExploitationTypeDescription: String?,
-        broadcaster: String?,
-        broadcastProgrammeName: String?,
-        broadcastDate: Date?
+        timecodeStartOffsetSeconds: Double?
     ) {
         self.title = title
         self.subtitle = subtitle
@@ -133,8 +135,7 @@ final class SetupEntity {
         self.beitrag = beitrag
         self.exploitationTypesRawValues = exploitationTypesRawValues
         self.otherExploitationTypeDescription = otherExploitationTypeDescription
-        self.broadcaster = broadcaster
-        self.broadcastProgrammeName = broadcastProgrammeName
-        self.broadcastDate = broadcastDate
+        self.timecodeStartOffsetSeconds = timecodeStartOffsetSeconds
+        broadcastDetails = []
     }
 }

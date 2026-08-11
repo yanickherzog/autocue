@@ -57,4 +57,14 @@ final class CreateProjectUseCaseTests: XCTestCase {
         let setup = CreateProjectUseCase.makeDefaultSetup(title: "Reel One", now: now)
         XCTAssertEqual(setup.declarationDate, now)
     }
+
+    func test_makeDefaultSetup_timecodeStartIsTheChosenNonNilDefault() {
+        let setup = CreateProjectUseCase.makeDefaultSetup(title: "Reel One", now: Date(timeIntervalSince1970: 0))
+        XCTAssertEqual(setup.timecodeStart, Timecode(offsetSeconds: 9 * 3600 + 59 * 60 + 52))
+    }
+
+    func test_makeDefaultSetup_broadcastDetailsStartsWithOneEmptyEntry_soSendedatumIsExpandedByDefault() {
+        let setup = CreateProjectUseCase.makeDefaultSetup(title: "Reel One", now: Date(timeIntervalSince1970: 0))
+        XCTAssertEqual(setup.broadcastDetails, [BroadcastDetails()])
+    }
 }

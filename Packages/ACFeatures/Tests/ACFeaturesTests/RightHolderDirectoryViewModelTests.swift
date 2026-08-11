@@ -59,6 +59,23 @@ final class RightHolderDirectoryViewModelTests: XCTestCase {
         XCTAssertEqual(viewModel.labels, [label])
     }
 
+    // MARK: - projectNotFound (ROADMAP.md D7, ProjectNotFoundError regression)
+
+    func test_loadDirectory_projectDoesNotExist_returnsWithoutHanging() async {
+        let repository = InMemoryProjectRepository(projects: [])
+        let viewModel = RightHolderDirectoryViewModel(
+            projectID: UUID(),
+            observeProjectsUseCase: ObserveProjectsUseCase(projectRepository: repository),
+            updateRightHolderDirectoryUseCase: UpdateRightHolderDirectoryUseCase(projectRepository: repository),
+            deleteRightHolderUseCase: DeleteRightHolderUseCase(projectRepository: repository)
+        )
+
+        await viewModel.loadDirectory()
+
+        XCTAssertEqual(viewModel.people, [])
+        XCTAssertEqual(viewModel.labels, [])
+    }
+
     func test_savePerson_addsToTheDirectoryAndPersists() async throws {
         let project = makeProject()
         let repository = InMemoryProjectRepository(projects: [project])

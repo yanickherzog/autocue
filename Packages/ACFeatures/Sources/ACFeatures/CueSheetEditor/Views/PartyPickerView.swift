@@ -58,6 +58,37 @@ struct PartyPickerView: View {
     /// Pre-fills a newly-created `Person`'s `intendedRoles` (passed through
     /// to `PersonEditorSheet`) — irrelevant when `scope == .labelOnly`.
     var initialIntendedRole: PersonIntendedRole?
+    /// Forwarded only to the "+ New Artist" creation sheet's
+    /// `PersonEditorSheet` — never to the pencil-icon edit sheet, which
+    /// always shows IPI-Nr regardless of this picker's own context. See
+    /// `PersonEditorSheet.showsIPINumberField`'s doc comment. Defaults to
+    /// `true` (unchanged everywhere except Producer*in/Regisseur*in's own
+    /// picker, via `MultiPartyFieldBucket`).
+    var showsIPINumberFieldOnCreate = true
+    /// Forwarded only to the "+ New Artist" creation sheet's
+    /// `PersonEditorSheet`, as `showsAddressField` — never to the
+    /// pencil-icon edit sheet. `true` only for Regisseur*in's picker (via
+    /// `MultiPartyFieldBucket`) — see `PersonEditorSheet.showsAddressField`'s
+    /// doc comment for the full reasoning. Defaults to `false` (unchanged
+    /// everywhere else, including Producer*in and Declarant).
+    var showsAddressFieldOnCreate = false
+    /// Drives `showsAddressField` for the pencil-icon **edit** sheet — keyed
+    /// off the person's actual current `Setup.directorOrPrincipal`
+    /// membership (`SetupView.isDirector(_:)`), not off which picker context
+    /// this happens to be. Defaults to "never" for a call site that doesn't
+    /// pass the real check (every picker instance that isn't reachable from
+    /// `SetupView` itself would otherwise have no way to answer this). See
+    /// `PersonEditorSheet.showsAddressField`'s doc comment for the full
+    /// reasoning behind checking actual role membership instead of creation
+    /// context for the edit path.
+    var isCurrentDirector: (Person.ID) -> Bool = { _ in false }
+    /// Forwarded only to the "+ New Label"/"+ New Company" creation sheet's
+    /// `LabelEditorSheet`, as `initialIntendedForLabelRoster` — `true` only
+    /// for the standalone Label roster bucket's own picker
+    /// (`CollaboratorLabelBucket`). Defaults to `false` (unchanged
+    /// everywhere else, including Producer*in's "+ New Company"). See
+    /// `ACCore.Label.intendedForLabelRoster`'s own doc comment.
+    var initialIntendedForLabelRoster = false
     let onSelect: (Party) -> Void
     let onCancel: () -> Void
 
@@ -111,16 +142,19 @@ struct PartyPickerView: View {
                                 onSelect(.person(person.id))
                             } onEdit: {
                                 personBeingEdited = person
+                            } onDelete: {
+                                Task { await directoryViewModel.deletePerson(person.id) }
                             }
                         }
                     }
                     if scope != .personOnly {
                         ForEach(directoryViewModel.labels) { label in
-                            pickerRow(title: label.name) {
-                                onSelect(.label(label.id))
-                            } onEdit: {
-                                labelBeingEdited = label
-                            }
+                            pickerRow(
+                                title: label.name,
+                                onSelect: { onSelect(.label(label.id)) },
+                                onEdit: { labelBeingEdited = label },
+                                onDelete: { Task { await directoryViewModel.deleteLabel(label.id) } }
+                            )
                         }
                     }
                 }
@@ -170,10 +204,10 @@ struct PartyPickerView: View {
             PersonEditorSheet(
                 existing: nil,
                 initialIntendedRole: initialIntendedRole,
+                showsIPINumberField: showsIPINumberFieldOnCreate,
+                showsAddressField: showsAddressFieldOnCreate,
                 onSave: { person in
-                    print("DIAG PartyPickerView onSave closure ENTER \(person.firstName) \(person.lastName)")
                     let result = await directoryViewModel.savePerson(person)
-                    print("DIAG PartyPickerView onSave closure got result \(String(describing: result))")
                     if case .saved = result {
                         isShowingNewPersonSheet = false
                         onSelect(.person(person.id))
@@ -189,6 +223,7 @@ struct PartyPickerView: View {
                 displayName: labelDisplayName,
                 showsKindField: showsLabelKindField,
                 newEntryDefaultKind: newLabelDefaultKind,
+                initialIntendedForLabelRoster: initialIntendedForLabelRoster,
                 onSave: { label in
                     let result = await directoryViewModel.saveLabel(label)
                     if case .saved = result {
@@ -203,6 +238,7 @@ struct PartyPickerView: View {
         .sheet(item: $personBeingEdited) { person in
             PersonEditorSheet(
                 existing: person,
+                showsAddressField: isCurrentDirector(person.id),
                 onSave: { edited in
                     let result = await directoryViewModel.savePerson(edited)
                     if case .saved = result {
@@ -229,14 +265,26 @@ struct PartyPickerView: View {
                 onCancel: { labelBeingEdited = nil }
             )
         }
+        .errorAlert(message: blockedDeleteMessage)
     }
 
     /// One directory entry's row: tapping the name selects it (`onSelect`,
     /// this View's own `action:` parameter name would collide with the
     /// label above, hence `onSelect`/`onEdit` here); the pencil icon opens
     /// it for editing instead, via a separate tap target so the two actions
-    /// can't be confused with each other.
-    private func pickerRow(title: String, onSelect: @escaping () -> Void, onEdit: @escaping () -> Void) -> some View {
+    /// can't be confused with each other. `onDelete`, when non-`nil`, adds a
+    /// trailing trash icon — real deletion via `DeleteRightHolderUseCase`
+    /// (through `RightHolderDirectoryViewModel.deletePerson`), the same
+    /// guarded delete already exercised elsewhere on this screen, not a new
+    /// mechanism. `nil` for `Label` rows — this round only adds the
+    /// affordance for `Person`, per the request; `CollaboratorLabelBucket`
+    /// already has its own delete action for `Label`, outside this picker.
+    private func pickerRow(
+        title: String,
+        onSelect: @escaping () -> Void,
+        onEdit: @escaping () -> Void,
+        onDelete: (() -> Void)?
+    ) -> some View {
         HStack {
             Button(action: onSelect) {
                 Text(title)
@@ -253,7 +301,39 @@ struct PartyPickerView: View {
             }
             .buttonStyle(.plain)
             .pointingHandCursor()
+
+            if let onDelete {
+                Button(action: onDelete) {
+                    Image(systemName: "trash")
+                        .foregroundStyle(Theme.Surface.primary.foreground.opacity(0.6))
+                }
+                .buttonStyle(.plain)
+                .pointingHandCursor()
+            }
         }
+    }
+
+    /// Surfaces `RightHolderDirectoryViewModel.blockedDeleteLocations`
+    /// (SPEC.md §4.12) as a readable message, the same pattern
+    /// `SetupView+CollaboratorsSection`'s own `blockedDeleteMessage` already
+    /// establishes for the roster buckets — reused here via
+    /// `PartyReferenceLocation.displayName` (`SetupView.swift`) rather than a
+    /// second, independently-maintained copy of the same switch.
+    private var blockedDeleteMessage: Binding<String?> {
+        Binding(
+            get: {
+                guard let locations = directoryViewModel.blockedDeleteLocations, !locations.isEmpty else {
+                    return nil
+                }
+                let described = locations.map(\.displayName).joined(separator: ", ")
+                return "Can't delete — still referenced by: \(described)."
+            },
+            set: { newValue in
+                if newValue == nil {
+                    directoryViewModel.clearBlockedDeleteLocations()
+                }
+            }
+        )
     }
 }
 

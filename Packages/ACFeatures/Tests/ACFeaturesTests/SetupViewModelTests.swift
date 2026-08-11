@@ -88,6 +88,45 @@ final class SetupViewModelTests: XCTestCase {
         XCTAssertEqual(viewModel.people, [newPerson])
     }
 
+    // MARK: - projectNotFound (ROADMAP.md D7, ProjectNotFoundError regression)
+
+    func test_load_projectDoesNotExist_setsProjectNotFound_andReturns() async {
+        let repository = InMemoryProjectRepository(projects: [])
+        let viewModel = SetupViewModel(
+            projectID: UUID(),
+            observeProjectsUseCase: ObserveProjectsUseCase(projectRepository: repository),
+            updateSetupUseCase: UpdateSetupUseCase(projectRepository: repository)
+        )
+
+        XCTAssertFalse(viewModel.projectNotFound)
+        await viewModel.load()
+
+        XCTAssertTrue(viewModel.projectNotFound)
+    }
+
+    func test_load_projectExists_neverSetsProjectNotFound() async {
+        let project = makeProject(setup: makeSetup())
+        let repository = InMemoryProjectRepository(projects: [project])
+        let viewModel = makeViewModel(project: project, repository: repository)
+
+        await viewModel.load()
+
+        XCTAssertFalse(viewModel.projectNotFound)
+    }
+
+    func test_load_projectDeletedAfterFirstLoad_thenLoadedAgain_setsProjectNotFound() async {
+        let project = makeProject(setup: makeSetup())
+        let repository = InMemoryProjectRepository(projects: [project])
+        let viewModel = makeViewModel(project: project, repository: repository)
+        await viewModel.load()
+        XCTAssertFalse(viewModel.projectNotFound)
+
+        try? await repository.delete(id: project.id)
+        await viewModel.load()
+
+        XCTAssertTrue(viewModel.projectNotFound)
+    }
+
     // MARK: - Save timing
 
     func test_updateDebounced_savesAfterTheDelay_notImmediately() async throws {
@@ -180,14 +219,13 @@ final class SetupViewModelTests: XCTestCase {
         XCTAssertTrue(viewModel.missingRequiredFields.contains(.producer))
     }
 
-    /// Regression: `SetupView` removed its only `productionRuntime` input
-    /// (moved to Review & Export, `ROADMAP.md` D11, not built yet) — this
-    /// screen's banner must not flag a field it now offers no way to fix,
-    /// which would otherwise be a permanently-unsatisfiable warning. The
-    /// underlying `Setup.missingRequiredFields` still legitimately flags it
-    /// (asserted directly here too, to prove this is a `SetupViewModel`-level
-    /// filter, not a change to the shared domain truth D11 will need).
-    func test_missingRequiredFields_excludesProductionRuntime_evenThoughSetupItselfStillFlagsIt() async {
+    /// Reversal: `SetupViewModel.missingRequiredFields` used to filter
+    /// `.productionRuntime` out while this screen had no input for it (moved
+    /// to Review & Export, D11, not built yet). `productionRuntime` ("Length
+    /// of Film / Production") was re-added to this screen, so the filter's
+    /// own premise no longer holds — this proves the reversal, not the
+    /// original exclusion. See `docs/DECISIONS.md`.
+    func test_missingRequiredFields_includesProductionRuntime_nowThatThisScreenHasAnInputForIt() async {
         let setup = Setup(
             title: "A Swiss Story",
             producer: [.person(UUID())],
@@ -207,69 +245,7 @@ final class SetupViewModelTests: XCTestCase {
         let viewModel = makeViewModel(project: project, repository: repository)
         await viewModel.load()
 
-        XCTAssertFalse(viewModel.missingRequiredFields.contains(.productionRuntime))
-        XCTAssertTrue(viewModel.missingRequiredFields.isEmpty)
-    }
-
-    // MARK: - shouldShowMissingFieldsWarning
-
-    func test_shouldShowMissingFieldsWarning_falseOnAFreshUntouchedScreen_evenWithMissingFields() async {
-        // A brand-new Setup is expected to be empty — showing validation
-        // errors before the user has touched anything is confusing, not
-        // helpful.
-        let repository = InMemoryProjectRepository()
-        let project = Project(
-            name: "Reel One",
-            createdAt: Date(),
-            updatedAt: Date(),
-            setup: Setup(
-                title: "",
-                productionRuntime: .zero,
-                totalMusicRuntime: .zero,
-                productionYear: 0,
-                containsAdditionalUndeclaredWorks: .notKnown,
-                productionTypes: [],
-                declarationDate: Date()
-            )
-        )
-        try? await repository.create(project)
-        let viewModel = makeViewModel(project: project, repository: repository)
-        await viewModel.load()
-
-        XCTAssertFalse(viewModel.missingRequiredFields.isEmpty)
-        XCTAssertFalse(viewModel.shouldShowMissingFieldsWarning)
-    }
-
-    func test_shouldShowMissingFieldsWarning_trueOnceUserHasEditedAndFieldsAreStillMissing() async {
-        let project = makeProject(setup: makeSetup())
-        let repository = InMemoryProjectRepository(projects: [project])
-        let viewModel = makeViewModel(project: project, repository: repository)
-        await viewModel.load()
-
-        viewModel.updateDebounced(
-            Setup(
-                title: "",
-                productionRuntime: MediaDuration(seconds: 5400),
-                totalMusicRuntime: .zero,
-                productionYear: 2026,
-                containsAdditionalUndeclaredWorks: .notKnown,
-                productionTypes: [.documentaryFilm],
-                declarationDate: Date(timeIntervalSince1970: 0)
-            )
-        )
-
-        XCTAssertTrue(viewModel.shouldShowMissingFieldsWarning)
-    }
-
-    func test_shouldShowMissingFieldsWarning_falseOnceUserHasEditedAndNoFieldsAreMissing() async {
-        let project = makeProject(setup: makeSetup())
-        let repository = InMemoryProjectRepository(projects: [project])
-        let viewModel = makeViewModel(project: project, repository: repository)
-        await viewModel.load()
-
-        viewModel.updateDebounced(makeSetup(title: "A Different Title"))
-
-        XCTAssertFalse(viewModel.shouldShowMissingFieldsWarning)
+        XCTAssertTrue(viewModel.missingRequiredFields.contains(.productionRuntime))
     }
 
     // MARK: - Errors

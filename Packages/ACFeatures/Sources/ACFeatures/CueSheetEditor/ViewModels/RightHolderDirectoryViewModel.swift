@@ -64,9 +64,21 @@ public final class RightHolderDirectoryViewModel {
 
     /// One-shot load/refresh from the live stream's next emission. Safe to
     /// call repeatedly (e.g. every time the directory sheet is presented).
+    ///
+    /// **Settles (returns) on the first snapshot either way — found or
+    /// not.** An earlier version `continue`d forever on a non-match, which
+    /// meant a call against a deleted/stale `projectID` (`ROADMAP.md` D7)
+    /// never returned at all — harmless to the render (this ViewModel's
+    /// state is `@Observable`-driven, not completion-driven), but a real,
+    /// silently-leaked `Task` all the same, and the same class of bug
+    /// `SetupViewModel.load()`'s own identical fix addresses; see that
+    /// method's doc comment. `SetupViewModel.projectNotFound` — not a
+    /// second flag here — is the one source of truth
+    /// `ProjectWindowView`'s defensive fallback gates on, since this
+    /// ViewModel is never the sole thing loaded for a window.
     public func loadDirectory() async {
         for await projects in observeProjectsUseCase.observeAll() {
-            guard let matched = projects.first(where: { $0.id == projectID }) else { continue }
+            guard let matched = projects.first(where: { $0.id == projectID }) else { break }
             people = matched.people
             labels = matched.labels
             break
@@ -87,16 +99,13 @@ public final class RightHolderDirectoryViewModel {
     /// behavior, silently creating a duplicate `Person`.
     @discardableResult
     public func savePerson(_ person: Person) async -> SavePersonResult? {
-        print("DIAG RightHolderDirectoryViewModel.savePerson ENTER \(person.firstName) \(person.lastName)")
         do {
             let result = try await updateRightHolderDirectoryUseCase.savePerson(person, in: projectID)
-            print("DIAG RightHolderDirectoryViewModel.savePerson got result \(result)")
             if case let .saved(updated) = result {
                 people = updated.people
             }
             return result
         } catch {
-            print("DIAG RightHolderDirectoryViewModel.savePerson THREW \(error)")
             errorMessage = error.localizedDescription
             return nil
         }

@@ -42,8 +42,7 @@ public struct CheckboxGridView<Item: Hashable>: View {
                         .font(Theme.Typography.font(.regular, size: 13))
                         .foregroundStyle(surface.foreground)
                 }
-                .toggleStyle(.checkbox)
-                .pointingHandCursor()
+                .toggleStyle(SharpCheckboxToggleStyle(surface: surface))
             }
         }
     }

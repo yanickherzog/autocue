@@ -48,6 +48,11 @@ struct ProjectWindowView: View {
     let registry: OpenProjectWindowRegistry
     let container: DependencyContainer
 
+    /// Closes this window — the "project no longer exists" fallback's own
+    /// action (`detail`, below). Standard SwiftUI dismissal for a
+    /// `WindowGroup(for:)`-scoped window on macOS.
+    @Environment(\.dismiss) private var dismiss
+
     @State private var appState = AppState()
     /// Retains the observer for this window's lifetime — see
     /// `ProjectWindowFrameSaver`'s doc comment for why this can't just be a
@@ -72,6 +77,13 @@ struct ProjectWindowView: View {
     // `init` call for the *same* identity reuses the already-stored value.
     @State private var setupViewModel: SetupViewModel
     @State private var rightHolderDirectoryViewModel: RightHolderDirectoryViewModel
+    /// Set when a tab switch to `.cueSheet`/`.reviewAndExport` is blocked
+    /// because `setupViewModel.missingRequiredFields` isn't empty at the
+    /// moment the user clicks that tab — see `sidebarButton`'s doc comment
+    /// for the full gating mechanism. Drives the same generic
+    /// `.errorAlert(message:)` modifier already used for real errors
+    /// elsewhere in this app, rather than a bespoke dialog type.
+    @State private var navigationBlockedMessage: String?
 
     init(projectID: Project.ID, registry: OpenProjectWindowRegistry, container: DependencyContainer) {
         self.projectID = projectID
@@ -113,6 +125,7 @@ struct ProjectWindowView: View {
         .onDisappear {
             registry.unregister(projectID)
         }
+        .errorAlert(message: $navigationBlockedMessage)
     }
 
     private var sidebar: some View {
@@ -127,8 +140,25 @@ struct ProjectWindowView: View {
         .background(Theme.Surface.primary.background)
     }
 
+    /// Intercepts the switch to `.cueSheet`/`.reviewAndExport` (never
+    /// `.setup` itself — that's exactly the screen to fix things on) in this
+    /// button's own action closure, before `appState.selectedSection` is
+    /// ever mutated — not an `.onChange(of: appState.selectedSection)`
+    /// revert-after-the-fact handler, which would visibly flash to the new
+    /// section and back. If `setupViewModel.missingRequiredFields` (already
+    /// live — `SetupViewModel.updateDebounced`/`.updateImmediately` update
+    /// `setup` synchronously, before the async save) isn't empty, the switch
+    /// is refused and `navigationBlockedMessage` drives the standard
+    /// `.errorAlert` instead; the user stays on Setup until every required
+    /// field is filled in. `ROADMAP.md` D7, later round.
     private func sidebarButton(_ section: ProjectSection, title: String) -> some View {
         Button {
+            let missing = setupViewModel.missingRequiredFields
+            guard section == .setup || missing.isEmpty else {
+                let fieldList = missing.map(\.displayName).joined(separator: ", ")
+                navigationBlockedMessage = "Complete these required Setup fields first: \(fieldList)."
+                return
+            }
             appState.selectedSection = section
         } label: {
             Text(title)
@@ -142,25 +172,52 @@ struct ProjectWindowView: View {
         )
     }
 
+    /// **Defensive fallback, gated ahead of the normal tab switch — covers
+    /// every tab uniformly, not just Setup.** `ROADMAP.md` D7's later round:
+    /// a second, independent layer of protection alongside `AutoCueApp`'s
+    /// `.id(projectID)` fix, kept regardless of whether that fix turns out
+    /// to fully eliminate every way a window could end up bound to a
+    /// nonexistent `Project.ID` — a bad failure mode (repeated
+    /// `ProjectNotFoundError` alerts on every interaction, an apparently
+    /// broken screen) is worth guarding against even for causes not yet
+    /// found. `setupViewModel.projectNotFound` is the one source of truth
+    /// this checks — `RightHolderDirectoryViewModel` doesn't get its own
+    /// separate flag (see that ViewModel's `loadDirectory()` doc comment).
+    /// `Cues`/`Review & Export` aren't real screens yet (D9–D11) but would
+    /// be exactly as broken as Setup if this window's `projectID` were
+    /// stale, so the check sits above the tab `switch` entirely rather than
+    /// being duplicated into three places.
     @ViewBuilder
     private var detail: some View {
-        switch appState.selectedSection {
-        case .setup:
-            SetupView(viewModel: setupViewModel, directoryViewModel: rightHolderDirectoryViewModel)
-        case .cueSheet:
+        if setupViewModel.projectNotFound {
             EmptyStateView(
-                systemImage: "list.bullet.rectangle",
-                title: "Cues",
-                message: "Coming in ROADMAP.md D9–D10.",
-                surface: .primary
+                systemImage: "questionmark.folder",
+                title: "Project No Longer Exists",
+                message: "This project may have been deleted from another window. Close this window and " +
+                    "return to the Library.",
+                actionTitle: "Close Window",
+                surface: .primary,
+                action: { dismiss() }
             )
-        case .reviewAndExport:
-            EmptyStateView(
-                systemImage: "checkmark.seal",
-                title: "Review & Export",
-                message: "Coming in ROADMAP.md D11.",
-                surface: .reversed
-            )
+        } else {
+            switch appState.selectedSection {
+            case .setup:
+                SetupView(viewModel: setupViewModel, directoryViewModel: rightHolderDirectoryViewModel)
+            case .cueSheet:
+                EmptyStateView(
+                    systemImage: "list.bullet.rectangle",
+                    title: "Cues",
+                    message: "Coming in ROADMAP.md D9–D10.",
+                    surface: .primary
+                )
+            case .reviewAndExport:
+                EmptyStateView(
+                    systemImage: "checkmark.seal",
+                    title: "Review & Export",
+                    message: "Coming in ROADMAP.md D11.",
+                    surface: .reversed
+                )
+            }
         }
     }
 }

@@ -50,7 +50,33 @@ public struct CreateProjectUseCase: Sendable {
             // Case's default; see docs/DECISIONS.md.
             containsAdditionalUndeclaredWorks: .no,
             productionTypes: [],
-            declarationDate: now
+            // 09:59:52:00 — a deliberately chosen, real starting value (not
+            // an arbitrary placeholder standing in for missing data, unlike
+            // `productionYear: 0`/`title`'s empty string above), set
+            // explicitly here rather than as `Setup`'s own initializer
+            // default. `timecodeFrameRate` uses the type-level-default
+            // approach instead (`Setup.init`'s `= .fps25`) because every
+            // caller of `Setup.init` should get that default, not just this
+            // one Use Case; `timecodeStart` stays honestly optional at the
+            // type level since not every `Setup` construction site (e.g. a
+            // test fixture) should be forced to adopt this specific
+            // production-editing-convenience value. `frames: 0` makes the
+            // exact `TimecodeFrameRate` irrelevant to this offset — see
+            // `Timecode`'s frame-rate-agnostic `offsetSeconds` storage.
+            timecodeStart: Timecode(offsetSeconds: 9 * 3600 + 59 * 60 + 52),
+            declarationDate: now,
+            // A single, entirely-empty `BroadcastDetails()` entry — not `[]`
+            // — so the Setup screen's "Sendedatum" section starts ticked/
+            // expanded, showing its fields immediately, rather than
+            // requiring the user to tick a checkbox first before they can
+            // even see what it's for. Still an honest "not yet entered"
+            // value: every one of the entry's own three sub-fields is `nil`,
+            // same as any other genuinely-untouched `BroadcastDetails`; only
+            // its *presence in the array* (not its content) is the default
+            // being set here, the same "real, deliberately-chosen starting
+            // value at the call site, not a fabricated placeholder" pattern
+            // `timecodeStart`, immediately above, already establishes.
+            broadcastDetails: [BroadcastDetails()]
         )
     }
 

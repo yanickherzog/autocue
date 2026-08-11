@@ -89,7 +89,8 @@ final class SetupTests: XCTestCase {
         XCTAssertNil(setup.otherAttachmentDescription)
         XCTAssertNil(setup.beitrag)
         XCTAssertNil(setup.otherExploitationTypeDescription)
-        XCTAssertNil(setup.broadcastDetails)
+        XCTAssertTrue(setup.broadcastDetails.isEmpty)
+        XCTAssertNil(setup.timecodeStart)
     }
 
     func test_exploitationTypes_defaultsToEmptySetWhenOmittedAtTheInitializer() {
@@ -126,6 +127,7 @@ final class SetupTests: XCTestCase {
         let declarant: Party
         let declarationDate: Date
         let broadcastDate: Date
+        let timecodeStart: Timecode
         let setup: Setup
 
         init() {
@@ -134,6 +136,7 @@ final class SetupTests: XCTestCase {
             declarant = .person(UUID())
             declarationDate = Date(timeIntervalSince1970: 1_000_000)
             broadcastDate = Date(timeIntervalSince1970: 1_100_000)
+            timecodeStart = Timecode(offsetSeconds: 35992)
             setup = Setup(
                 title: "A Swiss Story",
                 subtitle: "Part Two",
@@ -154,13 +157,14 @@ final class SetupTests: XCTestCase {
                 productionCountry: "Switzerland",
                 language: "de",
                 timecodeFrameRate: .fps25,
+                timecodeStart: timecodeStart,
                 declarant: declarant,
                 declarationDate: declarationDate,
                 attachmentTypes: [.score, .other],
                 otherAttachmentDescription: "Location release forms",
                 beitrag: "Bergwelt, Folge 5",
                 exploitationTypes: [.tv, .festival],
-                broadcastDetails: BroadcastDetails(broadcaster: "SRF", programmeName: "Bergwelt", date: broadcastDate)
+                broadcastDetails: [BroadcastDetails(broadcaster: "SRF", programmeName: "Bergwelt", date: broadcastDate)]
             )
         }
     }
@@ -194,6 +198,7 @@ final class SetupTests: XCTestCase {
         XCTAssertEqual(setup.productionCountry, "Switzerland")
         XCTAssertEqual(setup.language, "de")
         XCTAssertEqual(setup.timecodeFrameRate, .fps25)
+        XCTAssertEqual(setup.timecodeStart, fixture.timecodeStart)
         XCTAssertEqual(setup.declarant, fixture.declarant)
         XCTAssertEqual(setup.declarationDate, fixture.declarationDate)
         XCTAssertEqual(setup.attachmentTypes, [.score, .other])
@@ -202,7 +207,7 @@ final class SetupTests: XCTestCase {
         XCTAssertEqual(setup.exploitationTypes, [.tv, .festival])
         XCTAssertEqual(
             setup.broadcastDetails,
-            BroadcastDetails(broadcaster: "SRF", programmeName: "Bergwelt", date: fixture.broadcastDate)
+            [BroadcastDetails(broadcaster: "SRF", programmeName: "Bergwelt", date: fixture.broadcastDate)]
         )
     }
 

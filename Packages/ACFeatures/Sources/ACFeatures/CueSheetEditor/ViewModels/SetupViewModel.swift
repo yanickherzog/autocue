@@ -44,40 +44,31 @@ public final class SetupViewModel {
     public private(set) var people: [Person] = []
     public private(set) var labels: [Label] = []
     public var errorMessage: String?
+    /// Set once `load()` has confirmed, from a real repository snapshot,
+    /// that no `Project` with `projectID` exists — the defensive fallback
+    /// `ProjectWindowView` gates its entire `detail` area on (`ROADMAP.md`
+    /// D7). Second layer of protection alongside the `.id(projectID)` fix on
+    /// `AutoCueApp`'s `WindowGroup(for:)`: even if a window is ever bound to
+    /// a stale/nonexistent `Project.ID` for a reason not yet found, this
+    /// turns that into a clear, dedicated screen state instead of a silent
+    /// infinite load plus repeated `ProjectNotFoundError` alerts on every
+    /// save attempt. See `docs/DECISIONS.md`.
+    public private(set) var projectNotFound = false
 
-    /// **Deliberately excludes `.productionRuntime`, unlike the underlying
-    /// `Setup.missingRequiredFields` this otherwise forwards verbatim.**
-    /// `Setup.missingRequiredFields` itself must keep flagging it — that
-    /// property is explicitly shared with `ROADMAP.md` D11's future
-    /// `ValidateCueSheetUseCase` (its own doc comment), and production
-    /// runtime genuinely must be set before export. But this screen (D7,
-    /// later round) removed its only input for that field — it now belongs
-    /// on Review & Export, D11, not built yet — so surfacing it in *this*
-    /// screen's banner would be a permanently-unsatisfiable warning with no
-    /// way to act on it from here. Filtered at this Presentation-layer
-    /// property specifically so the shared domain-level truth stays intact
-    /// for D11 to use unfiltered.
+    /// Forwards `Setup.missingRequiredFields` verbatim — no filtering.
+    ///
+    /// **`.productionRuntime` was excluded here for a while, during the
+    /// period this screen had no input for it** (moved to Review & Export,
+    /// D11, not built yet) — surfacing it in the gated-navigation check
+    /// (`ProjectWindowView.sidebarButton`, `ROADMAP.md` D7) would have been a
+    /// permanently-unsatisfiable block with no way to act on it from here.
+    /// Reversed once `productionRuntime` ("Production Runtime") was
+    /// re-added to this screen — the exclusion's own premise no longer
+    /// holds, since there's now a real way to fix it from here. See
+    /// `docs/DECISIONS.md`.
     public var missingRequiredFields: [SetupRequiredField] {
-        setup.missingRequiredFields.filter { $0 != .productionRuntime }
+        setup.missingRequiredFields
     }
-
-    /// Gates the Setup screen's missing-field warning on the user having
-    /// actually touched something first. A brand-new `Setup` is *expected*
-    /// to be empty — showing validation errors before any interaction is
-    /// confusing, not helpful, and `ROADMAP.md` D7's own acceptance
-    /// criterion ("unmet-required fields are visibly indicated") doesn't
-    /// require showing them from the very first render, only that the
-    /// mechanism exists and works once there's something to validate
-    /// against. Full deferral to D11's export-readiness check would also
-    /// satisfy the letter of that criterion but not really its point — D7
-    /// is explicitly scoped to show this, just not prematurely.
-    public var shouldShowMissingFieldsWarning: Bool {
-        hasStartedEditing && !missingRequiredFields.isEmpty
-    }
-
-    /// Set by the first `updateDebounced`/`updateImmediately` call — see
-    /// `shouldShowMissingFieldsWarning`.
-    public private(set) var hasStartedEditing = false
 
     private let observeProjectsUseCase: ObserveProjectsUseCase
     private let updateSetupUseCase: UpdateSetupUseCase
@@ -122,9 +113,29 @@ public final class SetupViewModel {
     /// persisted value **only the first time** — safe to call repeatedly
     /// (e.g. every time the party picker sheet is presented) without ever
     /// clobbering an in-progress edit on a subsequent call.
+    ///
+    /// **Settles on the very first snapshot either way — found or not —
+    /// rather than looping until a match appears.** `observeAll()`'s stream
+    /// yields the true current state immediately on subscribe
+    /// (`ProjectRepositoryImpl.register`), so the first emission already
+    /// answers "does this `Project` genuinely exist right now" with
+    /// confidence; a `Project` this window is bound to isn't going to start
+    /// existing later on its own. An earlier version of this method
+    /// `continue`d forever on a non-match instead of ever setting
+    /// `projectNotFound` — which meant a window bound to a deleted/stale
+    /// `Project.ID` (`ROADMAP.md` D7) hung in a silent, permanently-loading
+    /// state, with the *only* visible symptom being repeated
+    /// `ProjectNotFoundError` alerts the moment the user tried to edit
+    /// anything. Breaking here immediately is also what makes this method
+    /// actually awaitable in a test against a `Project` that doesn't exist —
+    /// the old version would have hung a test calling it forever.
     public func load() async {
         for await projects in observeProjectsUseCase.observeAll() {
-            guard let project = projects.first(where: { $0.id == projectID }) else { continue }
+            guard let project = projects.first(where: { $0.id == projectID }) else {
+                projectNotFound = true
+                break
+            }
+            projectNotFound = false
             if !hasLoadedInitialSetup {
                 setup = project.setup
                 hasLoadedInitialSetup = true
@@ -136,7 +147,6 @@ public final class SetupViewModel {
     }
 
     public func updateDebounced(_ newSetup: Setup) {
-        hasStartedEditing = true
         setup = newSetup
         saveTask?.cancel()
         saveTask = Task { [weak self, debounceNanoseconds] in
@@ -147,7 +157,6 @@ public final class SetupViewModel {
     }
 
     public func updateImmediately(_ newSetup: Setup) async {
-        hasStartedEditing = true
         saveTask?.cancel()
         saveTask = nil
         setup = newSetup

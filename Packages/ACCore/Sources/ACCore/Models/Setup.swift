@@ -63,6 +63,20 @@ public struct Setup: Equatable, Sendable {
     public let productionCountry: String?
     public let language: String?
     public let timecodeFrameRate: TimecodeFrameRate
+    /// A production-level starting reference point for the editor UI's
+    /// timecode display — not on the physical SUISA form (app-internal only,
+    /// same reasoning as `timecodeFrameRate`), and a real field from the
+    /// original product brief found missing from this schema, the same way
+    /// `beitrag`/`exploitationTypes`/`broadcastDetails` were during D7
+    /// planning (`docs/DECISIONS.md`). Stays honestly optional at the type
+    /// level — `CreateProjectUseCase`, not this type's own initializer
+    /// default, is what gives a brand-new `Project` a real starting value
+    /// (`09:59:52:00`), the same "explicit at the call site, not baked into
+    /// the type" distinction `declarationDate`/`productionTypes` already
+    /// draw in that Use Case. Never exported — SUISA declarations don't
+    /// reference on-screen position, the same reasoning `Cue.startTimecode`
+    /// is never exported (§4.3).
+    public let timecodeStart: Timecode?
     public let declarant: Party?
     public let declarationDate: Date
     public let attachmentTypes: Set<AttachmentType>
@@ -77,7 +91,19 @@ public struct Setup: Equatable, Sendable {
     public let otherExploitationTypeDescription: String?
     /// "Sendedatum" — see `BroadcastDetails`. Deliberately separate from
     /// `knownOrFutureBroadcasts`, not a replacement for it.
-    public let broadcastDetails: BroadcastDetails?
+    ///
+    /// **`[BroadcastDetails]`, not `BroadcastDetails?` — one or more, not at
+    /// most one.** Originally scoped as a single optional instance when this
+    /// field was added during D7 planning, explicitly not a repeatable list
+    /// at the time; reversed once the Setup screen was actually being used
+    /// and a real need for multiple broadcasts (different broadcasters/dates
+    /// for the same production) became apparent — the same
+    /// scoped-then-reversed-once-real-usage-showed-a-need shape as
+    /// `producer`/`directorOrPrincipal`'s own `Party?` → `[Party]` reversal,
+    /// above. An empty array is this field's own honest "not yet entered"
+    /// value, the same pattern `producer`/`directorOrPrincipal` already
+    /// establish — no double-optional trick needed. See `docs/DECISIONS.md`.
+    public let broadcastDetails: [BroadcastDetails]
 
     public init(
         title: String,
@@ -100,6 +126,7 @@ public struct Setup: Equatable, Sendable {
         productionCountry: String? = nil,
         language: String? = nil,
         timecodeFrameRate: TimecodeFrameRate = .fps25,
+        timecodeStart: Timecode? = nil,
         declarant: Party? = nil,
         declarationDate: Date,
         attachmentTypes: Set<AttachmentType> = [],
@@ -107,7 +134,7 @@ public struct Setup: Equatable, Sendable {
         beitrag: String? = nil,
         exploitationTypes: Set<ExploitationType> = [],
         otherExploitationTypeDescription: String? = nil,
-        broadcastDetails: BroadcastDetails? = nil
+        broadcastDetails: [BroadcastDetails] = []
     ) {
         self.title = title
         self.subtitle = subtitle
@@ -137,6 +164,7 @@ public struct Setup: Equatable, Sendable {
         self.exploitationTypes = exploitationTypes
         self.otherExploitationTypeDescription = otherExploitationTypeDescription
         self.broadcastDetails = broadcastDetails
+        self.timecodeStart = timecodeStart
     }
 }
 
@@ -185,6 +213,7 @@ public extension Setup {
         productionCountry: String?? = nil,
         language: String?? = nil,
         timecodeFrameRate: TimecodeFrameRate? = nil,
+        timecodeStart: Timecode?? = nil,
         declarant: Party?? = nil,
         declarationDate: Date? = nil,
         attachmentTypes: Set<AttachmentType>? = nil,
@@ -192,7 +221,7 @@ public extension Setup {
         beitrag: String?? = nil,
         exploitationTypes: Set<ExploitationType>? = nil,
         otherExploitationTypeDescription: String?? = nil,
-        broadcastDetails: BroadcastDetails?? = nil
+        broadcastDetails: [BroadcastDetails]? = nil
     ) -> Setup {
         Setup(
             title: title ?? self.title,
@@ -216,6 +245,7 @@ public extension Setup {
             productionCountry: productionCountry ?? self.productionCountry,
             language: language ?? self.language,
             timecodeFrameRate: timecodeFrameRate ?? self.timecodeFrameRate,
+            timecodeStart: timecodeStart ?? self.timecodeStart,
             declarant: declarant ?? self.declarant,
             declarationDate: declarationDate ?? self.declarationDate,
             attachmentTypes: attachmentTypes ?? self.attachmentTypes,

@@ -245,17 +245,20 @@ enum ProjectFixture {
             productionCountry: "Switzerland",
             language: "de",
             timecodeFrameRate: .fps25,
+            timecodeStart: Timecode(offsetSeconds: 35992),
             declarant: .label(ids.declarantLabelID),
             declarationDate: Date(timeIntervalSince1970: 1_700_001_000),
             attachmentTypes: [.score, .other],
             otherAttachmentDescription: "Cue sheet appendix",
             beitrag: "Bergwelt, Folge 5",
             exploitationTypes: [.tv, .festival],
-            broadcastDetails: BroadcastDetails(
-                broadcaster: "SRF",
-                programmeName: "Bergwelt",
-                date: Date(timeIntervalSince1970: 1_700_002_000)
-            )
+            broadcastDetails: [
+                BroadcastDetails(
+                    broadcaster: "SRF",
+                    programmeName: "Bergwelt",
+                    date: Date(timeIntervalSince1970: 1_700_002_000)
+                ),
+            ]
         )
     }
 

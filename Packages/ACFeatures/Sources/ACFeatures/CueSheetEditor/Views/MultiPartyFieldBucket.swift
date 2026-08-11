@@ -73,6 +73,30 @@ struct MultiPartyFieldBucket: View {
     /// property's doc comment. `.productionCompany` for Producer*in;
     /// irrelevant when `scope == .personOnly` (Regisseur*in).
     var newLabelDefaultKind: LabelKind?
+    /// Forwarded to the picker's own `showsIPINumberFieldOnCreate` — `false`
+    /// for both Producer*in and Regisseur*in (IPI numbers are relevant to
+    /// SUISA-registered musicians, not companies/directors), unlike every
+    /// other `labelDisplayName`/`newLabelDefaultKind`-style parameter on
+    /// this type, which genuinely differs between the two. See
+    /// `PersonEditorSheet.showsIPINumberField`'s doc comment.
+    var showsIPINumberFieldOnCreate = true
+    /// Forwarded to the picker's own `showsAddressFieldOnCreate` — `true`
+    /// only for Regisseur*in. See `PersonEditorSheet.showsAddressField`'s
+    /// doc comment for the full reasoning (SUISA's real form requires a
+    /// complete address for both Producer and Director; Producer*in already
+    /// gets this via `Label.address`, since a Producer is almost always a
+    /// company — Regisseur*in is `Person`-only, so it's the one genuine
+    /// gap).
+    var showsAddressFieldOnCreate = false
+    /// Forwarded to the picker's own `isCurrentDirector`, and used directly
+    /// for this bucket's own edit sheet (`PersonEditorSheet.showsAddressField`)
+    /// — keyed off actual `Setup.directorOrPrincipal` membership, not off
+    /// which bucket this happens to be. Producer*in passes this too, not
+    /// just Regisseur*in: a person who's a producer *and* currently a
+    /// director should still see their address field when edited from
+    /// either bucket. See `PersonEditorSheet.showsAddressField`'s doc
+    /// comment.
+    var isCurrentDirector: (Person.ID) -> Bool = { _ in false }
     let onAdd: (Party) -> Void
     let onRemove: (Party) -> Void
 
@@ -127,6 +151,9 @@ struct MultiPartyFieldBucket: View {
                 scope: scope,
                 labelDisplayName: labelDisplayName,
                 newLabelDefaultKind: newLabelDefaultKind,
+                showsIPINumberFieldOnCreate: showsIPINumberFieldOnCreate,
+                showsAddressFieldOnCreate: showsAddressFieldOnCreate,
+                isCurrentDirector: isCurrentDirector,
                 onSelect: { party in
                     isShowingPicker = false
                     onAdd(party)
@@ -137,6 +164,7 @@ struct MultiPartyFieldBucket: View {
         .sheet(item: $personBeingEdited) { person in
             PersonEditorSheet(
                 existing: person,
+                showsAddressField: isCurrentDirector(person.id),
                 onSave: { edited in
                     let result = await directoryViewModel.savePerson(edited)
                     if case .saved = result {
