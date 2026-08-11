@@ -117,6 +117,33 @@ public actor ProjectRepositoryImpl: ProjectRepository {
         try await write(project)
     }
 
+    /// See `ProjectRepository`'s doc comment for why this exists alongside
+    /// plain `update(_:)`: `transform` runs against the truly-current
+    /// persisted `Project`, fetched and written back as one operation
+    /// serialized through the same `enqueueWrite`/`writeTails` mechanism as
+    /// every other write for `id` — closing the fetch-then-write race a
+    /// caller-side "fetch, build a modified copy, call `update(_:)`" pattern
+    /// is exposed to.
+    @discardableResult
+    public func update(
+        id: Project.ID,
+        transform: @escaping @Sendable (Project) throws -> Project
+    ) async throws -> Project? {
+        let updated: Project? = try await enqueueWrite(for: id) { [modelContainer, writeHook] in
+            await writeHook?(id)
+            guard let current = try Self.fetchProject(id: id, in: modelContainer) else {
+                return nil
+            }
+            let updated = try transform(current)
+            try Self.upsertProject(updated, in: modelContainer)
+            return updated
+        }
+        if updated != nil {
+            publishSnapshot()
+        }
+        return updated
+    }
+
     public func delete(id: Project.ID) async throws {
         try await enqueueWrite(for: id) { [modelContainer, writeHook] in
             await writeHook?(id)
@@ -147,12 +174,26 @@ public actor ProjectRepositoryImpl: ProjectRepository {
     }
 
     /// See the type's doc comment — the critical section below (reading
-    /// `writeTails[id]`, building `task`, writing `writeTails[id]` back) is
-    /// deliberately free of any `await`, which is what makes same-ID writes
-    /// serialize while different-ID writes don't block each other.
-    private func enqueueWrite(for id: Project.ID, work: @escaping @Sendable () async throws -> Void) async throws {
+    /// `writeTails[id]`, building `resultTask`/`chainTask`, writing
+    /// `writeTails[id]` back) is deliberately free of any `await`, which is
+    /// what makes same-ID writes serialize while different-ID writes don't
+    /// block each other.
+    ///
+    /// Generic over `work`'s return type so `update(id:transform:)` (which
+    /// needs to hand its caller back the `Project` it just persisted) can
+    /// share this exact same serialization mechanism with `write`/`delete`
+    /// (which don't need a return value) — one queue per `Project.ID`, not
+    /// two parallel ones that could reorder relative to each other.
+    /// `writeTails` itself stays typed `Task<Void, Error>`: `resultTask` is
+    /// the one callers actually await for a value, `chainTask` is a
+    /// `Void`-typed wrapper around it purely so it can still be stored/read
+    /// as `writeTails[id]` and chained onto by the next call for this `id`.
+    private func enqueueWrite<T: Sendable>(
+        for id: Project.ID,
+        work: @escaping @Sendable () async throws -> T
+    ) async throws -> T {
         let previousTail = writeTails[id]
-        let task = Task<Void, Error> {
+        let resultTask = Task<T, Error> {
             // `try?`, not `try`: a failed previous write must not poison
             // every write after it. Each write is a full upsert of a
             // complete `Project` value, never a delta on top of the previous
@@ -163,14 +204,17 @@ public actor ProjectRepositoryImpl: ProjectRepository {
             // for this ID rethrow before ever reaching its own `work()`,
             // permanently blocking persistence for that `Project` until
             // process relaunch. The failure itself still surfaces normally —
-            // to *its own* caller, via `task.value` below — this only stops
-            // it from also sabotaging writes that have nothing to do with it.
+            // to *its own* caller, via `resultTask.value` below — this only
+            // stops it from also sabotaging writes that have nothing to do
+            // with it.
             _ = try? await previousTail?.value
-            try await work()
+            return try await work()
         }
-        writeTails[id] = task
+        writeTails[id] = Task<Void, Error> {
+            _ = try? await resultTask.value
+        }
         // --- end of critical section; the await below may suspend freely ---
-        try await task.value
+        return try await resultTask.value
     }
 
     // MARK: - Subscribers

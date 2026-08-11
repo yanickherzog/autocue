@@ -48,13 +48,15 @@ enum PartyMapper {
 
     // MARK: - Optional overloads
 
-    /// `Setup.producer`/`.directorOrPrincipal`/`.declarant` are `Party?`, not
-    /// `Party` (see `docs/DECISIONS.md`, "`Setup`'s three `Party` fields
-    /// become optional") — a brand-new `Project` genuinely has none chosen
-    /// yet. These overloads let `SetupMapper` reuse the same encode/decode
-    /// logic above instead of duplicating it with `if let` at every call
-    /// site; `CueRightHolder.party` stays non-optional (always required) and
-    /// keeps using the non-optional overloads above unchanged.
+    /// `Setup.declarant` is `Party?`, not `Party` (see `docs/DECISIONS.md`,
+    /// "`Setup`'s three `Party` fields become optional") — a brand-new
+    /// `Project` genuinely has none chosen yet. `producer`/
+    /// `.directorOrPrincipal` used to share this shape too; now `[Party]`,
+    /// they use the array overloads below instead. These overloads let
+    /// `SetupMapper` reuse the same encode/decode logic above instead of
+    /// duplicating it with `if let` at every call site; `CueRightHolder.party`
+    /// stays non-optional (always required) and keeps using the non-optional
+    /// overloads above unchanged.
     static func kind(for party: Party?) -> String? {
         party.map(kind(for:))
     }
@@ -78,6 +80,35 @@ enum PartyMapper {
             throw MappingError.unknownPartyKind(kind ?? "<nil>")
         }
     }
+
+    // MARK: - Array overloads
+
+    /// `Setup.producer`/`.directorOrPrincipal` are `[Party]`, not `Party?`
+    /// (`ROADMAP.md` D7, later round — see `docs/DECISIONS.md`) — one or
+    /// more, order-preserving. Stored as two parallel `[String]`/`[UUID]`
+    /// columns (`SetupEntity.producerPartyKinds`/`.producerPartyIDs`, same
+    /// for director), the same "raw values as `[String]`" pattern
+    /// `SetupEntity` already uses for `Set<ProductionType>` et al., extended
+    /// with a second parallel array since a `Party` needs two components
+    /// (kind + id) per element, not one.
+    static func kinds(for parties: [Party]) -> [String] {
+        parties.map(kind(for:))
+    }
+
+    static func ids(for parties: [Party]) -> [UUID] {
+        parties.map(id(for:))
+    }
+
+    /// Throws if `kinds`/`ids` have different lengths (a corrupt pairing —
+    /// the two arrays are only ever written together, atomically, by
+    /// `kinds(for:)`/`ids(for:)` above) or if any individual pair fails to
+    /// decode (see the non-optional `party(kind:id:)` overload).
+    static func parties(kinds: [String], ids: [UUID]) throws -> [Party] {
+        guard kinds.count == ids.count else {
+            throw MappingError.mismatchedPartyArrayLengths(kindsCount: kinds.count, idsCount: ids.count)
+        }
+        return try zip(kinds, ids).map { try party(kind: $0, id: $1) }
+    }
 }
 
 enum MappingError: Error, Equatable {
@@ -85,4 +116,5 @@ enum MappingError: Error, Equatable {
     case unknownRawValue(type: String, rawValue: String)
     case corruptWaveformPeaksData(expectedCount: Int, actualMinCount: Int, actualMaxCount: Int)
     case missingRequiredChild(type: String, parentID: UUID)
+    case mismatchedPartyArrayLengths(kindsCount: Int, idsCount: Int)
 }

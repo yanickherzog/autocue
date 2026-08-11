@@ -9,14 +9,22 @@ import Foundation
 /// have no other caller and would be exactly the kind of premature
 /// convenience `CLAUDE.md` rule 7 warns against).
 enum SetupMapper {
+    /// `broadcastDetails` children are built fully, assigned to
+    /// `entity.broadcastDetails`, and only then have their `setup`
+    /// back-reference set in a separate loop — not interleaved with
+    /// construction. Same discipline `CueMapper.toEntity` documents in full:
+    /// writing a child's inverse-relationship property while the parent's
+    /// forward-relationship assignment is still in progress is a real Swift
+    /// exclusivity violation under SwiftData's macro-generated relationship
+    /// accessors, confirmed as a real crash cause on this project (D4/D7).
     static func toEntity(_ setup: Setup) -> SetupEntity {
-        SetupEntity(
+        let entity = SetupEntity(
             title: setup.title,
             subtitle: setup.subtitle,
-            producerPartyKind: PartyMapper.kind(for: setup.producer),
-            producerPartyID: PartyMapper.id(for: setup.producer),
-            directorPartyKind: PartyMapper.kind(for: setup.directorOrPrincipal),
-            directorPartyID: PartyMapper.id(for: setup.directorOrPrincipal),
+            producerPartyKinds: PartyMapper.kinds(for: setup.producer),
+            producerPartyIDs: PartyMapper.ids(for: setup.producer),
+            directorPartyKinds: PartyMapper.kinds(for: setup.directorOrPrincipal),
+            directorPartyIDs: PartyMapper.ids(for: setup.directorOrPrincipal),
             productionRuntimeSeconds: setup.productionRuntime.seconds,
             totalMusicRuntimeSeconds: setup.totalMusicRuntime.seconds,
             productionYear: setup.productionYear,
@@ -41,18 +49,31 @@ enum SetupMapper {
             beitrag: setup.beitrag,
             exploitationTypesRawValues: setup.exploitationTypes.map(rawValue(for:)).sorted(),
             otherExploitationTypeDescription: setup.otherExploitationTypeDescription,
-            broadcaster: setup.broadcastDetails?.broadcaster,
-            broadcastProgrammeName: setup.broadcastDetails?.programmeName,
-            broadcastDate: setup.broadcastDetails?.date
+            timecodeStartOffsetSeconds: setup.timecodeStart?.offsetSeconds
         )
+
+        let broadcastDetailsEntities = setup.broadcastDetails.enumerated().map { index, details in
+            BroadcastDetailsEntity(
+                order: index,
+                broadcaster: details.broadcaster,
+                programmeName: details.programmeName,
+                date: details.date
+            )
+        }
+        entity.broadcastDetails = broadcastDetailsEntities
+        for broadcastDetailsEntity in broadcastDetailsEntities {
+            broadcastDetailsEntity.setup = entity
+        }
+
+        return entity
     }
 
     static func toDomain(_ entity: SetupEntity) throws -> Setup {
         try Setup(
             title: entity.title,
             subtitle: entity.subtitle,
-            producer: PartyMapper.party(kind: entity.producerPartyKind, id: entity.producerPartyID),
-            directorOrPrincipal: PartyMapper.party(kind: entity.directorPartyKind, id: entity.directorPartyID),
+            producer: PartyMapper.parties(kinds: entity.producerPartyKinds, ids: entity.producerPartyIDs),
+            directorOrPrincipal: PartyMapper.parties(kinds: entity.directorPartyKinds, ids: entity.directorPartyIDs),
             productionRuntime: MediaDuration(seconds: entity.productionRuntimeSeconds),
             totalMusicRuntime: MediaDuration(seconds: entity.totalMusicRuntimeSeconds),
             productionYear: entity.productionYear,
@@ -71,6 +92,7 @@ enum SetupMapper {
             productionCountry: entity.productionCountry,
             language: entity.language,
             timecodeFrameRate: timecodeFrameRate(from: entity.timecodeFrameRate),
+            timecodeStart: entity.timecodeStartOffsetSeconds.map(Timecode.init(offsetSeconds:)),
             declarant: PartyMapper.party(kind: entity.declarantPartyKind, id: entity.declarantPartyID),
             declarationDate: entity.declarationDate,
             attachmentTypes: Set(entity.attachmentTypesRawValues.map(attachmentType(from:))),
@@ -78,26 +100,10 @@ enum SetupMapper {
             beitrag: entity.beitrag,
             exploitationTypes: Set(entity.exploitationTypesRawValues.map(exploitationType(from:))),
             otherExploitationTypeDescription: entity.otherExploitationTypeDescription,
-            broadcastDetails: broadcastDetails(
-                broadcaster: entity.broadcaster,
-                programmeName: entity.broadcastProgrammeName,
-                date: entity.broadcastDate
-            )
+            broadcastDetails: entity.broadcastDetails
+                .sorted { $0.order < $1.order }
+                .map { BroadcastDetails(broadcaster: $0.broadcaster, programmeName: $0.programmeName, date: $0.date) }
         )
-    }
-
-    // MARK: - BroadcastDetails
-
-    /// `nil` only when all three flat columns are `nil` — otherwise a
-    /// `BroadcastDetails` carrying whichever of its own three sub-fields are
-    /// actually present, since `BroadcastDetails` itself allows partial data.
-    private static func broadcastDetails(
-        broadcaster: String?,
-        programmeName: String?,
-        date: Date?
-    ) -> BroadcastDetails? {
-        guard broadcaster != nil || programmeName != nil || date != nil else { return nil }
-        return BroadcastDetails(broadcaster: broadcaster, programmeName: programmeName, date: date)
     }
 
     // MARK: - AdditionalWorksDeclaration

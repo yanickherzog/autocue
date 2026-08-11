@@ -13,7 +13,13 @@ import Foundation
 /// `Label` don't exist yet (ROADMAP.md D2). Once they do, both will declare
 /// `id: UUID` (SPEC.md §4.5), so `Person.ID`/`Label.ID` resolve to the exact
 /// same concrete type already used here; no change needed once D2 lands.
-public enum Party: Equatable, Sendable {
+///
+/// `Hashable`, per `CLAUDE.md`'s conformance policy ("added only where a
+/// type is genuinely used as a `Set` element, ... or needs SwiftUI list/
+/// selection identity") — `Setup.producer`/`.directorOrPrincipal` becoming
+/// `[Party]` (`ROADMAP.md` D7) needs `ForEach(parties, id: \.self)` identity
+/// in `SetupView`'s multi-entry rows; see `docs/DECISIONS.md`.
+public enum Party: Equatable, Hashable, Sendable {
     case person(UUID)
     case label(UUID)
 }

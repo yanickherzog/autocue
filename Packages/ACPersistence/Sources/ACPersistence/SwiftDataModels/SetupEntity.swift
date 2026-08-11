@@ -5,17 +5,21 @@ import SwiftData
 /// — matches the domain type, which has no independent identity outside its
 /// owning `Project` (1:1).
 ///
-/// `Party`-typed fields (`producer`/`directorOrPrincipal`/`declarant`) are
-/// stored as a flat kind+id pair each, never as a SwiftData `@Relationship`
-/// — see `PartyMapper`'s doc comment for why: `DeleteRightHolderUseCase`'s
-/// delete guard (ACCore, D3) already assumes bare-UUID references with no
-/// cascade/nullify behind them, and a real `@Relationship` here would
-/// silently reintroduce exactly that behavior behind the guard's back.
+/// `declarant` (`Party?`) is stored as a flat kind+id pair, never as a
+/// SwiftData `@Relationship` — see `PartyMapper`'s doc comment for why:
+/// `DeleteRightHolderUseCase`'s delete guard (ACCore, D3) already assumes
+/// bare-UUID references with no cascade/nullify behind them, and a real
+/// `@Relationship` here would silently reintroduce exactly that behavior
+/// behind the guard's back. The pair is optional (`String?`/`UUID?`),
+/// matching `ACCore.Setup.declarant: Party?` — a brand-new `Project`
+/// genuinely has none chosen yet (`docs/DECISIONS.md`, "`Setup`'s three
+/// `Party` fields become optional").
 ///
-/// Each pair is optional (`String?`/`UUID?`), matching `ACCore.Setup`'s
-/// `Party?` fields — a brand-new `Project` genuinely has none of these
-/// chosen yet (`docs/DECISIONS.md`, "`Setup`'s three `Party` fields become
-/// optional").
+/// `producer`/`directorOrPrincipal` (`ACCore.Setup`'s `[Party]` fields,
+/// `ROADMAP.md` D7 later round) are stored the same bare-reference way, just
+/// as two *parallel* arrays each (`producerPartyKinds`/`producerPartyIDs`,
+/// same for director) instead of one scalar pair — same reasoning against a
+/// real `@Relationship`, extended to a list. See `docs/DECISIONS.md`.
 ///
 /// `Set<ProductionType>`/`Set<AttachmentType>` are stored as `[String]` raw
 /// values (order-independent by construction — reconstructed as a `Set` in
@@ -25,10 +29,10 @@ import SwiftData
 final class SetupEntity {
     var title: String
     var subtitle: String?
-    var producerPartyKind: String?
-    var producerPartyID: UUID?
-    var directorPartyKind: String?
-    var directorPartyID: UUID?
+    var producerPartyKinds: [String]
+    var producerPartyIDs: [UUID]
+    var directorPartyKinds: [String]
+    var directorPartyIDs: [UUID]
     var productionRuntimeSeconds: Double
     var totalMusicRuntimeSeconds: Double
     var productionYear: Int
@@ -53,24 +57,28 @@ final class SetupEntity {
     var beitrag: String?
     var exploitationTypesRawValues: [String]
     var otherExploitationTypeDescription: String?
-    /// Flat columns for `Setup.broadcastDetails: BroadcastDetails?`
-    /// ("Sendedatum"/"Sender, Sendung") — reconstructed as `nil` only when
-    /// all three are `nil`, otherwise a `BroadcastDetails` with whichever of
-    /// its own three sub-fields are present (`SetupMapper`). No single
-    /// "is this section active" boolean, since `BroadcastDetails` itself
-    /// allows partial data (a confirmed broadcaster before an exact date is
-    /// known).
-    var broadcaster: String?
-    var broadcastProgrammeName: String?
-    var broadcastDate: Date?
+    /// A production-level starting reference point for the editor UI's
+    /// timecode display (`ACCore.Setup.timecodeStart: Timecode?`) — stored as
+    /// a flat, optional offset, the same shape `CueEntity.startTimecodeOffsetSeconds`
+    /// already establishes for the same domain type.
+    var timecodeStartOffsetSeconds: Double?
+
+    /// `Setup.broadcastDetails: [BroadcastDetails]` ("Sendedatum"/"Sender,
+    /// Sendung") — a real to-many relationship, not flat columns on this
+    /// entity, since the domain field became a list (`docs/DECISIONS.md`).
+    /// Same pattern as `CueEntity.rightHolders`: children are built and
+    /// assigned by `SetupMapper`, back-references set only after that
+    /// assignment completes.
+    @Relationship(deleteRule: .cascade, inverse: \BroadcastDetailsEntity.setup)
+    var broadcastDetails: [BroadcastDetailsEntity]
 
     init(
         title: String,
         subtitle: String?,
-        producerPartyKind: String?,
-        producerPartyID: UUID?,
-        directorPartyKind: String?,
-        directorPartyID: UUID?,
+        producerPartyKinds: [String],
+        producerPartyIDs: [UUID],
+        directorPartyKinds: [String],
+        directorPartyIDs: [UUID],
         productionRuntimeSeconds: Double,
         totalMusicRuntimeSeconds: Double,
         productionYear: Int,
@@ -95,16 +103,14 @@ final class SetupEntity {
         beitrag: String?,
         exploitationTypesRawValues: [String],
         otherExploitationTypeDescription: String?,
-        broadcaster: String?,
-        broadcastProgrammeName: String?,
-        broadcastDate: Date?
+        timecodeStartOffsetSeconds: Double?
     ) {
         self.title = title
         self.subtitle = subtitle
-        self.producerPartyKind = producerPartyKind
-        self.producerPartyID = producerPartyID
-        self.directorPartyKind = directorPartyKind
-        self.directorPartyID = directorPartyID
+        self.producerPartyKinds = producerPartyKinds
+        self.producerPartyIDs = producerPartyIDs
+        self.directorPartyKinds = directorPartyKinds
+        self.directorPartyIDs = directorPartyIDs
         self.productionRuntimeSeconds = productionRuntimeSeconds
         self.totalMusicRuntimeSeconds = totalMusicRuntimeSeconds
         self.productionYear = productionYear
@@ -129,8 +135,7 @@ final class SetupEntity {
         self.beitrag = beitrag
         self.exploitationTypesRawValues = exploitationTypesRawValues
         self.otherExploitationTypeDescription = otherExploitationTypeDescription
-        self.broadcaster = broadcaster
-        self.broadcastProgrammeName = broadcastProgrammeName
-        self.broadcastDate = broadcastDate
+        self.timecodeStartOffsetSeconds = timecodeStartOffsetSeconds
+        broadcastDetails = []
     }
 }

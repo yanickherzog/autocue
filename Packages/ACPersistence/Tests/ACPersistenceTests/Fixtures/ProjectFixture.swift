@@ -49,8 +49,8 @@ enum ProjectFixture {
             updatedAt: Date(timeIntervalSince1970: 1_699_000_000),
             setup: Setup(
                 title: "Minimal",
-                producer: .person(producerID),
-                directorOrPrincipal: .person(producerID),
+                producer: [.person(producerID)],
+                directorOrPrincipal: [.person(producerID)],
                 productionRuntime: MediaDuration(seconds: 60),
                 totalMusicRuntime: .zero,
                 productionYear: 2026,
@@ -227,8 +227,8 @@ enum ProjectFixture {
         Setup(
             title: "The Great Swiss Film",
             subtitle: "A Documentary",
-            producer: .person(ids.producerPersonID),
-            directorOrPrincipal: .person(ids.directorPersonID),
+            producer: [.person(ids.producerPersonID)],
+            directorOrPrincipal: [.person(ids.directorPersonID)],
             productionRuntime: MediaDuration(seconds: 5400.0),
             totalMusicRuntime: MediaDuration(seconds: 215.5),
             productionYear: 2026,
@@ -245,17 +245,20 @@ enum ProjectFixture {
             productionCountry: "Switzerland",
             language: "de",
             timecodeFrameRate: .fps25,
+            timecodeStart: Timecode(offsetSeconds: 35992),
             declarant: .label(ids.declarantLabelID),
             declarationDate: Date(timeIntervalSince1970: 1_700_001_000),
             attachmentTypes: [.score, .other],
             otherAttachmentDescription: "Cue sheet appendix",
             beitrag: "Bergwelt, Folge 5",
             exploitationTypes: [.tv, .festival],
-            broadcastDetails: BroadcastDetails(
-                broadcaster: "SRF",
-                programmeName: "Bergwelt",
-                date: Date(timeIntervalSince1970: 1_700_002_000)
-            )
+            broadcastDetails: [
+                BroadcastDetails(
+                    broadcaster: "SRF",
+                    programmeName: "Bergwelt",
+                    date: Date(timeIntervalSince1970: 1_700_002_000)
+                ),
+            ]
         )
     }
 

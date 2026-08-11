@@ -8,23 +8,45 @@ import Foundation
 /// shape as `PostalAddress`/`Party` (`CLAUDE.md`, "Domain Model Value-Type
 /// Conformances").
 ///
-/// `producer`/`directorOrPrincipal`/`declarant` are `Party?`, not `Party`,
-/// despite being required-for-export SUISA fields (SPEC.md §4.2). `Party` has
-/// no case representing "none" — unlike a `String` (which can honestly start
-/// as `""`) or a `Set` (which can honestly start as `[]`), there is no value
-/// of `Party` that means "not yet chosen." A brand-new `Project` (`ROADMAP.md`
-/// D6/T6.2) has no `Person`/`Label` in its directory yet to reference, so
-/// these three fields must be representable as genuinely absent rather than
-/// forced to reference a fabricated placeholder right-holder. Their
-/// export-required-ness is enforced where every other required-but-absent
-/// field in this type already is: `ValidateCueSheetUseCase` (`ROADMAP.md`
+/// `declarant` is `Party?`, not `Party`, despite being a required-for-export
+/// SUISA field (SPEC.md §4.2). `Party` has no case representing "none" —
+/// unlike a `String` (which can honestly start as `""`) or a `Set`/`Array`
+/// (which can honestly start empty), there is no value of `Party` that means
+/// "not yet chosen." A brand-new `Project` (`ROADMAP.md` D6/T6.2) has no
+/// `Person`/`Label` in its directory yet to reference, so this field must be
+/// representable as genuinely absent rather than forced to reference a
+/// fabricated placeholder right-holder.
+///
+/// **`producer`/`directorOrPrincipal` are `[Party]`, not `Party?` — one or
+/// more, not at most one.** An earlier revision of this type had them as
+/// `Party?`, matching `declarant`'s shape; reversed, deliberately and
+/// explicitly, once a real requirement to support multiple Producers/
+/// Directors on one `Project` (e.g. co-producers) surfaced. `[Party]`, not
+/// `Set<Party>`: order matters here the same way it matters for other
+/// printed-in-sequence collections in this codebase (`Project.cues`), unlike
+/// the genuinely order-independent `Set<ProductionType>`/
+/// `Set<ExploitationType>`/`Set<AttachmentType>` fields on this same type. An
+/// empty array is this field's own honest "not yet chosen" value — the same
+/// pattern `productionTypes: Set<ProductionType>` already establishes, no
+/// double-optional trick needed the way `declarant: Party?` needs one.
+/// **Not folded into the `PersonIntendedRole` roster mechanism**
+/// (`Person.intendedRoles`, used by the Setup screen's Komponist*in/
+/// Arrangeur*in/Interpret*in buckets) — that mechanism is `Person`-only, and
+/// Producer/Director must still be able to reference a `Label` (a production
+/// company), per the SUISA form's own "name, first name **or publishing
+/// company**" field language (SPEC.md §4.5). Promoting them into
+/// `PersonIntendedRole` cases was considered and rejected for exactly this
+/// reason — see `docs/DECISIONS.md`.
+///
+/// Their export-required-ness is enforced where every other required-but-
+/// absent field in this type already is: `ValidateCueSheetUseCase` (`ROADMAP.md`
 /// D11), not at construction time. See `docs/DECISIONS.md` for the full
 /// record of this correction, made during D6 planning.
 public struct Setup: Equatable, Sendable {
     public let title: String
     public let subtitle: String?
-    public let producer: Party?
-    public let directorOrPrincipal: Party?
+    public let producer: [Party]
+    public let directorOrPrincipal: [Party]
     public let productionRuntime: MediaDuration
     public let totalMusicRuntime: MediaDuration
     public let productionYear: Int
@@ -41,6 +63,20 @@ public struct Setup: Equatable, Sendable {
     public let productionCountry: String?
     public let language: String?
     public let timecodeFrameRate: TimecodeFrameRate
+    /// A production-level starting reference point for the editor UI's
+    /// timecode display — not on the physical SUISA form (app-internal only,
+    /// same reasoning as `timecodeFrameRate`), and a real field from the
+    /// original product brief found missing from this schema, the same way
+    /// `beitrag`/`exploitationTypes`/`broadcastDetails` were during D7
+    /// planning (`docs/DECISIONS.md`). Stays honestly optional at the type
+    /// level — `CreateProjectUseCase`, not this type's own initializer
+    /// default, is what gives a brand-new `Project` a real starting value
+    /// (`09:59:52:00`), the same "explicit at the call site, not baked into
+    /// the type" distinction `declarationDate`/`productionTypes` already
+    /// draw in that Use Case. Never exported — SUISA declarations don't
+    /// reference on-screen position, the same reasoning `Cue.startTimecode`
+    /// is never exported (§4.3).
+    public let timecodeStart: Timecode?
     public let declarant: Party?
     public let declarationDate: Date
     public let attachmentTypes: Set<AttachmentType>
@@ -55,13 +91,25 @@ public struct Setup: Equatable, Sendable {
     public let otherExploitationTypeDescription: String?
     /// "Sendedatum" — see `BroadcastDetails`. Deliberately separate from
     /// `knownOrFutureBroadcasts`, not a replacement for it.
-    public let broadcastDetails: BroadcastDetails?
+    ///
+    /// **`[BroadcastDetails]`, not `BroadcastDetails?` — one or more, not at
+    /// most one.** Originally scoped as a single optional instance when this
+    /// field was added during D7 planning, explicitly not a repeatable list
+    /// at the time; reversed once the Setup screen was actually being used
+    /// and a real need for multiple broadcasts (different broadcasters/dates
+    /// for the same production) became apparent — the same
+    /// scoped-then-reversed-once-real-usage-showed-a-need shape as
+    /// `producer`/`directorOrPrincipal`'s own `Party?` → `[Party]` reversal,
+    /// above. An empty array is this field's own honest "not yet entered"
+    /// value, the same pattern `producer`/`directorOrPrincipal` already
+    /// establish — no double-optional trick needed. See `docs/DECISIONS.md`.
+    public let broadcastDetails: [BroadcastDetails]
 
     public init(
         title: String,
         subtitle: String? = nil,
-        producer: Party? = nil,
-        directorOrPrincipal: Party? = nil,
+        producer: [Party] = [],
+        directorOrPrincipal: [Party] = [],
         productionRuntime: MediaDuration,
         totalMusicRuntime: MediaDuration,
         productionYear: Int,
@@ -78,6 +126,7 @@ public struct Setup: Equatable, Sendable {
         productionCountry: String? = nil,
         language: String? = nil,
         timecodeFrameRate: TimecodeFrameRate = .fps25,
+        timecodeStart: Timecode? = nil,
         declarant: Party? = nil,
         declarationDate: Date,
         attachmentTypes: Set<AttachmentType> = [],
@@ -85,7 +134,7 @@ public struct Setup: Equatable, Sendable {
         beitrag: String? = nil,
         exploitationTypes: Set<ExploitationType> = [],
         otherExploitationTypeDescription: String? = nil,
-        broadcastDetails: BroadcastDetails? = nil
+        broadcastDetails: [BroadcastDetails] = []
     ) {
         self.title = title
         self.subtitle = subtitle
@@ -115,6 +164,7 @@ public struct Setup: Equatable, Sendable {
         self.exploitationTypes = exploitationTypes
         self.otherExploitationTypeDescription = otherExploitationTypeDescription
         self.broadcastDetails = broadcastDetails
+        self.timecodeStart = timecodeStart
     }
 }
 
@@ -126,4 +176,157 @@ public enum AdditionalWorksDeclaration: Equatable, Sendable {
     case yes
     case no
     case notKnown
+}
+
+public extension Setup {
+    /// Returns a copy of this `Setup` with the given fields overridden — a
+    /// convenience for form-editing UI (`ROADMAP.md` D7's `SetupView`) over
+    /// an otherwise fully-immutable (`let`-only) value type, where
+    /// reconstructing the full memberwise initializer by hand for every
+    /// single field edit across ~24 form fields would be impractical. Not a
+    /// mutation — `self` is untouched; the caller adopts the returned value.
+    ///
+    /// **Every parameter defaults to `nil`, meaning "leave unchanged."**
+    /// Fields that are themselves `Optional` on `Setup` (e.g. `subtitle`)
+    /// take a *double*-optional parameter here (`String??`) so "don't touch
+    /// this field" (outer `nil`, the default) is distinguishable from "set
+    /// this field to `nil`" (`.some(nil)`) — the same ambiguity `Dictionary`'s
+    /// own APIs face and resolve the same way.
+    func updating(
+        title: String? = nil,
+        subtitle: String?? = nil,
+        producer: [Party]? = nil,
+        directorOrPrincipal: [Party]? = nil,
+        productionRuntime: MediaDuration? = nil,
+        totalMusicRuntime: MediaDuration? = nil,
+        productionYear: Int? = nil,
+        knownOrFutureBroadcasts: String?? = nil,
+        containsAdditionalUndeclaredWorks: AdditionalWorksDeclaration? = nil,
+        productionTypes: Set<ProductionType>? = nil,
+        otherProductionTypeDescription: String?? = nil,
+        isanNumber: String?? = nil,
+        suisaRegistrationNumber: String?? = nil,
+        seriesTitle: String?? = nil,
+        seasonNumber: Int?? = nil,
+        episodeNumber: Int?? = nil,
+        episodeTitle: String?? = nil,
+        productionCountry: String?? = nil,
+        language: String?? = nil,
+        timecodeFrameRate: TimecodeFrameRate? = nil,
+        timecodeStart: Timecode?? = nil,
+        declarant: Party?? = nil,
+        declarationDate: Date? = nil,
+        attachmentTypes: Set<AttachmentType>? = nil,
+        otherAttachmentDescription: String?? = nil,
+        beitrag: String?? = nil,
+        exploitationTypes: Set<ExploitationType>? = nil,
+        otherExploitationTypeDescription: String?? = nil,
+        broadcastDetails: [BroadcastDetails]? = nil
+    ) -> Setup {
+        Setup(
+            title: title ?? self.title,
+            subtitle: subtitle ?? self.subtitle,
+            producer: producer ?? self.producer,
+            directorOrPrincipal: directorOrPrincipal ?? self.directorOrPrincipal,
+            productionRuntime: productionRuntime ?? self.productionRuntime,
+            totalMusicRuntime: totalMusicRuntime ?? self.totalMusicRuntime,
+            productionYear: productionYear ?? self.productionYear,
+            knownOrFutureBroadcasts: knownOrFutureBroadcasts ?? self.knownOrFutureBroadcasts,
+            containsAdditionalUndeclaredWorks: containsAdditionalUndeclaredWorks ?? self
+                .containsAdditionalUndeclaredWorks,
+            productionTypes: productionTypes ?? self.productionTypes,
+            otherProductionTypeDescription: otherProductionTypeDescription ?? self.otherProductionTypeDescription,
+            isanNumber: isanNumber ?? self.isanNumber,
+            suisaRegistrationNumber: suisaRegistrationNumber ?? self.suisaRegistrationNumber,
+            seriesTitle: seriesTitle ?? self.seriesTitle,
+            seasonNumber: seasonNumber ?? self.seasonNumber,
+            episodeNumber: episodeNumber ?? self.episodeNumber,
+            episodeTitle: episodeTitle ?? self.episodeTitle,
+            productionCountry: productionCountry ?? self.productionCountry,
+            language: language ?? self.language,
+            timecodeFrameRate: timecodeFrameRate ?? self.timecodeFrameRate,
+            timecodeStart: timecodeStart ?? self.timecodeStart,
+            declarant: declarant ?? self.declarant,
+            declarationDate: declarationDate ?? self.declarationDate,
+            attachmentTypes: attachmentTypes ?? self.attachmentTypes,
+            otherAttachmentDescription: otherAttachmentDescription ?? self.otherAttachmentDescription,
+            beitrag: beitrag ?? self.beitrag,
+            exploitationTypes: exploitationTypes ?? self.exploitationTypes,
+            otherExploitationTypeDescription: otherExploitationTypeDescription ?? self.otherExploitationTypeDescription,
+            broadcastDetails: broadcastDetails ?? self.broadcastDetails
+        )
+    }
+}
+
+/// One of `Setup`'s §4.2-required-for-export fields that has no honest
+/// "not yet entered" value distinguishable from a real answer — see
+/// `Setup.missingRequiredFields`'s doc comment for the full reasoning behind
+/// exactly these seven and no others.
+public enum SetupRequiredField: Equatable, Sendable {
+    case title
+    case producer
+    case directorOrPrincipal
+    case productionRuntime
+    case productionYear
+    case productionTypes
+    case declarant
+}
+
+public extension Setup {
+    /// Every §4.2-required-for-export field currently unset on this `Setup`,
+    /// checked against its own currently-empty/zero *sentinel* value — the
+    /// same distinction `docs/DECISIONS.md`'s "`Setup`'s three `Party` fields
+    /// become optional" field-by-field audit already drew between "has an
+    /// honest not-yet-entered value" and "doesn't." A pure computed property,
+    /// the same shape as `PostalAddress.isComplete` — no Repository
+    /// dependency, safe to call from a ViewModel with no I/O.
+    ///
+    /// **Not every §4.2-required field is checked here — only the ones where
+    /// "still at its default" reliably means "not yet entered," not "a real,
+    /// already-confirmed answer that happens to look empty":**
+    /// - `totalMusicRuntime` is excluded: it's a *derived* value (SPEC.md
+    ///   §4.14, `RecalculateTotalMusicRuntimeUseCase`), not something the user
+    ///   enters on this screen — `.zero` is the honestly-correct value for a
+    ///   `Project` with no `Cue`s yet (true for every `Setup` until D9/D10
+    ///   land), not a sign of incompleteness.
+    /// - `containsAdditionalUndeclaredWorks` is excluded: `.notKnown` is
+    ///   itself a real, SUISA-sanctioned answer to this question (per the
+    ///   field-by-field audit referenced above), indistinguishable at the
+    ///   type level from "user reviewed and confirmed unknown" vs. "user
+    ///   hasn't touched this yet" — flagging it would be a false positive on
+    ///   a `Setup` that's actually fully reviewed.
+    /// - `declarationDate`/`timecodeFrameRate` are excluded: both have a
+    ///   SPEC-sanctioned default (today's date; `.fps25`) that's already a
+    ///   real, usable value, not a placeholder standing in for missing data —
+    ///   `timecodeFrameRate` is app-internal only and never exported at all.
+    ///
+    /// Reused by `ROADMAP.md` D11's `ValidateCueSheetUseCase` rather than
+    /// duplicated there — this is the "Setup completeness" half of that
+    /// Use Case's aggregate check, built here first because `SetupViewModel`
+    /// (D7) needs it before D11 exists.
+    var missingRequiredFields: [SetupRequiredField] {
+        var missing: [SetupRequiredField] = []
+        if title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            missing.append(.title)
+        }
+        if producer.isEmpty {
+            missing.append(.producer)
+        }
+        if directorOrPrincipal.isEmpty {
+            missing.append(.directorOrPrincipal)
+        }
+        if productionRuntime == .zero {
+            missing.append(.productionRuntime)
+        }
+        if productionYear == 0 {
+            missing.append(.productionYear)
+        }
+        if productionTypes.isEmpty {
+            missing.append(.productionTypes)
+        }
+        if declarant == nil {
+            missing.append(.declarant)
+        }
+        return missing
+    }
 }

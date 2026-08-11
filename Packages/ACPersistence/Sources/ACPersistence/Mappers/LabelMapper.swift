@@ -13,7 +13,8 @@ enum LabelMapper {
             addressCity: label.address.city,
             addressCountry: label.address.country,
             ipiNumber: label.ipiNumber,
-            kind: label.kind.map(rawValue(for:))
+            kind: label.kind.map(rawValue(for:)),
+            intendedForLabelRoster: label.intendedForLabelRoster
         )
     }
 
@@ -28,7 +29,8 @@ enum LabelMapper {
                 country: entity.addressCountry
             ),
             ipiNumber: entity.ipiNumber,
-            kind: entity.kind.map(labelKind(from:))
+            kind: entity.kind.map(labelKind(from:)),
+            intendedForLabelRoster: entity.intendedForLabelRoster
         )
     }
 

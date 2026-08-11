@@ -55,7 +55,41 @@ struct AutoCueApp: App {
 
         WindowGroup(for: Project.ID.self) { projectIDBinding in
             if let projectID = projectIDBinding.wrappedValue {
-                ProjectWindowView(projectID: projectID, registry: registry)
+                // **Explicit `.id(projectID)` — a real, confirmed-plausible
+                // fix, not decoration.** `ROADMAP.md` D7's later round:
+                // investigated a real bug where closing a Project window,
+                // deleting that same Project from the Library, then opening
+                // a newly-created Project could land on a window still
+                // bound to the deleted Project's ID (`ProjectNotFoundError`
+                // on every interaction). Ruled out this app's own logic by
+                // direct code inspection — `OpenProjectWindowRegistry`
+                // caches nothing beyond currently-open windows,
+                // `CreateProjectUseCase`/`Project.init` always generate a
+                // genuinely fresh `UUID`, and `ProjectRepositoryImpl`
+                // correctly republishes its live snapshot after both create
+                // and delete. The strongest remaining lead is already
+                // documented in this project's own history:
+                // `ProjectWindowFrameStore`'s doc comment records that
+                // SwiftUI's own internal `WindowGroup(for:)` restoration is
+                // keyed by an auto-generated content-type-plus-window-open-
+                // ordinal name (e.g. `"...-2-AppWindow-1"`), **not by the
+                // bound value** — the same "ordinal slot" a closed window's
+                // restoration state could still be attached to when a later
+                // `openWindow(value:)` call for a genuinely different
+                // `Project.ID` reuses that slot. `.id(projectID)` forces
+                // SwiftUI to treat a different bound value as a genuinely
+                // distinct View identity — fresh `@State` for
+                // `ProjectWindowView`'s `setupViewModel`/
+                // `rightHolderDirectoryViewModel`/`frameSaver`/`saveFlusher`
+                // every time — regardless of whatever ordinal-slot reuse is
+                // happening underneath. Not fully provable without live
+                // scene-restoration instrumentation this project doesn't
+                // have; `ProjectWindowView`'s own `setupViewModel
+                // .projectNotFound` defensive fallback is the second,
+                // independent layer of protection for whatever this doesn't
+                // catch. See `docs/DECISIONS.md`.
+                ProjectWindowView(projectID: projectID, registry: registry, container: container)
+                    .id(projectID)
             }
         }
         .defaultSize(Theme.Layout.defaultWindowSize)

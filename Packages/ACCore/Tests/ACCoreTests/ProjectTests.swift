@@ -5,8 +5,8 @@ final class ProjectTests: XCTestCase {
     private static func makeSetup() -> Setup {
         Setup(
             title: "A Swiss Story",
-            producer: .person(UUID()),
-            directorOrPrincipal: .person(UUID()),
+            producer: [.person(UUID())],
+            directorOrPrincipal: [.person(UUID())],
             productionRuntime: MediaDuration(seconds: 5400),
             totalMusicRuntime: MediaDuration(seconds: 600),
             productionYear: 2026,

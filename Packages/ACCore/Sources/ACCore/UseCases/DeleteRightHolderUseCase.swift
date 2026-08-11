@@ -21,8 +21,27 @@ import Foundation
 /// **`settings` is a plain parameter, not fetched.** No `SettingsRepository`
 /// exists yet (`ROADMAP.md` D14/T14.1) — the caller (a future ViewModel) is
 /// responsible for supplying the current `Settings` value alongside the
-/// `Project` it's editing. Do not add a `SettingsRepository` dependency here
-/// ahead of that Deliverable.
+/// `Project.ID` it's editing. Do not add a `SettingsRepository` dependency
+/// here ahead of that Deliverable.
+///
+/// **Takes `projectID: Project.ID`, not a caller-supplied `Project` snapshot
+/// — the guard-check and the write both run against the truly-current
+/// persisted `Project`, fetched and written atomically via
+/// `ProjectRepository.update(id:transform:)`.** An earlier version of this
+/// Use Case took `from project: Project` directly, trusting whatever
+/// snapshot the caller happened to be holding. That caused a real, confirmed
+/// bug: `RightHolderDirectoryViewModel` cached its own `Project` snapshot,
+/// refreshed only by its *own* mutations — clearing `Setup.declarant` via
+/// `SetupViewModel`/`UpdateSetupUseCase` (a different ViewModel, writing
+/// through a different Use Case) never told `RightHolderDirectoryViewModel`
+/// its cached snapshot was now stale, so a delete attempt immediately after
+/// clearing the only reference still saw the old, now-incorrect reference
+/// and blocked a deletion that should have succeeded. Fetching fresh inside
+/// the same atomic operation as the write — the same `update(id:transform:)`
+/// mechanism `UpdateSetupUseCase`/`UpdateRightHolderDirectoryUseCase` already
+/// use — closes this permanently: the guard-check always runs against
+/// whatever the most recent completed write for this `Project.ID` actually
+/// persisted, never a ViewModel-held copy of it. See `docs/DECISIONS.md`.
 ///
 /// Both the guard-check half (pure, independently testable) and the
 /// orchestration half (scans, and only if clear, removes + persists via
@@ -46,10 +65,10 @@ public struct DeleteRightHolderUseCase: Sendable {
     ) -> [PartyReferenceLocation] {
         var locations: [PartyReferenceLocation] = []
 
-        if project.setup.producer == party {
+        if project.setup.producer.contains(party) {
             locations.append(.setupProducer)
         }
-        if project.setup.directorOrPrincipal == party {
+        if project.setup.directorOrPrincipal.contains(party) {
             locations.append(.setupDirectorOrPrincipal)
         }
         if project.setup.declarant == party {
@@ -65,26 +84,28 @@ public struct DeleteRightHolderUseCase: Sendable {
         return locations
     }
 
-    /// Deletes `personID` from `project.people`, or returns every blocking
-    /// reference if `.person(personID)` is still referenced anywhere.
+    /// Deletes `personID` from the `Project` identified by `projectID`, or
+    /// returns every blocking reference if `.person(personID)` is still
+    /// referenced anywhere in the *truly-current* persisted `Project`.
     public func deletePerson(
         _ personID: Person.ID,
-        from project: Project,
+        from projectID: Project.ID,
         settings: Settings
     ) async throws -> DeletePartyResult {
-        try await delete(.person(personID), from: project, settings: settings) { project in
+        try await delete(.person(personID), from: projectID, settings: settings) { project in
             Self.replacing(project, people: project.people.filter { $0.id != personID })
         }
     }
 
-    /// Deletes `labelID` from `project.labels`, or returns every blocking
-    /// reference if `.label(labelID)` is still referenced anywhere.
+    /// Deletes `labelID` from the `Project` identified by `projectID`, or
+    /// returns every blocking reference if `.label(labelID)` is still
+    /// referenced anywhere in the *truly-current* persisted `Project`.
     public func deleteLabel(
         _ labelID: Label.ID,
-        from project: Project,
+        from projectID: Project.ID,
         settings: Settings
     ) async throws -> DeletePartyResult {
-        try await delete(.label(labelID), from: project, settings: settings) { project in
+        try await delete(.label(labelID), from: projectID, settings: settings) { project in
             Self.replacing(project, labels: project.labels.filter { $0.id != labelID })
         }
     }
@@ -115,21 +136,40 @@ public struct DeleteRightHolderUseCase: Sendable {
         )
     }
 
+    /// The guard-check and the write happen inside the same `transform`
+    /// closure — i.e. the same atomic, per-`Project.ID`-serialized operation
+    /// — so there is no window between "read the current `Project` to check
+    /// references" and "persist the removal" where a concurrent write for
+    /// this same `Project.ID` (e.g. a Setup field being cleared) could land
+    /// unseen. A blocked delete throws a private sentinel error to abort the
+    /// write entirely — nothing is persisted, `updatedAt` doesn't move —
+    /// caught immediately below and converted back to `.blocked`.
     private func delete(
         _ party: Party,
-        from project: Project,
+        from projectID: Project.ID,
         settings: Settings,
-        removing: (Project) -> Project
+        removing: @escaping @Sendable (Project) -> Project
     ) async throws -> DeletePartyResult {
-        let locations = Self.referenceLocations(for: party, in: project, settings: settings)
-        guard locations.isEmpty else {
-            return .blocked(locations)
+        do {
+            let updated = try await projectRepository.update(id: projectID) { project in
+                let locations = Self.referenceLocations(for: party, in: project, settings: settings)
+                guard locations.isEmpty else {
+                    throw BlockedDeleteError(locations: locations)
+                }
+                return removing(project)
+            }
+            guard let updated else {
+                throw ProjectNotFoundError(projectID: projectID)
+            }
+            return .deleted(updated)
+        } catch let error as BlockedDeleteError {
+            return .blocked(error.locations)
         }
-
-        let updatedProject = removing(project)
-        try await projectRepository.update(updatedProject)
-        return .deleted(updatedProject)
     }
+}
+
+private struct BlockedDeleteError: Error {
+    let locations: [PartyReferenceLocation]
 }
 
 /// Where a still-referenced `Party` was found, so the calling ViewModel/View
