@@ -37,6 +37,34 @@ final class SetupViewModelTests: XCTestCase {
         )
     }
 
+    /// Polls `condition` up to `timeout`, sleeping `interval` between checks
+    /// — used to await a debounced save's result deterministically instead
+    /// of a fixed, guessed sleep duration. A fixed sleep is fragile under
+    /// real CI resource contention: `test_updateDebounced_calledRepeatedly_
+    /// onlySavesOnce_withTheLatestValue` failed twice in a row in CI with a
+    /// fixed 60ms margin after a 20ms debounce, while passing reliably
+    /// locally every time. Polling removes that fragility short of
+    /// `timeout` itself, generous enough to absorb real CI slowness without
+    /// ever needing to widen a guessed value again. Returns as soon as
+    /// `condition` is true; the caller still makes the real assertion
+    /// afterward, so a genuine failure (condition never becomes true) still
+    /// surfaces as a normal, clearly-diagnosed `XCTAssertEqual` failure, not
+    /// a silent timeout.
+    private func poll(
+        timeout: Duration = .seconds(2),
+        interval: Duration = .milliseconds(5),
+        until condition: () async throws -> Bool
+    ) async throws {
+        let clock = ContinuousClock()
+        let deadline = clock.now + timeout
+        while clock.now < deadline {
+            if try await condition() {
+                return
+            }
+            try await clock.sleep(for: interval)
+        }
+    }
+
     // MARK: - Construction (no synchronous fetch — see SetupViewModel's doc comment)
 
     func test_construction_startsWithAPlaceholderEmptySetup_notTheRealPersistedValue() {
@@ -136,11 +164,14 @@ final class SetupViewModelTests: XCTestCase {
 
         viewModel.updateDebounced(makeSetup(title: "New Title"))
 
-        // Not yet saved — the debounce hasn't elapsed.
+        // Not yet saved — the debounce hasn't elapsed. Checked immediately,
+        // not polled: this asserts the save is genuinely debounced (hasn't
+        // already landed), the opposite direction from the flaky case this
+        // file's `poll` helper exists for.
         let tooSoon = try await repository.fetch(id: project.id)
         XCTAssertEqual(tooSoon?.setup.title, "A Swiss Story")
 
-        try await Task.sleep(nanoseconds: 60_000_000)
+        try await poll { try await repository.fetch(id: project.id)?.setup.title == "New Title" }
 
         let persisted = try await repository.fetch(id: project.id)
         XCTAssertEqual(persisted?.setup.title, "New Title")
@@ -154,7 +185,7 @@ final class SetupViewModelTests: XCTestCase {
         viewModel.updateDebounced(makeSetup(title: "First"))
         viewModel.updateDebounced(makeSetup(title: "Second"))
         viewModel.updateDebounced(makeSetup(title: "Third"))
-        try await Task.sleep(nanoseconds: 60_000_000)
+        try await poll { try await repository.fetch(id: project.id)?.setup.title == "Third" }
 
         let persisted = try await repository.fetch(id: project.id)
         XCTAssertEqual(persisted?.setup.title, "Third")
