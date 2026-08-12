@@ -20,3 +20,8 @@ Packages/*/.build/
 
 # Claude Code local (personal, machine-specific — not shared project config)
 .claude/settings.local.json
+
+# Real-audio test fixtures (ROADMAP.md D8/T8.3) — potentially client-confidential
+# source material; this repo is public, so these never get committed, including
+# the generated manifest that lives alongside them. See docs/DECISIONS.md.
+/Audio_Analysis_Test/
