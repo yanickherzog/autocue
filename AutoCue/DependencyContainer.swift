@@ -1,3 +1,4 @@
+import ACAudioKit
 import ACCore
 import ACFeatures
 import ACPersistence
@@ -9,15 +10,17 @@ import SwiftData
 /// exactly once, in `AutoCueApp`, at launch. Gains one factory method per
 /// top-level Feature ViewModel as later Deliverables need them —
 /// `makeSetupViewModel(for:)`/`makeRightHolderDirectoryViewModel(for:)` are
-/// `ROADMAP.md` D7's additions, alongside the existing
-/// `makeProjectLibraryViewModel()` from D6.
+/// `ROADMAP.md` D7's additions, `makeAudioImportViewModel(for:)` is D8's,
+/// alongside the existing `makeProjectLibraryViewModel()` from D6.
 @MainActor
 final class DependencyContainer {
     private let projectRepository: ProjectRepository
+    private let audioAnalysisRepository: AudioAnalysisRepository
 
     init() {
         let modelContainer = Self.makeModelContainer()
         projectRepository = ProjectRepositoryImpl(modelContainer: modelContainer)
+        audioAnalysisRepository = AudioAnalysisRepositoryImpl()
     }
 
     func makeProjectLibraryViewModel() -> ProjectLibraryViewModel {
@@ -42,6 +45,20 @@ final class DependencyContainer {
             observeProjectsUseCase: ObserveProjectsUseCase(projectRepository: projectRepository),
             updateRightHolderDirectoryUseCase: UpdateRightHolderDirectoryUseCase(projectRepository: projectRepository),
             deleteRightHolderUseCase: DeleteRightHolderUseCase(projectRepository: projectRepository)
+        )
+    }
+
+    func makeAudioImportViewModel(for projectID: Project.ID) -> AudioImportViewModel {
+        AudioImportViewModel(
+            projectID: projectID,
+            importAudioUseCase: ImportAudioUseCase(
+                audioAnalysisRepository: audioAnalysisRepository,
+                projectRepository: projectRepository
+            ),
+            generateWaveformPeaksUseCase: GenerateWaveformPeaksUseCase(
+                audioAnalysisRepository: audioAnalysisRepository,
+                projectRepository: projectRepository
+            )
         )
     }
 

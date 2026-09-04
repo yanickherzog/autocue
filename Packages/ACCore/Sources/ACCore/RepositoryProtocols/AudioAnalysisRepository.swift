@@ -36,6 +36,29 @@ public protocol AudioAnalysisRepository: Sendable {
         resolution: Int
     ) async throws -> [WaveformPeakBucket]
 
+    /// Checks whether a previously-captured `AudioAsset.securityScopedBookmark`
+    /// is stale and, if so, regenerates and returns a fresh one — `nil` when
+    /// the bookmark is still current, nothing to do. `mode` (`AudioAsset.
+    /// bookmarkAccessMode`) selects `.withSecurityScope` vs. plain resolution/
+    /// regeneration options — a `.plainFallback` bookmark is never resolved or
+    /// regenerated with `.withSecurityScope`, since it was never created with
+    /// it (SPEC.md §4.10, "Security-scoped bookmark creation can fail
+    /// entirely").
+    ///
+    /// **Callers that resolve an existing bookmark (`generateWaveformPeaks`,
+    /// `generateWaveformDetail`) must call this first and, when it returns
+    /// non-`nil`, persist the result back onto `Project.audioAsset.
+    /// securityScopedBookmark` via `ProjectRepository` before proceeding.**
+    /// A stale bookmark still resolves successfully today — that's exactly
+    /// what makes this dangerous to skip: nothing fails now, but the app
+    /// keeps resolving increasingly outdated bookmark data indefinitely,
+    /// which eventually fails unpredictably (the file moved, a volume was
+    /// remounted, an OS update changed how the reference resolves) with no
+    /// obvious cause at that point. `ImportAudioUseCase` never calls this —
+    /// it always mints a brand-new bookmark from a live, user-just-selected
+    /// `URL`, never resolves a previously-stored one.
+    func refreshBookmarkIfStale(_ bookmark: Data, mode: AudioAsset.BookmarkAccessMode) throws -> Data?
+
     /// Detects candidate `Cue`s from `asset`'s embedded markers and silence-gap
     /// analysis, per `settings` (SPEC.md §4.11).
     func detectCues(in asset: AudioAsset, settings: AnalysisSettings)

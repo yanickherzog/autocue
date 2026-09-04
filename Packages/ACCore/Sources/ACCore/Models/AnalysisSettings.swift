@@ -13,11 +13,46 @@ public struct AnalysisSettings: Equatable, Hashable, Sendable {
     public let calibrationMarginDb: Double
     public let noiseFloorReestimationIntervalSeconds: Double
     public let analysisWindowMilliseconds: Double
+    /// How often a new RMS window is computed, independent of
+    /// `analysisWindowMilliseconds` (the window's *length*) — windows
+    /// overlap whenever this is smaller than the window length, as it is by
+    /// default. Governs the time resolution at which threshold crossings can
+    /// be located; must be ≤ `analysisWindowMilliseconds`. See SPEC.md
+    /// §4.11, "RMS time resolution and threshold-crossing interpolation."
+    public let analysisWindowHopMilliseconds: Double
     public let minimumSilenceDurationSeconds: Double
     public let minimumCueDurationSeconds: Double
     public let tailToleranceDb: Double
     public let tailCapSeconds: Double
     public let embeddedMarkerMergeToleranceSeconds: Double
+    /// Stage 2 only: how far, in seconds, before/after the stage-1
+    /// candidate boundary the SuperFlux onset search looks. SPEC.md §4.11,
+    /// "SuperFlux-based onset refinement."
+    public let superFluxRefinementSearchWindowSeconds: Double
+    /// Stage 2 only: how often a new STFT frame (and novelty-function
+    /// value) is computed — the time resolution at which the refined
+    /// boundary is ultimately reported. SPEC.md §4.11, "SuperFlux hop size
+    /// and reported-boundary resolution."
+    public let superFluxHopSeconds: Double
+    /// Stage 2 only: width, in log-frequency filterbank bins, of the
+    /// maximum filter applied across neighboring bins before computing the
+    /// frame-to-frame novelty difference — the vibrato/tremolo-suppression
+    /// mechanism. Must be odd. SPEC.md §4.11, "SuperFlux-based onset
+    /// refinement."
+    public let superFluxMaxFilterBandwidthBins: Int
+    /// Stage 2 only: length, in seconds, of the local window used to
+    /// compute the novelty function's local median for adaptive
+    /// peak-picking. SPEC.md §4.11, "Adaptive local peak-picking."
+    public let superFluxAdaptiveThresholdWindowSeconds: Double
+    /// Stage 2 only: dimensionless multiplicative margin (`λ`) applied to
+    /// the local median novelty value — the primary adaptive-sensitivity
+    /// control. SPEC.md §4.11, "Adaptive local peak-picking."
+    public let superFluxAdaptiveThresholdMultiplier: Double
+    /// Stage 2 only: additive floor (`δ`), expressed as a fraction of the
+    /// peak novelty value within the current search window — guards the
+    /// near-silent-window edge case. SPEC.md §4.11, "Adaptive local
+    /// peak-picking."
+    public let superFluxAdaptiveThresholdOffset: Double
 
     public init(
         noiseFloorCalibrationMode: NoiseFloorCalibrationMode = .manual,
@@ -25,22 +60,36 @@ public struct AnalysisSettings: Equatable, Hashable, Sendable {
         calibrationMarginDb: Double = 6.0,
         noiseFloorReestimationIntervalSeconds: Double = 300.0,
         analysisWindowMilliseconds: Double = 50.0,
+        analysisWindowHopMilliseconds: Double = 10.0,
         minimumSilenceDurationSeconds: Double = 2.0,
         minimumCueDurationSeconds: Double = 3.0,
         tailToleranceDb: Double = 6.0,
         tailCapSeconds: Double = 2.0,
-        embeddedMarkerMergeToleranceSeconds: Double = 1.0
+        embeddedMarkerMergeToleranceSeconds: Double = 1.0,
+        superFluxRefinementSearchWindowSeconds: Double = 0.5,
+        superFluxHopSeconds: Double = 0.01,
+        superFluxMaxFilterBandwidthBins: Int = 3,
+        superFluxAdaptiveThresholdWindowSeconds: Double = 0.1,
+        superFluxAdaptiveThresholdMultiplier: Double = 1.5,
+        superFluxAdaptiveThresholdOffset: Double = 0.05
     ) {
         self.noiseFloorCalibrationMode = noiseFloorCalibrationMode
         self.silenceThresholdDb = silenceThresholdDb
         self.calibrationMarginDb = calibrationMarginDb
         self.noiseFloorReestimationIntervalSeconds = noiseFloorReestimationIntervalSeconds
         self.analysisWindowMilliseconds = analysisWindowMilliseconds
+        self.analysisWindowHopMilliseconds = analysisWindowHopMilliseconds
         self.minimumSilenceDurationSeconds = minimumSilenceDurationSeconds
         self.minimumCueDurationSeconds = minimumCueDurationSeconds
         self.tailToleranceDb = tailToleranceDb
         self.tailCapSeconds = tailCapSeconds
         self.embeddedMarkerMergeToleranceSeconds = embeddedMarkerMergeToleranceSeconds
+        self.superFluxRefinementSearchWindowSeconds = superFluxRefinementSearchWindowSeconds
+        self.superFluxHopSeconds = superFluxHopSeconds
+        self.superFluxMaxFilterBandwidthBins = superFluxMaxFilterBandwidthBins
+        self.superFluxAdaptiveThresholdWindowSeconds = superFluxAdaptiveThresholdWindowSeconds
+        self.superFluxAdaptiveThresholdMultiplier = superFluxAdaptiveThresholdMultiplier
+        self.superFluxAdaptiveThresholdOffset = superFluxAdaptiveThresholdOffset
     }
 }
 
