@@ -60,6 +60,18 @@ public final class AudioImportViewModel {
         }
     }
 
+    /// Surfaces a failure that occurred before any `URL` was even available
+    /// to hand to `importFile(from:)` — the drag-and-drop entry point's only
+    /// failure mode that isn't already covered by `importFile`'s own
+    /// `do`/`catch` (`AudioImportView`'s `.onDrop` handler calls this when
+    /// its `NSItemProvider` can't produce a usable file URL at all). Routes
+    /// through the same `.failed` phase every other import failure uses —
+    /// one source of truth for import status regardless of entry point,
+    /// per `CLAUDE.md`'s "Single Source of Truth."
+    public func failWithoutImporting(message: String) {
+        phase = .failed(message: message)
+    }
+
     private func runImport(from url: URL) async throws -> AudioAsset {
         var importedAsset: AudioAsset?
         for try await event in importAudioUseCase.importAudio(projectID: projectID, from: url) {
