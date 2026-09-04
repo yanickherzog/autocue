@@ -12,18 +12,25 @@ public struct InMemoryAudioAnalysisRepository: AudioAnalysisRepository, Sendable
     public let generatedWaveformPeaks: WaveformPeaks
     public let waveformDetailBuckets: [WaveformPeakBucket]
     public let detectedCues: [Cue]
+    /// Canned response for `refreshBookmarkIfStale` — `nil` (the default)
+    /// simulates "not stale, nothing to do"; a non-`nil` value simulates a
+    /// stale bookmark that was successfully regenerated, for tests proving
+    /// a Use Case actually persists a refreshed bookmark when one comes back.
+    public let staleBookmarkRefreshedTo: Data?
 
     public init(
         importedAsset: AudioAsset = InMemoryAudioAnalysisRepository.placeholderAudioAsset(),
         generatedWaveformPeaks: WaveformPeaks? = nil,
         waveformDetailBuckets: [WaveformPeakBucket] = [],
-        detectedCues: [Cue] = []
+        detectedCues: [Cue] = [],
+        staleBookmarkRefreshedTo: Data? = nil
     ) {
         self.importedAsset = importedAsset
         self.generatedWaveformPeaks = generatedWaveformPeaks
             ?? WaveformPeaks(audioAssetID: importedAsset.id, resolution: 0, buckets: [])
         self.waveformDetailBuckets = waveformDetailBuckets
         self.detectedCues = detectedCues
+        self.staleBookmarkRefreshedTo = staleBookmarkRefreshedTo
     }
 
     public func importAudio(from _: URL) -> AsyncThrowingStream<OperationProgress<AudioAsset>, Error> {
@@ -62,6 +69,10 @@ public struct InMemoryAudioAnalysisRepository: AudioAnalysisRepository, Sendable
             continuation.yield(.completed(detectedCues))
             continuation.finish()
         }
+    }
+
+    public func refreshBookmarkIfStale(_: Data, mode _: AudioAsset.BookmarkAccessMode) throws -> Data? {
+        staleBookmarkRefreshedTo
     }
 
     public static func placeholderAudioAsset() -> AudioAsset {

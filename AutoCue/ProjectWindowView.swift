@@ -6,9 +6,10 @@ import SwiftUI
 /// Root content of one Project window (`ROADMAP.md` D6/T6.1) — the 2-column
 /// `NavigationSplitView` shell `CLAUDE.md`'s "Navigation Model" describes:
 /// content = the three always-accessible section tabs, detail = the active
-/// screen. `SetupView` is real as of `ROADMAP.md` D7; `CueSheetEditorView`/
-/// `ReviewAndExportView` still show a placeholder `EmptyStateView` until
-/// D9–D10/D11.
+/// screen. `SetupView` is real as of `ROADMAP.md` D7; `.cueSheet` shows the
+/// real `AudioImportView` as of D8 (import only — cue detection/editing
+/// replace this in D9–D10); `ReviewAndExportView` still shows a placeholder
+/// `EmptyStateView` until D11.
 ///
 /// Owns this window's `AppState` (`ACFeatures`) — constructed once per
 /// window via `@State`, never a single app-wide instance (`CLAUDE.md`,
@@ -77,6 +78,7 @@ struct ProjectWindowView: View {
     // `init` call for the *same* identity reuses the already-stored value.
     @State private var setupViewModel: SetupViewModel
     @State private var rightHolderDirectoryViewModel: RightHolderDirectoryViewModel
+    @State private var audioImportViewModel: AudioImportViewModel
     /// Set when a tab switch to `.cueSheet`/`.reviewAndExport` is blocked
     /// because `setupViewModel.missingRequiredFields` isn't empty at the
     /// moment the user clicks that tab — see `sidebarButton`'s doc comment
@@ -92,6 +94,7 @@ struct ProjectWindowView: View {
         _setupViewModel = State(initialValue: container.makeSetupViewModel(for: projectID))
         _rightHolderDirectoryViewModel = State(initialValue: container
             .makeRightHolderDirectoryViewModel(for: projectID))
+        _audioImportViewModel = State(initialValue: container.makeAudioImportViewModel(for: projectID))
     }
 
     var body: some View {
@@ -183,9 +186,10 @@ struct ProjectWindowView: View {
     /// found. `setupViewModel.projectNotFound` is the one source of truth
     /// this checks — `RightHolderDirectoryViewModel` doesn't get its own
     /// separate flag (see that ViewModel's `loadDirectory()` doc comment).
-    /// `Cues`/`Review & Export` aren't real screens yet (D9–D11) but would
-    /// be exactly as broken as Setup if this window's `projectID` were
-    /// stale, so the check sits above the tab `switch` entirely rather than
+    /// `Cues` (import-only as of D8; full detection/editing lands D9–D10)
+    /// and `Review & Export` (still a placeholder, D11) would be exactly as
+    /// broken as Setup if this window's `projectID` were stale, so the check
+    /// sits above the tab `switch` entirely rather than
     /// being duplicated into three places.
     @ViewBuilder
     private var detail: some View {
@@ -204,12 +208,7 @@ struct ProjectWindowView: View {
             case .setup:
                 SetupView(viewModel: setupViewModel, directoryViewModel: rightHolderDirectoryViewModel)
             case .cueSheet:
-                EmptyStateView(
-                    systemImage: "list.bullet.rectangle",
-                    title: "Cues",
-                    message: "Coming in ROADMAP.md D9–D10.",
-                    surface: .primary
-                )
+                AudioImportView(viewModel: audioImportViewModel)
             case .reviewAndExport:
                 EmptyStateView(
                     systemImage: "checkmark.seal",

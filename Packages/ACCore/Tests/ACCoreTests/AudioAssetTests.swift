@@ -35,6 +35,28 @@ final class AudioAssetTests: XCTestCase {
         XCTAssertNil(asset.broadcastWaveMetadata)
     }
 
+    /// SPEC.md §4.10, "Security-scoped bookmark creation can fail entirely":
+    /// `.securityScoped` is the honest default for every existing call site
+    /// that doesn't yet know about the distinction — it represents the
+    /// normal, intended path, not a placeholder standing in for missing data.
+    func test_bookmarkAccessMode_defaultsToSecurityScoped() {
+        XCTAssertEqual(Self.makeAsset().bookmarkAccessMode, .securityScoped)
+    }
+
+    func test_bookmarkAccessMode_isPreservedExactlyAsInitialized() {
+        let asset = AudioAsset(
+            originalFileName: "reel1.wav",
+            securityScopedBookmark: Data([0x01]),
+            bookmarkAccessMode: .plainFallback,
+            duration: MediaDuration(seconds: 60),
+            sampleRate: 48000,
+            channelCount: 2,
+            bitDepth: 24,
+            importedAt: Date(timeIntervalSince1970: 0)
+        )
+        XCTAssertEqual(asset.bookmarkAccessMode, .plainFallback)
+    }
+
     func test_fieldsArePreservedExactlyAsInitialized() {
         let marker = EmbeddedMarker(position: Timecode(offsetSeconds: 12), label: "Marker 1")
         let bwf = BroadcastWaveMetadata(description: "Location mix", originator: "Field Recorder")
@@ -56,7 +78,7 @@ final class AudioAssetTests: XCTestCase {
         XCTAssertEqual(
             propertyNames,
             [
-                "id", "originalFileName", "securityScopedBookmark", "duration",
+                "id", "originalFileName", "securityScopedBookmark", "bookmarkAccessMode", "duration",
                 "sampleRate", "channelCount", "bitDepth", "embeddedMarkers",
                 "broadcastWaveMetadata", "importedAt",
             ]
