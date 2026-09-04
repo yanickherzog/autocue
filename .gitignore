@@ -25,3 +25,9 @@ Packages/*/.build/
 # source material; this repo is public, so these never get committed, including
 # the generated manifest that lives alongside them. See docs/DECISIONS.md.
 /Audio_Analysis_Test/
+
+# The Ableton Live project used to prepare the real-audio test fixtures above
+# (an .als session, not the exported .wav fixtures themselves) — same
+# potentially client-confidential status, same "never committed" treatment.
+# Exported .wav fixtures go in /Audio_Analysis_Test/ directly, not here.
+/Audio_Test_Material Project/
