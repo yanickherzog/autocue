@@ -11,7 +11,9 @@ import SwiftData
 /// top-level Feature ViewModel as later Deliverables need them —
 /// `makeSetupViewModel(for:)`/`makeRightHolderDirectoryViewModel(for:)` are
 /// `ROADMAP.md` D7's additions, `makeAudioImportViewModel(for:)` is D8's,
-/// alongside the existing `makeProjectLibraryViewModel()` from D6.
+/// `makeCueSheetSectionViewModel(for:)`/`makeCueDetectionViewModel(for:)`/
+/// `makeCueDetectionReviewViewModel(for:)` are D9's, alongside the existing
+/// `makeProjectLibraryViewModel()` from D6.
 @MainActor
 final class DependencyContainer {
     private let projectRepository: ProjectRepository
@@ -59,6 +61,41 @@ final class DependencyContainer {
                 audioAnalysisRepository: audioAnalysisRepository,
                 projectRepository: projectRepository
             )
+        )
+    }
+
+    func makeCueSheetSectionViewModel(for projectID: Project.ID) -> CueSheetSectionViewModel {
+        CueSheetSectionViewModel(
+            projectID: projectID,
+            observeProjectsUseCase: ObserveProjectsUseCase(projectRepository: projectRepository)
+        )
+    }
+
+    func makeCueDetectionViewModel(for projectID: Project.ID) -> CueDetectionViewModel {
+        CueDetectionViewModel(
+            projectID: projectID,
+            detectCuesUseCase: DetectCuesUseCase(
+                audioAnalysisRepository: audioAnalysisRepository,
+                projectRepository: projectRepository
+            ),
+            observeProjectsUseCase: ObserveProjectsUseCase(projectRepository: projectRepository)
+        )
+    }
+
+    /// `AudioPlaybackControllerImpl` is constructed fresh per call — one
+    /// instance per window, never shared across windows, matching every
+    /// other per-window ViewModel's own construction lifetime
+    /// (`CLAUDE.md`, "Document & Window Model").
+    func makeCueDetectionReviewViewModel(for projectID: Project.ID) -> CueDetectionReviewViewModel {
+        CueDetectionReviewViewModel(
+            projectID: projectID,
+            observeProjectsUseCase: ObserveProjectsUseCase(projectRepository: projectRepository),
+            generateWaveformDetailUseCase: GenerateWaveformDetailUseCase(
+                audioAnalysisRepository: audioAnalysisRepository,
+                projectRepository: projectRepository
+            ),
+            updateCueUseCase: UpdateCueUseCase(projectRepository: projectRepository),
+            audioPlaybackController: AudioPlaybackControllerImpl()
         )
     }
 

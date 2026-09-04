@@ -6,10 +6,14 @@ import SwiftUI
 /// Root content of one Project window (`ROADMAP.md` D6/T6.1) — the 2-column
 /// `NavigationSplitView` shell `CLAUDE.md`'s "Navigation Model" describes:
 /// content = the three always-accessible section tabs, detail = the active
-/// screen. `SetupView` is real as of `ROADMAP.md` D7; `.cueSheet` shows the
-/// real `AudioImportView` as of D8 (import only — cue detection/editing
-/// replace this in D9–D10); `ReviewAndExportView` still shows a placeholder
-/// `EmptyStateView` until D11.
+/// screen. `SetupView` is real as of `ROADMAP.md` D7; `.cueSheet` routes
+/// between `AudioImportView`/`CueDetectionProgressView`/
+/// `CueDetectionReviewView` based on `cueSheetSectionViewModel.resumeState`
+/// as of D9/T9.5 (SPEC.md §4.21) — never unconditionally the import prompt,
+/// so reopening an already-processed (or mid-pipeline) Project resumes at
+/// the right screen instead of re-showing D8's import prompt.
+/// `ReviewAndExportView` still shows a placeholder `EmptyStateView` until
+/// D11.
 ///
 /// Owns this window's `AppState` (`ACFeatures`) — constructed once per
 /// window via `@State`, never a single app-wide instance (`CLAUDE.md`,
@@ -79,6 +83,9 @@ struct ProjectWindowView: View {
     @State private var setupViewModel: SetupViewModel
     @State private var rightHolderDirectoryViewModel: RightHolderDirectoryViewModel
     @State private var audioImportViewModel: AudioImportViewModel
+    @State private var cueSheetSectionViewModel: CueSheetSectionViewModel
+    @State private var cueDetectionViewModel: CueDetectionViewModel
+    @State private var cueDetectionReviewViewModel: CueDetectionReviewViewModel
     /// Set when a tab switch to `.cueSheet`/`.reviewAndExport` is blocked
     /// because `setupViewModel.missingRequiredFields` isn't empty at the
     /// moment the user clicks that tab — see `sidebarButton`'s doc comment
@@ -95,6 +102,9 @@ struct ProjectWindowView: View {
         _rightHolderDirectoryViewModel = State(initialValue: container
             .makeRightHolderDirectoryViewModel(for: projectID))
         _audioImportViewModel = State(initialValue: container.makeAudioImportViewModel(for: projectID))
+        _cueSheetSectionViewModel = State(initialValue: container.makeCueSheetSectionViewModel(for: projectID))
+        _cueDetectionViewModel = State(initialValue: container.makeCueDetectionViewModel(for: projectID))
+        _cueDetectionReviewViewModel = State(initialValue: container.makeCueDetectionReviewViewModel(for: projectID))
     }
 
     var body: some View {
@@ -129,6 +139,7 @@ struct ProjectWindowView: View {
             registry.unregister(projectID)
         }
         .errorAlert(message: $navigationBlockedMessage)
+        .task { await cueSheetSectionViewModel.load() }
     }
 
     private var sidebar: some View {
@@ -186,10 +197,9 @@ struct ProjectWindowView: View {
     /// found. `setupViewModel.projectNotFound` is the one source of truth
     /// this checks — `RightHolderDirectoryViewModel` doesn't get its own
     /// separate flag (see that ViewModel's `loadDirectory()` doc comment).
-    /// `Cues` (import-only as of D8; full detection/editing lands D9–D10)
-    /// and `Review & Export` (still a placeholder, D11) would be exactly as
-    /// broken as Setup if this window's `projectID` were stale, so the check
-    /// sits above the tab `switch` entirely rather than
+    /// `Cues` and `Review & Export` (still a placeholder, D11) would be
+    /// exactly as broken as Setup if this window's `projectID` were stale,
+    /// so the check sits above the tab `switch` entirely rather than
     /// being duplicated into three places.
     @ViewBuilder
     private var detail: some View {
@@ -208,7 +218,7 @@ struct ProjectWindowView: View {
             case .setup:
                 SetupView(viewModel: setupViewModel, directoryViewModel: rightHolderDirectoryViewModel)
             case .cueSheet:
-                AudioImportView(viewModel: audioImportViewModel)
+                cueSheetDetail
             case .reviewAndExport:
                 EmptyStateView(
                     systemImage: "checkmark.seal",
@@ -217,6 +227,31 @@ struct ProjectWindowView: View {
                     surface: .reversed
                 )
             }
+        }
+    }
+
+    /// Routes on `cueSheetSectionViewModel.resumeState` (`ROADMAP.md`
+    /// D9/T9.5, SPEC.md §4.21) instead of unconditionally showing
+    /// `AudioImportView` — the fix for a project already fully imported,
+    /// waveform-generated, and cue-detected in a previous session
+    /// otherwise re-showing the D8 import prompt on reopen.
+    @ViewBuilder
+    private var cueSheetDetail: some View {
+        switch cueSheetSectionViewModel.resumeState {
+        case .loading:
+            ProgressBanner(message: "Loading…")
+                .padding(Theme.Spacing.lg)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(Theme.Surface.primary.background)
+        case .needsImport:
+            AudioImportView(viewModel: audioImportViewModel)
+        case let .needsWaveformGeneration(asset):
+            AudioImportView(viewModel: audioImportViewModel)
+                .task { audioImportViewModel.resumeWaveformGeneration(for: asset) }
+        case .needsCueDetection:
+            CueDetectionProgressView(viewModel: cueDetectionViewModel)
+        case .readyForReview:
+            CueDetectionReviewView(viewModel: cueDetectionReviewViewModel)
         }
     }
 }

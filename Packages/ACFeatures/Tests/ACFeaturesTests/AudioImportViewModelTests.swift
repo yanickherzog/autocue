@@ -68,6 +68,23 @@ final class AudioImportViewModelTests: XCTestCase {
         XCTAssertNotNil(persisted?.waveformPeaks)
     }
 
+    /// The partial-import resume case (`ROADMAP.md` D9/T9.5, SPEC.md
+    /// §4.21) — `Project.audioAsset` already persisted, `.waveformPeaks`
+    /// never completed. Confirms this resumes waveform generation alone,
+    /// with no re-import step.
+    func test_resumeWaveformGeneration_persistsWaveformPeaks_withoutReimporting() async throws {
+        let project = Self.makeProject()
+        let asset = InMemoryAudioAnalysisRepository.placeholderAudioAsset()
+        let (viewModel, projectRepository) = makeViewModel(project: project, importedAsset: asset)
+
+        viewModel.resumeWaveformGeneration(for: asset)
+
+        try await waitUntil(timeout: 2.0) { viewModel.phase == .completed(bookmarkAccessWarning: nil) }
+
+        let persisted = try await projectRepository.fetch(id: project.id)
+        XCTAssertNotNil(persisted?.waveformPeaks)
+    }
+
     /// SPEC.md §4.10, "Security-scoped bookmark creation can fail entirely":
     /// proves the ViewModel surfaces a non-nil warning — not a hard failure,
     /// not silently treated as the normal case — when the imported asset

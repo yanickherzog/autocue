@@ -60,6 +60,28 @@ public final class AudioImportViewModel {
         }
     }
 
+    /// Resumes waveform-peak generation alone, against an already-persisted
+    /// `AudioAsset` — the partial-import resume case `CueSheetSectionViewModel`
+    /// (`ROADMAP.md` D9/T9.5) routes to `.needsWaveformGeneration` for: a
+    /// real, reachable state where `Project.audioAsset` exists but
+    /// `.waveformPeaks` never completed (a quit/crash between
+    /// `ImportAudioUseCase` and `GenerateWaveformPeaksUseCase`'s two
+    /// sequential calls in `importFile(from:)`, above). No re-import step,
+    /// no new Use Case — reuses the same private `runWaveformGeneration(for:)`
+    /// and `ImportPhase` cases the fresh-import path already uses, per
+    /// `SPEC.md` §4.21.
+    public func resumeWaveformGeneration(for asset: AudioAsset) {
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                try await runWaveformGeneration(for: asset)
+                phase = .completed(bookmarkAccessWarning: Self.bookmarkAccessWarning(for: asset))
+            } catch {
+                phase = .failed(message: error.localizedDescription)
+            }
+        }
+    }
+
     /// Surfaces a failure that occurred before any `URL` was even available
     /// to hand to `importFile(from:)` — the drag-and-drop entry point's only
     /// failure mode that isn't already covered by `importFile`'s own

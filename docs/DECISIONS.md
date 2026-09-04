@@ -1426,3 +1426,62 @@ Deliberately **not** suffixed `Repository`, despite living in `ACCore/Repository
 - Documentation-only — D9 has not started; no Swift code changed.
 
 **Full detail:** `ROADMAP.md` D9/T9.3 ("Error surfacing" paragraph), D9/T9.4 (playback-error sentence), Acceptance Criteria (`.plainFallback` bookmark-failure bullet), Testing Requirements; `SPEC.md` §4.21 (final paragraph).
+
+## 2026-09-05 — `DetectCuesUseCase`'s merge rule extended to cover a marker with no nearby detected boundary at all, found during D9 pre-implementation planning
+
+**Decision:** `SPEC.md` §4.11's "Combining with embedded markers" rule is extended with an explicit resolution for a case its existing prose didn't address: an embedded marker that has **no** silence-detected boundary within `embeddedMarkerMergeToleranceSeconds` at all — not "confirms a boundary" (already covered), not "two detected boundaries merge" (already covered, and not applicable here since only one side is a marker) — genuinely neither case the existing rule describes. Resolution: "an embedded marker is always authoritative" is unconditional, so an unconfirmed marker still produces its own cue-start — splitting the containing candidate region if it falls inside one (the same mechanics as a manual ⌥-click split, §4.15/§4.19, just applied automatically), or extending to the next boundary (or file-end) if it falls in silence between regions.
+
+**Context:** found while planning `DetectCuesUseCase`'s (`ROADMAP.md` D9/T9.1) actual merge algorithm against the real, now-fully-built D8 code (`SilenceDetector`/`SilenceDetectedRegion`, confirmed by direct inspection to intentionally carry zero marker-awareness, exactly as documented). Constructing the algorithm precisely enough to write real code — not just restate the existing rule — surfaced that the rule's two stated outcomes ("marker confirms a nearby boundary," "two detected boundaries merge") don't jointly cover every case a real embedded-marker list can produce against a real detected-region list: a marker can legitimately have no detected boundary anywhere near it, most notably in exactly the attacca/segue case (`SPEC.md` §4.15's "Split and merge" motivation) where stage 1 has no silence transition to find in the first place — which is precisely the scenario where a real embedded marker is most valuable and least optional to honor correctly. Flagged directly rather than silently picked in code, per this project's standing "confirmed/clarified at implementation time" pattern for exactly this shape of gap (the 2026-08-14 `AnalysisSettings` entry and the reverb-tail "stricter reference" clarification are the same pattern applied to different sections of this same contract) — and per the requester's explicit instruction that this specific gap gets the same rigor as every other interpretive resolution this project has documented, since it directly affects cue-boundary accuracy, the one thing this app can least afford to get quietly wrong.
+
+**Alternatives Considered:**
+- **Silently drop a marker with no nearby detected boundary** — only markers that happen to line up with a real silence gap ever produce a cue. Rejected — this directly contradicts the rule's own unconditional wording ("an embedded marker is always authoritative," not "...whenever a detected boundary happens to also be nearby"), and defeats the specific reason markers matter most: a marker is exactly the hard, embedded evidence available for the one case (no audible silence between two works) detection structurally cannot resolve on signal alone. Silently discarding it here would mean the one gap D9/T9.3's manual split gesture exists to let a human fix by hand goes unfixed automatically even when the file already contains the fix.
+- **Give an unconfirmed marker a zero-duration placeholder cue**, matching "+ Add Cue"'s existing default, requiring the user to manually drag/extend it before it's useful. Rejected — needlessly worse than what the surrounding data already implies. This app's own accuracy bar (confirmed directly by the requester ahead of this planning pass: "detected cue boundaries must be genuinely usable... if detection quality isn't trustworthy, the app fails at its core purpose") means a detected cue should already look plausible on first render wherever the app has enough information to make it so — and here it does: the containing region's own end, or the next real boundary, is already known.
+- **Split the containing region, or extend to the next boundary/file-end** *(chosen)* — reuses mechanics `SPEC.md` §4.19 already fully specifies for the manual case (split), applied automatically wherever a marker makes the split point unambiguous, with a plausible, non-placeholder duration either way.
+
+**Reason for Choice:** this is the only reading consistent with the rule's own stated unconditional authority, and it costs nothing new architecturally — splitting-at-a-point and "a cue runs to the next known boundary" are both mechanics this contract already needs elsewhere (§4.19's split operation; a `SilenceDetectedRegion`'s own start/end pairing), not a new algorithm invented solely for this edge case.
+
+**Consequences:**
+- `SPEC.md` §4.11 gains one paragraph, immediately following the existing "Combining with embedded markers" rule, stating this resolution explicitly with both rejected alternatives named.
+- `DetectCuesUseCase` (`ROADMAP.md` D9/T9.1, not yet implemented) is built against this resolved reading directly — no separate follow-up needed once implementation begins.
+- Documentation-only — D9 has not started; no Swift code changed.
+
+**Full detail:** `SPEC.md` §4.11 ("Resolved at D9/T9.1 implementation time" paragraph, immediately after "Combining with embedded markers").
+
+## 2026-09-05 — D9 implementation: `UpdateCueUseCase` built as a minimal pull-forward from D10/T10.1, not deferred
+
+**Decision:** `Packages/ACCore/Sources/ACCore/UseCases/UpdateCueUseCase.swift` is built as part of D9, scoped to exactly what D9's `WaveformView` gestures need — the general-purpose `edit` path (field mutation + `.manual` reclassification, SPEC.md §4.3) plus `split`/`merge` (SPEC.md §4.19's field-by-field rules, exactly) — rather than left for `ROADMAP.md` D10/T10.1, which nominally owns this file. `RecalculateTotalMusicRuntimeUseCase` (SPEC.md §4.14) is built alongside it, since all three of `UpdateCueUseCase`'s D9-scoped operations mutate `Project.cues` and SPEC.md §4.14 already assigns `UpdateCueUseCase` the job of triggering that recompute after every such mutation.
+
+**Context:** found during D9 pre-implementation planning, confirmed again while actually writing `CueDetectionReviewViewModel`: `ROADMAP.md`'s own D9/T9.3 text says drag-to-reposition writes "through `UpdateCueUseCase`'s edit path (D10/T10.1)" and split/merge go "via a new `split`/`merge` operation on `UpdateCueUseCase` (D10/T10.1)" — i.e. D9's own Task description already assumed this type would exist by the time D9 was implemented, just filed under D10's numbering. Without it, D9's own Acceptance Criteria (a dragged boundary marker actually updating `startTimecode`; a split/merge gesture actually mutating `Project.cues`) would be structurally unverifiable — the same forward-dependency shape `GenerateWaveformDetailUseCase` already set precedent for at D8/T8.5, built specifically for D9/T9.3's zoom feature to call.
+
+**Alternatives Considered:**
+- **Defer all of T9.3's write-through to a stub/no-op until D10 lands**, building the gestures' UI/interaction layer only. Rejected — this would leave D9 unable to satisfy its own stated Acceptance Criteria at all, worse than a scoped pull-forward of a type SPEC.md §4.19 already fully specifies field-by-field.
+- **Build the entire `UpdateCueUseCase` now, including `add`/`delete`/`reorder`** (D10/T10.1's full original scope), since it's the same file either way. Rejected — D9 has no real caller for add/delete/reorder (`CueTableView`, D10/T10.2, doesn't exist yet); building them now would be exactly the "stub something to come back to later" `CONTRIBUTING.md` §2 warns against, unreachable from any D9 UI.
+- **A minimal pull-forward, scoped to exactly what D9's gestures call** *(chosen)* — `edit`/`split`/`merge` only; D10/T10.1 extends this same file with `add`/`delete`/`reorder` and the `CueTableView`/`CueRowDetailView` wiring when that Deliverable actually begins.
+
+**Reason for Choice:** every behavior implemented is already fully specified in `SPEC.md` §4.19 — this is not new design, only earlier-than-nominally-scheduled implementation of a contract that already existed in full. Scoping strictly to D9's real callers (not the whole eventual file) avoids the unreachable-code problem the middle alternative would have created.
+
+**Consequences:**
+- `ROADMAP.md` D10/T10.1's description is corrected in the same change to say it *extends* `UpdateCueUseCase` with `add`/`delete`/`reorder`, rather than describing the file as if it doesn't exist yet.
+- `docs/REVIEW.md` gets a D9 entry flagging this pull-forward explicitly, per this project's standing rule that a Deliverable's diff touching a nominally-later Deliverable's file needs to be called out, not silently folded in.
+- Undo registration for split/merge stays entirely in `CueDetectionReviewViewModel` (D9/T9.3), never in `UpdateCueUseCase` itself — `UndoManager` is a Presentation-layer/environment concept, incompatible with a stateless, singleton-injected `ACCore` Use Case (`CLAUDE.md`, "Use Cases Are Stateless"). The ViewModel captures pre-mutation `Cue` state from its own already-live `cues` snapshot before calling `split`/`merge`, and registers the inverse action itself.
+
+**Full detail:** `Packages/ACCore/Sources/ACCore/UseCases/{UpdateCueUseCase,RecalculateTotalMusicRuntimeUseCase}.swift`; `ROADMAP.md` D9 (Task list), D10/T10.1 (corrected description); `docs/REVIEW.md` D9 entry.
+
+## 2026-09-05 — D9 implementation: `AudioPlaybackController.prepare` gains the `mode:` parameter SPEC.md §4.20 was missing
+
+**Decision:** `AudioPlaybackController.prepare(securityScopedBookmark:)` (`ACCore`) becomes `prepare(securityScopedBookmark:mode: AudioAsset.BookmarkAccessMode)`, matching every other consumer of `securityScopedBookmark` (`generateWaveformPeaks`, `generateWaveformDetail`, `refreshBookmarkIfStale`). `AudioAsset.BookmarkAccessMode`'s `resolutionOptions`/`creationOptions` mapping (`AudioAnalysisRepositoryImpl.swift`) is widened from `private` to package-internal so `AudioPlaybackControllerImpl` (`ACAudioKit`) can reuse the same mapping rather than duplicating it a second time.
+
+**Context:** found by cross-referencing `SPEC.md` §4.20 (written 2026-08-14) against §4.10's `.plainFallback` bookmark fallback (added 2026-09-04, three weeks later) during D9 pre-implementation planning — nobody had revisited §4.20's protocol sketch once the fallback landed. Without `mode:`, `AudioPlaybackControllerImpl` would have no way to correctly resolve a `.plainFallback`-mode `AudioAsset`'s bookmark, which was never created as security-scoped and must never be resolved with `.withSecurityScope` options.
+
+**Alternatives Considered:**
+- **Leave `prepare` as originally specified, have `AudioPlaybackControllerImpl` always resolve with `.withSecurityScope`.** Rejected — this would throw or silently misresolve for any `.plainFallback`-mode asset, exactly the "silent until it isn't" failure class this project's bookmark-lifecycle discipline elsewhere exists to prevent.
+- **Add `mode:` to `prepare`, matching the established pattern exactly** *(chosen)*.
+
+**Reason for Choice:** consistency with an already-established, already-correct pattern — every other bookmark-resolving method in this codebase takes `mode:` for exactly this reason; `prepare` was the one outlier, from having been specified before the fallback existed.
+
+**Consequences:**
+- `SPEC.md` §4.20 corrected in the same change, with the cross-section inconsistency stated explicitly.
+- `InMemoryAudioPlaybackController` (`ACTestSupport`) records `lastPreparedMode` for tests to assert against.
+- Documentation and implementation land in the same change — this was found and fixed before `AudioPlaybackControllerImpl` was written, not after.
+
+**Full detail:** `SPEC.md` §4.20; `Packages/ACCore/Sources/ACCore/RepositoryProtocols/AudioPlaybackController.swift`; `Packages/ACAudioKit/Sources/ACAudioKit/{AudioAnalysisRepositoryImpl,AudioPlaybackControllerImpl}.swift`; `Packages/ACTestSupport/Sources/ACTestSupport/Fakes/InMemoryAudioPlaybackController.swift`.
