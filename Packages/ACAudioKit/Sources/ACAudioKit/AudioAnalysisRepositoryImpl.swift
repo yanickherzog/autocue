@@ -312,8 +312,10 @@ public struct AudioAnalysisRepositoryImpl: AudioAnalysisRepository {
 /// it corresponds to — kept local to this Data-layer package rather than on
 /// the `ACCore` enum itself, since `URL.Bookmark{Creation,Resolution}Options`
 /// are Foundation API surface this Repository implementation owns, not a
-/// concern the Domain type needs to know the shape of.
-private extension AudioAsset.BookmarkAccessMode {
+/// concern the Domain type needs to know the shape of. Package-internal
+/// (not `private`) — `AudioPlaybackControllerImpl` (D9/T9.4) needs the same
+/// mapping to resolve a bookmark the same mode-aware way.
+extension AudioAsset.BookmarkAccessMode {
     var creationOptions: URL.BookmarkCreationOptions {
         switch self {
         case .securityScoped: .withSecurityScope
