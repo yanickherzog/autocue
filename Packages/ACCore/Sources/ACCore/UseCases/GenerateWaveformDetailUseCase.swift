@@ -36,60 +36,17 @@ public struct GenerateWaveformDetailUseCase: Sendable {
         endSeconds: Double,
         resolution: Int
     ) async throws -> [WaveformPeakBucket] {
-        let asset = try await refreshingBookmarkIfNeeded(asset, projectID: projectID)
+        let asset = try await BookmarkRefresher.refreshingIfNeeded(
+            asset,
+            projectID: projectID,
+            audioAnalysisRepository: audioAnalysisRepository,
+            projectRepository: projectRepository
+        )
         return try await audioAnalysisRepository.generateWaveformDetail(
             for: asset,
             startSeconds: startSeconds,
             endSeconds: endSeconds,
             resolution: resolution
         )
-    }
-
-    /// Same bookmark-lifecycle handling as `GenerateWaveformPeaksUseCase`'s
-    /// own method of the same name — not shared/extracted between the two,
-    /// consistent with this codebase's existing "duplicate the first two
-    /// times" convention (`CONTRIBUTING.md` §3) for this exact
-    /// fetch-transform-persist-one-field shape, already duplicated this way
-    /// between `ImportAudioUseCase`/`GenerateWaveformPeaksUseCase`'s own
-    /// `persist` methods before this pair existed.
-    private func refreshingBookmarkIfNeeded(_ asset: AudioAsset, projectID: Project.ID) async throws -> AudioAsset {
-        guard let refreshedBookmark = try audioAnalysisRepository.refreshBookmarkIfStale(
-            asset.securityScopedBookmark,
-            mode: asset.bookmarkAccessMode
-        ) else {
-            return asset
-        }
-
-        let updatedAsset = AudioAsset(
-            id: asset.id,
-            originalFileName: asset.originalFileName,
-            securityScopedBookmark: refreshedBookmark,
-            bookmarkAccessMode: asset.bookmarkAccessMode,
-            duration: asset.duration,
-            sampleRate: asset.sampleRate,
-            channelCount: asset.channelCount,
-            bitDepth: asset.bitDepth,
-            embeddedMarkers: asset.embeddedMarkers,
-            broadcastWaveMetadata: asset.broadcastWaveMetadata,
-            importedAt: asset.importedAt
-        )
-        let updated = try await projectRepository.update(id: projectID) { project in
-            Project(
-                id: project.id,
-                name: project.name,
-                createdAt: project.createdAt,
-                updatedAt: Date(),
-                audioAsset: updatedAsset,
-                waveformPeaks: project.waveformPeaks,
-                setup: project.setup,
-                cues: project.cues,
-                people: project.people,
-                labels: project.labels
-            )
-        }
-        guard updated != nil else {
-            throw ProjectNotFoundError(projectID: projectID)
-        }
-        return updatedAsset
     }
 }

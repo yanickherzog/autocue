@@ -29,7 +29,12 @@ public struct GenerateWaveformPeaksUseCase: Sendable {
                     // the repository resolves it, or a stale bookmark keeps
                     // silently resolving forever with nothing ever
                     // persisting a fresh one in its place.
-                    let asset = try await refreshingBookmarkIfNeeded(asset, projectID: projectID)
+                    let asset = try await BookmarkRefresher.refreshingIfNeeded(
+                        asset,
+                        projectID: projectID,
+                        audioAnalysisRepository: audioAnalysisRepository,
+                        projectRepository: projectRepository
+                    )
                     for try await event in audioAnalysisRepository.generateWaveformPeaks(for: asset) {
                         switch event {
                         case let .progress(update):
@@ -46,54 +51,6 @@ public struct GenerateWaveformPeaksUseCase: Sendable {
             }
             continuation.onTermination = { _ in task.cancel() }
         }
-    }
-
-    /// SPEC.md §4.10/§4.20's `AudioAsset.securityScopedBookmark` lifecycle:
-    /// a stale bookmark still resolves successfully today, so nothing fails
-    /// here if this is skipped — it just silently stops being true, which
-    /// is exactly the danger. Returns `asset` unchanged when the bookmark is
-    /// still current (the common case); otherwise persists the refreshed
-    /// bookmark onto `Project.audioAsset` and returns an updated `asset` so
-    /// the caller doesn't have to re-resolve a second time this same call.
-    private func refreshingBookmarkIfNeeded(_ asset: AudioAsset, projectID: Project.ID) async throws -> AudioAsset {
-        guard let refreshedBookmark = try audioAnalysisRepository.refreshBookmarkIfStale(
-            asset.securityScopedBookmark,
-            mode: asset.bookmarkAccessMode
-        ) else {
-            return asset
-        }
-
-        let updatedAsset = AudioAsset(
-            id: asset.id,
-            originalFileName: asset.originalFileName,
-            securityScopedBookmark: refreshedBookmark,
-            bookmarkAccessMode: asset.bookmarkAccessMode,
-            duration: asset.duration,
-            sampleRate: asset.sampleRate,
-            channelCount: asset.channelCount,
-            bitDepth: asset.bitDepth,
-            embeddedMarkers: asset.embeddedMarkers,
-            broadcastWaveMetadata: asset.broadcastWaveMetadata,
-            importedAt: asset.importedAt
-        )
-        let updated = try await projectRepository.update(id: projectID) { project in
-            Project(
-                id: project.id,
-                name: project.name,
-                createdAt: project.createdAt,
-                updatedAt: Date(),
-                audioAsset: updatedAsset,
-                waveformPeaks: project.waveformPeaks,
-                setup: project.setup,
-                cues: project.cues,
-                people: project.people,
-                labels: project.labels
-            )
-        }
-        guard updated != nil else {
-            throw ProjectNotFoundError(projectID: projectID)
-        }
-        return updatedAsset
     }
 
     private func persist(_ peaks: WaveformPeaks, projectID: Project.ID) async throws {
