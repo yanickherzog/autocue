@@ -46,8 +46,8 @@ public protocol AudioAnalysisRepository: Sendable {
     /// entirely").
     ///
     /// **Callers that resolve an existing bookmark (`generateWaveformPeaks`,
-    /// `generateWaveformDetail`) must call this first and, when it returns
-    /// non-`nil`, persist the result back onto `Project.audioAsset.
+    /// `generateWaveformDetail`, `detectCues`) must call this first and, when
+    /// it returns non-`nil`, persist the result back onto `Project.audioAsset.
     /// securityScopedBookmark` via `ProjectRepository` before proceeding.**
     /// A stale bookmark still resolves successfully today — that's exactly
     /// what makes this dangerous to skip: nothing fails now, but the app
@@ -59,8 +59,18 @@ public protocol AudioAnalysisRepository: Sendable {
     /// `URL`, never resolves a previously-stored one.
     func refreshBookmarkIfStale(_ bookmark: Data, mode: AudioAsset.BookmarkAccessMode) throws -> Data?
 
-    /// Detects candidate `Cue`s from `asset`'s embedded markers and silence-gap
-    /// analysis, per `settings` (SPEC.md §4.11).
+    /// **Raw signal detection only — never touches `asset.embeddedMarkers`.**
+    /// Runs `SilenceDetector` against the file and maps each resulting
+    /// candidate region into a plain `Cue` (`source: .detectedFromAudio`,
+    /// empty `title`/`rightHolders`, matching "+ Add Cue"'s own defaults).
+    /// Merging this raw output against `asset.embeddedMarkers` into the
+    /// final, reconciled `[Cue]` list is `DetectCuesUseCase`'s job
+    /// (`ROADMAP.md` D9/T9.1, SPEC.md §4.11's "Combining with embedded
+    /// markers") — this method's implementation intentionally mirrors
+    /// `SilenceDetector`'s own restraint one layer down, for the same reason.
+    /// Resolves `asset`'s bookmark the same plain way `generateWaveformDetail`
+    /// does; staleness/refresh is the calling Use Case's responsibility (see
+    /// `refreshBookmarkIfStale`, above), not this method's.
     func detectCues(in asset: AudioAsset, settings: AnalysisSettings)
         -> AsyncThrowingStream<OperationProgress<[Cue]>, Error>
 }

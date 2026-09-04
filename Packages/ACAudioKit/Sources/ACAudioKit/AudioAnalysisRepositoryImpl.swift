@@ -7,17 +7,12 @@ import Foundation
 /// waveform peak generation (overview and on-demand detail), backed by
 /// `WAVStreamingReader`/`RIFFChunkParser`/`WaveformPeakExtractor`.
 ///
-/// **`detectCues` is a placeholder here, not a real implementation.**
-/// Merging `SilenceDetector`'s raw candidate regions against
-/// `AudioAsset.embeddedMarkers` into actual `Cue`s is `DetectCuesUseCase`'s
-/// job (`ROADMAP.md` D9/T9.1, SPEC.md §4.11's "Combining with embedded
-/// markers") — this type must still satisfy the whole protocol to compile
-/// and be wired into `DependencyContainer` in D8, so this method completes
-/// immediately with an empty `[Cue]`. Nothing in D8's own UI
-/// (`AudioImportView`) ever calls it, so this is inert, unreachable code
-/// until D9 replaces it with the real merge logic — not a stub a user could
-/// actually hit (`CONTRIBUTING.md` §2's "don't stub" rule is about
-/// reachable, misleading half-features; this isn't one).
+/// **`detectCues` (`ROADMAP.md` D9/T9.1) runs the real `SilenceDetector`
+/// pipeline but stays raw-signal-only** — it never touches
+/// `AudioAsset.embeddedMarkers`. Merging that raw output against embedded
+/// markers into the final, reconciled `[Cue]` list is `DetectCuesUseCase`'s
+/// job (SPEC.md §4.11's "Combining with embedded markers") — this method
+/// intentionally mirrors `SilenceDetector`'s own restraint one layer down.
 ///
 /// Stateless (no stored properties) — a `struct`, matching every other
 /// Repository/Use Case implementation's "Use Cases Are Stateless" shape
@@ -155,13 +150,50 @@ public struct AudioAnalysisRepositoryImpl: AudioAnalysisRepository {
         }
     }
 
+    /// Raw signal detection only, per `AudioAnalysisRepository`'s protocol
+    /// contract — merging against `asset.embeddedMarkers` is
+    /// `DetectCuesUseCase`'s job (`ROADMAP.md` D9/T9.1). Mirrors
+    /// `generateWaveformDetail`'s plain (non-staleness-checking) bookmark
+    /// resolution — refreshing a stale bookmark is the calling Use Case's
+    /// responsibility, not this method's.
     public func detectCues(
-        in _: AudioAsset,
-        settings _: AnalysisSettings
+        in asset: AudioAsset,
+        settings: AnalysisSettings
     ) -> AsyncThrowingStream<OperationProgress<[Cue]>, Error> {
         AsyncThrowingStream { continuation in
-            continuation.yield(.completed([]))
-            continuation.finish()
+            Task {
+                do {
+                    let url = try Self.resolveURL(
+                        bookmark: asset.securityScopedBookmark,
+                        mode: asset.bookmarkAccessMode
+                    )
+                    let accessGranted = url.startAccessingSecurityScopedResource()
+                    defer { url.stopAccessingSecurityScopedResource() }
+
+                    do {
+                        let reader = try WAVStreamingReader(url: url)
+                        let regions = try SilenceDetector
+                            .detectRegions(reader: reader, settings: settings) { progress in
+                                continuation.yield(.progress(ProgressUpdate(fractionCompleted: progress, message: nil)))
+                            }
+                        let cues = regions.map { region in
+                            Cue(
+                                title: "",
+                                duration: MediaDuration(seconds: region.endSeconds - region.startSeconds),
+                                rightHolders: [],
+                                source: .detectedFromAudio,
+                                startTimecode: Timecode(offsetSeconds: region.startSeconds)
+                            )
+                        }
+                        continuation.yield(.completed(cues))
+                        continuation.finish()
+                    } catch {
+                        throw Self.diagnosableError(from: error, accessGranted: accessGranted, stage: "detectCues")
+                    }
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
         }
     }
 

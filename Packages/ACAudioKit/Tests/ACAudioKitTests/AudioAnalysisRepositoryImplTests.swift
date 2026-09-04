@@ -220,21 +220,41 @@ final class AudioAnalysisRepositoryImplTests: XCTestCase {
         XCTAssertEqual(resolvedURL.lastPathComponent, renamedURL.lastPathComponent)
     }
 
-    /// D9/T9.1's real job — placeholder here, flagged explicitly rather
-    /// than silently discovered (`ROADMAP.md` D8/T8.5).
-    func test_detectCues_placeholderCompletesImmediately_withAnEmptyResult() async throws {
-        let asset = AudioAsset(
-            originalFileName: "placeholder.wav",
-            securityScopedBookmark: Data(),
-            duration: MediaDuration(seconds: 1),
-            sampleRate: 48000,
-            channelCount: 1,
-            bitDepth: 16,
-            importedAt: Date()
-        )
+    /// Confirms `detectCues` correctly wires `SilenceDetector`'s real
+    /// candidate regions into plain `.detectedFromAudio` `Cue`s
+    /// (`ROADMAP.md` D9/T9.1) — `SilenceDetector`'s own boundary-accuracy
+    /// precision is D8's own, separately-owned test suite's job
+    /// (`SilenceDetectorTests`/`SilenceDetectorRealFixtureTests`); this test
+    /// only proves the repository-level mapping (region → `Cue`, empty
+    /// `title`/`rightHolders`, `source == .detectedFromAudio`) is wired
+    /// correctly, with a generous tolerance appropriate to that narrower
+    /// goal. Merging against embedded markers is explicitly **not** this
+    /// method's job — see `DetectCuesUseCaseTests` for that.
+    func test_detectCues_mapsSilenceDetectedRegionsToPlainDetectedFromAudioCues() async throws {
+        // Silence segments must clear AnalysisSettings' default
+        // minimumSilenceDurationSeconds (2.0s) and the tone segment must
+        // clear minimumCueDurationSeconds (3.0s) — otherwise it's correctly
+        // discarded as a spurious blip (SPEC.md §4.11), not detected at all.
+        let sampleRate = 48000.0
+        let silenceFrameCount = Int(2.5 * sampleRate)
+        let toneFrameCount = Int(4.0 * sampleRate)
+        let samples = [Float](repeating: 0, count: silenceFrameCount)
+            + [Float](repeating: 0.5, count: toneFrameCount)
+            + [Float](repeating: 0, count: silenceFrameCount)
+        let url = WAVFixtureBuilder.makeTemporaryURL()
+        try WAVFixtureBuilder.writeWAVFile(sampleRate: sampleRate, channelSamples: [samples], cuePoints: [], to: url)
+        fixtureURLs.append(url)
+        let asset = try await collectResult(repository.importAudio(from: url))
 
         let cues = try await collectResult(repository.detectCues(in: asset, settings: AnalysisSettings()))
 
-        XCTAssertEqual(cues, [])
+        XCTAssertEqual(cues.count, 1)
+        let cue = try XCTUnwrap(cues.first)
+        XCTAssertEqual(cue.source, .detectedFromAudio)
+        XCTAssertEqual(cue.title, "")
+        XCTAssertTrue(cue.rightHolders.isEmpty)
+        let start = try XCTUnwrap(cue.startTimecode)
+        XCTAssertEqual(start.offsetSeconds, 2.5, accuracy: 0.05)
+        XCTAssertEqual(cue.duration.seconds, 4.0, accuracy: 0.05)
     }
 }
