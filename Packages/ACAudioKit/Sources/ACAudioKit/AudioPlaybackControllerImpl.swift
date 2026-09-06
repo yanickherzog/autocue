@@ -80,9 +80,21 @@ public actor AudioPlaybackControllerImpl: AudioPlaybackController {
     /// Seeks and continues if already playing — never stop-then-replay,
     /// which would produce overlapping audio on rapid re-clicking
     /// (SPEC.md §4.20).
+    ///
+    /// **Fades down *before* the jump, not just back up after.** An
+    /// earlier version only ramped volume back up post-jump — correct for
+    /// a fresh start (nothing audible yet to interrupt), but retargeting
+    /// while already playing still clicked, because the instantaneous
+    /// `volume = 0` assignment was itself a discontinuous amplitude jump
+    /// with the same click physics as a discontinuous sample-position
+    /// jump — it just moved the click to the moment of muting instead of
+    /// the moment of the position change. Fading down first (a genuine,
+    /// if brief, `await`) is harmless when starting from silence and
+    /// actually closes the gap when interrupting live playback.
     public func play(from startSeconds: Double, until endSeconds: Double?) async throws {
         guard let player else { throw AudioPlaybackControllerImplError.notPrepared }
-        player.volume = 0
+        player.setVolume(0, fadeDuration: Self.seekFadeSeconds)
+        try? await Task.sleep(nanoseconds: UInt64(Self.seekFadeSeconds * 1_000_000_000))
         player.currentTime = startSeconds
         boundedEndSeconds = endSeconds
         if !player.isPlaying {
