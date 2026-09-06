@@ -198,12 +198,60 @@ public struct WaveformView: View {
         return marker.offsetSeconds
     }
 
+    /// How far from the top of the view each cue's "CUE N" label is drawn —
+    /// a fixed pixel offset, not proportional to the view's own height: the
+    /// label reads as a small annotation near the top edge regardless of
+    /// how tall the waveform strip is, not something that should visually
+    /// drift further down on a taller view.
+    private static let cueLabelTopOffset: CGFloat = 25
+
+    /// Cue-span rectangles, drawn *before* the waveform stroke below so
+    /// they render behind it — one per cue, spanning its full extent
+    /// (`offsetSeconds ..< offsetSeconds + durationSeconds`, SPEC.md
+    /// §4.3's derived TC Out), automatically up to date on every redraw
+    /// since it's computed directly from `markers`, the same live data the
+    /// gesture layer already uses — no separate state to keep in sync.
+    /// Answers the "where does a cue actually end vs. where does silence
+    /// before the next one begin" ambiguity a start-only marker can't.
+    private func drawCueSpans(context: GraphicsContext, size: CGSize) {
+        for marker in markers {
+            let startX = WaveformCoordinateMapper.pixelAtSeconds(
+                marker.offsetSeconds,
+                viewWidth: size.width,
+                visibleRangeSeconds: visibleRangeSeconds
+            )
+            let endX = WaveformCoordinateMapper.pixelAtSeconds(
+                marker.offsetSeconds + marker.durationSeconds,
+                viewWidth: size.width,
+                visibleRangeSeconds: visibleRangeSeconds
+            )
+            guard endX > 0, startX < size.width else { continue } // fully off-screen either side
+            let clampedStart = max(0, startX)
+            let clampedEnd = min(size.width, endX)
+            guard clampedEnd > clampedStart else { continue }
+
+            let rect = CGRect(x: clampedStart, y: 0, width: clampedEnd - clampedStart, height: size.height)
+            context.fill(Path(rect), with: .color(Theme.Colors.white.opacity(0.15)))
+
+            // 1-indexed, in left-to-right (`markers`' own, already-sorted-
+            // by-start) order — `marker.id` is the cue's index in that same
+            // order, so `id + 1` is exactly that position, no separate
+            // numbering scheme to maintain.
+            let label = Text("CUE \(marker.id + 1)")
+                .font(Theme.Typography.font(.medium, size: 11))
+                .foregroundColor(Theme.Colors.carbonBlack)
+            context.draw(label, at: CGPoint(x: (clampedStart + clampedEnd) / 2, y: Self.cueLabelTopOffset))
+        }
+    }
+
     private func draw(context: GraphicsContext, size: CGSize) {
         let bucketCount = displayData.buckets.count
         guard bucketCount > 0, size.width > 0 else { return }
         let midY = size.height / 2
         let representedRange = displayData.representedRangeSeconds
         let representedSpan = representedRange.upperBound - representedRange.lowerBound
+
+        drawCueSpans(context: context, size: size)
 
         var wavePath = Path()
         for (bucketIndex, bucket) in displayData.buckets.enumerated() {
@@ -278,7 +326,10 @@ private func previewBuckets() -> [WaveformDisplayData.Bucket] {
 #Preview("WaveformView — interactive, with markers") {
     WaveformView(
         displayData: WaveformDisplayData(buckets: previewBuckets(), representedRangeSeconds: 0 ... 60),
-        markers: [WaveformMarker(id: 0, offsetSeconds: 10), WaveformMarker(id: 1, offsetSeconds: 40)],
+        markers: [
+            WaveformMarker(id: 0, offsetSeconds: 10, durationSeconds: 20),
+            WaveformMarker(id: 1, offsetSeconds: 40, durationSeconds: 15),
+        ],
         visibleRangeSeconds: .constant(0 ... 60),
         fileDurationSeconds: 60,
         playheadOffsetSeconds: 25

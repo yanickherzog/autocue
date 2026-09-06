@@ -43,12 +43,21 @@ public struct WaveformDisplayData: Equatable {
 /// ordered cue list, threaded back through `onBoundaryDragged`/merge/split
 /// closures so the `ACFeatures`-layer caller knows which boundary moved,
 /// per SPEC.md §4.15.
+///
+/// `durationSeconds` is the cue's own length — `offsetSeconds
+/// ..< offsetSeconds + durationSeconds` is its full extent, used only for
+/// the translucent cue-span rectangle/"CUE N" label `WaveformView` draws
+/// behind the waveform, never for gesture/drag logic (that's `offsetSeconds`
+/// alone, unchanged). Defaults to `0` for gesture-only tests that don't
+/// render and have no real duration to give it.
 public struct WaveformMarker: Identifiable, Equatable {
     public let id: Int
     public let offsetSeconds: Double
+    public let durationSeconds: Double
 
-    public init(id: Int, offsetSeconds: Double) {
+    public init(id: Int, offsetSeconds: Double, durationSeconds: Double = 0) {
         self.id = id
         self.offsetSeconds = offsetSeconds
+        self.durationSeconds = durationSeconds
     }
 }

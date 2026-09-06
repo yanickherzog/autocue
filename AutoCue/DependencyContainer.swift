@@ -95,6 +95,7 @@ final class DependencyContainer {
                 projectRepository: projectRepository
             ),
             updateCueUseCase: UpdateCueUseCase(projectRepository: projectRepository),
+            clearImportedAudioUseCase: ClearImportedAudioUseCase(projectRepository: projectRepository),
             audioPlaybackController: AudioPlaybackControllerImpl()
         )
     }

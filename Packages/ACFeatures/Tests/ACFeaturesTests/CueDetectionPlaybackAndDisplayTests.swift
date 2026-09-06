@@ -116,4 +116,38 @@ final class CueDetectionPlaybackAndDisplayTests: XCTestCase {
         XCTAssertEqual(viewModel.displayData.representedRangeSeconds, narrowRange)
         loadTask.cancel()
     }
+
+    /// Regression test for the pan/zoom-out lag: panning or zooming out
+    /// past what the currently-held (narrow, on-demand-detail) data covers
+    /// used to leave `displayData` positioned correctly but simply not
+    /// covering the newly-visible area at all, until the debounced fetch
+    /// resolved — a real, visible lag distinct from (and not fixed by) the
+    /// zoom-in fix from the previous round. `visibleRangeChanged` must now
+    /// fall back to the whole-file overview *immediately*, synchronously,
+    /// the moment the new range escapes the currently-held one — not wait
+    /// for any debounce.
+    func test_visibleRangeChangedToRangeOutsideCurrentData_immediatelyFallsBackToOverview() async throws {
+        let env = makeCueDetectionReviewEnvironment(cues: [])
+        let viewModel = env.viewModel
+        let loadTask = Task { await viewModel.load() }
+        try await waitUntilCueDetectionReviewConditionMet { !viewModel.displayData.buckets.isEmpty }
+        let overviewRange = viewModel.displayData.representedRangeSeconds
+
+        // Zoom in and let the on-demand detail fetch resolve first, so
+        // displayData now represents only a narrow sub-range.
+        let narrowRange = 0.0 ... (viewModel.fileDurationSeconds / 100)
+        viewModel.visibleRangeChanged(to: narrowRange, pixelWidth: 2000)
+        try await waitUntilCueDetectionReviewConditionMet(timeout: 3) {
+            viewModel.displayData.representedRangeSeconds == narrowRange
+        }
+
+        // Pan/zoom-out to a range the held narrow data doesn't cover at
+        // all — this must fall back to overview synchronously, before the
+        // new debounced fetch has any chance to resolve.
+        let farRange = (viewModel.fileDurationSeconds / 2) ... viewModel.fileDurationSeconds
+        viewModel.visibleRangeChanged(to: farRange, pixelWidth: 2000)
+
+        XCTAssertEqual(viewModel.displayData.representedRangeSeconds, overviewRange)
+        loadTask.cancel()
+    }
 }

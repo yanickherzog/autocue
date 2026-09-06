@@ -166,6 +166,34 @@ final class CueDetectionReviewViewModelTests: XCTestCase {
         loadTask.cancel()
     }
 
+    // MARK: - Clear imported audio
+
+    func test_clearImportedAudio_removesAssetPeaksAndCues_andStopsPlaybackFirst() async throws {
+        let cue = makeCueDetectionReviewCue(startSeconds: 10, duration: 30)
+        let env = makeCueDetectionReviewEnvironment(cues: [cue])
+        let viewModel = env.viewModel
+        let projectRepository = env.projectRepository
+        let playbackController = env.playbackController
+        let project = env.project
+
+        let loadTask = Task { await viewModel.load() }
+        try await waitUntilCueDetectionReviewConditionMet { viewModel.cues.count == 1 }
+
+        viewModel.clearImportedAudio()
+
+        try await waitUntilCueDetectionReviewConditionMet {
+            let updated = try await projectRepository.fetch(id: project.id)
+            return updated?.audioAsset == nil
+        }
+        let updated = try await projectRepository.fetch(id: project.id)
+        XCTAssertNil(updated?.audioAsset)
+        XCTAssertNil(updated?.waveformPeaks)
+        XCTAssertEqual(updated?.cues, [])
+        let stopCallCount = await playbackController.stopCallCount
+        XCTAssertEqual(stopCallCount, 1, "playback must be stopped before the audio it depends on is cleared")
+        loadTask.cancel()
+    }
+
     func test_playbackFailure_setsADistinguishingErrorMessage_notAGenericOne() async throws {
         let asset = InMemoryAudioAnalysisRepository.placeholderAudioAsset()
         let peaks = WaveformPeaks(audioAssetID: asset.id, resolution: 4, buckets: [])
@@ -180,6 +208,7 @@ final class CueDetectionReviewViewModelTests: XCTestCase {
                 projectRepository: projectRepository
             ),
             updateCueUseCase: UpdateCueUseCase(projectRepository: projectRepository),
+            clearImportedAudioUseCase: ClearImportedAudioUseCase(projectRepository: projectRepository),
             audioPlaybackController: playbackController
         )
 

@@ -53,14 +53,19 @@ public final class CueDetectionReviewViewModel {
     public var markers: [WaveformMarker] {
         cues.enumerated().compactMap { index, cue in
             guard let start = cue.startTimecode else { return nil }
-            return WaveformMarker(id: index, offsetSeconds: start.offsetSeconds)
+            return WaveformMarker(id: index, offsetSeconds: start.offsetSeconds, durationSeconds: cue.duration.seconds)
         }
     }
 
     private let observeProjectsUseCase: ObserveProjectsUseCase
     private let generateWaveformDetailUseCase: GenerateWaveformDetailUseCase
     private let updateCueUseCase: UpdateCueUseCase
-    private let audioPlaybackController: AudioPlaybackController
+    /// Not `private`: read from this type's `+ClearImportedAudio.swift`
+    /// extension (split into its own file purely to stay under this
+    /// project's type-body-length lint limit) — still `internal`, never
+    /// exposed as public API.
+    let clearImportedAudioUseCase: ClearImportedAudioUseCase
+    let audioPlaybackController: AudioPlaybackController
 
     private var asset: AudioAsset?
     private var overviewPeaks: WaveformPeaks?
@@ -84,12 +89,14 @@ public final class CueDetectionReviewViewModel {
         observeProjectsUseCase: ObserveProjectsUseCase,
         generateWaveformDetailUseCase: GenerateWaveformDetailUseCase,
         updateCueUseCase: UpdateCueUseCase,
+        clearImportedAudioUseCase: ClearImportedAudioUseCase,
         audioPlaybackController: AudioPlaybackController
     ) {
         self.projectID = projectID
         self.observeProjectsUseCase = observeProjectsUseCase
         self.generateWaveformDetailUseCase = generateWaveformDetailUseCase
         self.updateCueUseCase = updateCueUseCase
+        self.clearImportedAudioUseCase = clearImportedAudioUseCase
         self.audioPlaybackController = audioPlaybackController
     }
 
@@ -152,12 +159,34 @@ public final class CueDetectionReviewViewModel {
     public func visibleRangeChanged(to newRange: ClosedRange<Double>, pixelWidth: Double) {
         visibleRangeSeconds = newRange
         self.pixelWidth = pixelWidth
+        // Zooming *in* always still has overlapping data to reposition
+        // correctly (the existing displayData's represented range fully
+        // contains the new, narrower one) — no need to touch displayData
+        // here at all. Zooming *out* or panning past what's currently held
+        // reveals area that data simply doesn't cover, so repositioning it
+        // alone would draw a correctly-placed but incomplete/wrong picture
+        // for the newly-revealed area. Falling back immediately to the
+        // always-available, whole-file overview — which by definition
+        // covers *any* range — guarantees something geometrically correct
+        // is visible right away in that case, without the flash back to
+        // coarse that would happen if this ran unconditionally on every
+        // pan/zoom, however small.
+        if !Self.range(newRange, isFullyContainedIn: displayData.representedRangeSeconds), let overviewPeaks {
+            displayData = Self.mapToDisplayData(
+                overviewPeaks.buckets,
+                representedRangeSeconds: 0 ... fileDurationSeconds
+            )
+        }
         detailFetchTask?.cancel()
         detailFetchTask = Task { [weak self] in
             try? await Task.sleep(nanoseconds: Self.detailFetchDebounceNanoseconds)
             guard !Task.isCancelled else { return }
             await self?.fetchDetailIfNeeded()
         }
+    }
+
+    private static func range(_ inner: ClosedRange<Double>, isFullyContainedIn outer: ClosedRange<Double>) -> Bool {
+        inner.lowerBound >= outer.lowerBound && inner.upperBound <= outer.upperBound
     }
 
     private func fetchDetailIfNeeded() async {

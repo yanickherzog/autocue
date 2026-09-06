@@ -11,6 +11,7 @@ import SwiftUI
 public struct CueDetectionReviewView: View {
     @Bindable private var viewModel: CueDetectionReviewViewModel
     @FocusState private var isFocused: Bool
+    @State private var isConfirmingClearAudio = false
 
     public init(viewModel: CueDetectionReviewViewModel) {
         self.viewModel = viewModel
@@ -34,6 +35,30 @@ public struct CueDetectionReviewView: View {
                         Image(systemName: viewModel.isPlaying ? "stop.fill" : "play.fill")
                     }
                     .buttonStyle(SharpButtonStyle(emphasis: .secondary, surface: .primary))
+
+                    // "Wrong file" recovery — clears audioAsset/
+                    // waveformPeaks/cues and returns to AudioImportView via
+                    // CueSheetSectionViewModel's own resume-state routing.
+                    // Confirmed first: this discards every detected/edited
+                    // cue, a real, not-undoable loss of work.
+                    Button {
+                        isConfirmingClearAudio = true
+                    } label: {
+                        Image(systemName: "xmark")
+                    }
+                    .buttonStyle(SharpButtonStyle(emphasis: .secondary, surface: .primary))
+                    .confirmationDialog(
+                        "Clear imported audio?",
+                        isPresented: $isConfirmingClearAudio,
+                        titleVisibility: .visible
+                    ) {
+                        Button("Clear Audio & Cues", role: .destructive) {
+                            viewModel.clearImportedAudio()
+                        }
+                        Button("Cancel", role: .cancel) {}
+                    } message: {
+                        Text("Removes the audio, the waveform, and every detected or edited cue. This can't be undone.")
+                    }
                 }
 
                 // Capped at roughly a third of this screen's own height,

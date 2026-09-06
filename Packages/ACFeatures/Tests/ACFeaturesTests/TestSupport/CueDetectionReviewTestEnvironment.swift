@@ -71,6 +71,7 @@ func makeCueDetectionReviewEnvironment(cues: [Cue]) -> CueDetectionReviewTestEnv
             projectRepository: projectRepository
         ),
         updateCueUseCase: UpdateCueUseCase(projectRepository: projectRepository),
+        clearImportedAudioUseCase: ClearImportedAudioUseCase(projectRepository: projectRepository),
         audioPlaybackController: playbackController
     )
     return CueDetectionReviewTestEnvironment(
