@@ -32,6 +32,15 @@ public actor AudioPlaybackControllerImpl: AudioPlaybackController {
     public nonisolated let stateUpdates: AsyncStream<PlaybackState>
 
     private static let pollIntervalNanoseconds: UInt64 = 33_000_000 // ~30Hz
+    /// A seek jumps `player.currentTime` discontinuously between two
+    /// arbitrary sample positions, which produces an audible click/pop
+    /// unless both land on a zero-crossing — vanishingly unlikely for an
+    /// arbitrary click-to-play offset. Standard fix, not custom DSP: mute
+    /// immediately before the jump, then let `AVAudioPlayer`'s own built-in
+    /// `setVolume(_:fadeDuration:)` ramp back up over a few milliseconds —
+    /// short enough to be inaudible as a "fade," long enough to smooth over
+    /// the discontinuity.
+    private static let seekFadeSeconds: TimeInterval = 0.01
 
     public init() {
         var continuation: AsyncStream<PlaybackState>.Continuation!
@@ -73,11 +82,13 @@ public actor AudioPlaybackControllerImpl: AudioPlaybackController {
     /// (SPEC.md §4.20).
     public func play(from startSeconds: Double, until endSeconds: Double?) async throws {
         guard let player else { throw AudioPlaybackControllerImplError.notPrepared }
+        player.volume = 0
         player.currentTime = startSeconds
         boundedEndSeconds = endSeconds
         if !player.isPlaying {
             player.play()
         }
+        player.setVolume(1, fadeDuration: Self.seekFadeSeconds)
         startPolling()
     }
 
@@ -120,6 +131,14 @@ public actor AudioPlaybackControllerImpl: AudioPlaybackController {
         }
         continuation.yield(.playing(positionSeconds: player.currentTime))
         return false
+    }
+
+    /// Test-only, read-only — `internal`, not exposed as public API;
+    /// `@testable import` reaches it, nothing outside the package can. Lets
+    /// a test confirm the seek fade actually reaches full volume rather
+    /// than leaving playback stuck quiet.
+    var volumeForTesting: Float? {
+        player?.volume
     }
 
     private func tearDownCurrentPlayer() {

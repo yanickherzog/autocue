@@ -85,7 +85,17 @@ public struct WaveformView: View {
                             liveDragPreview = LiveDragPreview(markerID: markerID, offsetSeconds: seconds)
                         },
                         onBoundaryDragged: { markerID, seconds in
-                            liveDragPreview = nil
+                            // `liveDragPreview` deliberately stays active
+                            // here — clearing it synchronously on release
+                            // used to cause a visible snap-back-then-jump
+                            // glitch, since the marker would briefly fall
+                            // back to reading its pre-drag position from
+                            // `markers` before the async persist + live-
+                            // stream round trip caught up. It's cleared
+                            // below, in `onChange(of: markers)`, only once
+                            // `markers` actually reflects the dropped
+                            // position — closing that gap instead of
+                            // exposing it.
                             onBoundaryDragged(markerID, seconds)
                         },
                         onMergeRequested: { markerID in
@@ -115,6 +125,19 @@ public struct WaveformView: View {
             .onChange(of: geometry.size.width) { _, newWidth in
                 lastKnownWidth = newWidth
                 onVisibleRangeChanged(visibleRangeSeconds, newWidth)
+            }
+            .onChange(of: markers) { _, newMarkers in
+                guard let liveDragPreview else { return }
+                guard let updated = newMarkers.first(where: { $0.id == liveDragPreview.markerID }) else {
+                    // The dragged marker's cue no longer exists (e.g. an
+                    // unrelated concurrent edit removed it) — nothing left
+                    // to reconcile the preview against.
+                    self.liveDragPreview = nil
+                    return
+                }
+                if abs(updated.offsetSeconds - liveDragPreview.offsetSeconds) < 0.0005 {
+                    self.liveDragPreview = nil
+                }
             }
         }
     }
@@ -179,10 +202,26 @@ public struct WaveformView: View {
         let bucketCount = displayData.buckets.count
         guard bucketCount > 0, size.width > 0 else { return }
         let midY = size.height / 2
+        let representedRange = displayData.representedRangeSeconds
+        let representedSpan = representedRange.upperBound - representedRange.lowerBound
 
         var wavePath = Path()
         for (bucketIndex, bucket) in displayData.buckets.enumerated() {
-            let xPosition = CGFloat(bucketIndex) / CGFloat(bucketCount) * size.width
+            // Positioned by the time `bucketIndex` actually represents,
+            // mapped through the *current* `visibleRangeSeconds` — not a
+            // blind linear stretch across the canvas — so a still-coarser
+            // or still-stale `displayData` (e.g. while a zoom's on-demand
+            // detail fetch is debounced) still renders at the geometrically
+            // correct position/width for the current zoom level.
+            let bucketTimeSeconds = representedSpan > 0
+                ? representedRange.lowerBound + (Double(bucketIndex) / Double(bucketCount)) * representedSpan
+                : representedRange.lowerBound
+            let xPosition = WaveformCoordinateMapper.pixelAtSeconds(
+                bucketTimeSeconds,
+                viewWidth: size.width,
+                visibleRangeSeconds: visibleRangeSeconds
+            )
+            guard xPosition >= 0, xPosition <= size.width else { continue }
             let topY = midY - CGFloat(bucket.max) * midY * CGFloat(verticalScale)
             let bottomY = midY - CGFloat(bucket.min) * midY * CGFloat(verticalScale)
             wavePath.move(to: CGPoint(x: xPosition, y: topY))
@@ -228,7 +267,7 @@ private func previewBuckets() -> [WaveformDisplayData.Bucket] {
 
 #Preview("WaveformView — display only") {
     WaveformView(
-        displayData: WaveformDisplayData(buckets: previewBuckets()),
+        displayData: WaveformDisplayData(buckets: previewBuckets(), representedRangeSeconds: 0 ... 60),
         visibleRangeSeconds: .constant(0 ... 60),
         fileDurationSeconds: 60
     )
@@ -238,7 +277,7 @@ private func previewBuckets() -> [WaveformDisplayData.Bucket] {
 
 #Preview("WaveformView — interactive, with markers") {
     WaveformView(
-        displayData: WaveformDisplayData(buckets: previewBuckets()),
+        displayData: WaveformDisplayData(buckets: previewBuckets(), representedRangeSeconds: 0 ... 60),
         markers: [WaveformMarker(id: 0, offsetSeconds: 10), WaveformMarker(id: 1, offsetSeconds: 40)],
         visibleRangeSeconds: .constant(0 ... 60),
         fileDurationSeconds: 60,

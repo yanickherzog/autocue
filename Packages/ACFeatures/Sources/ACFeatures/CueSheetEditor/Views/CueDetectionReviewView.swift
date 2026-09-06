@@ -10,38 +10,67 @@ import SwiftUI
 /// waveform-visualizer convention independent of the surrounding screen.
 public struct CueDetectionReviewView: View {
     @Bindable private var viewModel: CueDetectionReviewViewModel
+    @FocusState private var isFocused: Bool
 
     public init(viewModel: CueDetectionReviewViewModel) {
         self.viewModel = viewModel
     }
 
     public var body: some View {
-        VStack(spacing: Theme.Spacing.md) {
-            Text("\(viewModel.cues.count) cue\(viewModel.cues.count == 1 ? "" : "s") detected")
-                .font(Theme.Typography.font(.medium, size: 13))
-                .foregroundStyle(Theme.Surface.primary.foreground)
-                .frame(maxWidth: .infinity, alignment: .leading)
+        GeometryReader { geometry in
+            VStack(spacing: Theme.Spacing.md) {
+                HStack(spacing: Theme.Spacing.sm) {
+                    Text("\(viewModel.cues.count) cue\(viewModel.cues.count == 1 ? "" : "s") detected")
+                        .font(Theme.Typography.font(.medium, size: 13))
+                        .foregroundStyle(Theme.Surface.primary.foreground)
+                        .frame(maxWidth: .infinity, alignment: .leading)
 
-            WaveformView(
-                displayData: viewModel.displayData,
-                markers: viewModel.markers,
-                visibleRangeSeconds: $viewModel.visibleRangeSeconds,
-                fileDurationSeconds: viewModel.fileDurationSeconds,
-                playheadOffsetSeconds: viewModel.playheadOffsetSeconds,
-                onBoundaryDragged: viewModel.boundaryDragged,
-                onMergeRequested: viewModel.mergeRequested,
-                onSplitRequested: viewModel.splitRequested,
-                onPlayFromPoint: viewModel.playFromPoint,
-                onPlayMarkerSpan: viewModel.playMarkerSpan,
-                onVisibleRangeChanged: viewModel.visibleRangeChanged
-            )
-            .frame(minHeight: 160)
+                    // Explicit transport control — until now the only way
+                    // to start playback was a waveform click, and there was
+                    // no way to stop one short of retargeting it elsewhere.
+                    Button {
+                        viewModel.togglePlayback()
+                    } label: {
+                        Image(systemName: viewModel.isPlaying ? "stop.fill" : "play.fill")
+                    }
+                    .buttonStyle(SharpButtonStyle(emphasis: .secondary, surface: .primary))
+                }
+
+                // Capped at roughly a third of this screen's own height,
+                // deliberately leaving the remainder empty for now — D10's
+                // cue list (CueTableView) lands below this, not yet wired
+                // in, but the proportions are right from the start rather
+                // than a full-height waveform that would need redoing.
+                WaveformView(
+                    displayData: viewModel.displayData,
+                    markers: viewModel.markers,
+                    visibleRangeSeconds: $viewModel.visibleRangeSeconds,
+                    fileDurationSeconds: viewModel.fileDurationSeconds,
+                    playheadOffsetSeconds: viewModel.playheadOffsetSeconds,
+                    onBoundaryDragged: viewModel.boundaryDragged,
+                    onMergeRequested: viewModel.mergeRequested,
+                    onSplitRequested: viewModel.splitRequested,
+                    onPlayFromPoint: viewModel.playFromPoint,
+                    onPlayMarkerSpan: viewModel.playMarkerSpan,
+                    onVisibleRangeChanged: viewModel.visibleRangeChanged
+                )
+                .frame(height: max(160, geometry.size.height / 3))
+
+                Spacer(minLength: 0)
+            }
+            .padding(Theme.Spacing.lg)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         }
-        .padding(Theme.Spacing.lg)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Theme.Surface.primary.background)
         .errorAlert(message: $viewModel.errorMessage)
+        .focusable()
+        .focused($isFocused)
+        .onKeyPress(.space) {
+            viewModel.togglePlayback()
+            return .handled
+        }
         .task { await viewModel.load() }
         .task { viewModel.startObservingPlayback() }
+        .task { isFocused = true }
     }
 }

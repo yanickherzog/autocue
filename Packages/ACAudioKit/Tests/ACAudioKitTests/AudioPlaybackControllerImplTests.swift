@@ -88,4 +88,26 @@ final class AudioPlaybackControllerImplTests: XCTestCase {
 
         await controller.stop()
     }
+
+    /// Guards the seek-pop fix: every `play(from:until:)` mutes then ramps
+    /// back via `AVAudioPlayer.setVolume(_:fadeDuration:)` rather than
+    /// jumping straight to full volume across the discontinuous seek. Only
+    /// the deterministic end state is asserted — that the ramp actually
+    /// reaches full volume shortly after, not left stuck quiet — asserting
+    /// on the mid-ramp value would be a real-clock-timing-fragile check
+    /// this project's tests otherwise avoid.
+    func test_play_seekFadeReachesFullVolumeShortlyAfter() async throws {
+        let url = try makeFixture(seconds: 2.0)
+        let bookmark = try url.bookmarkData(options: [], includingResourceValuesForKeys: nil, relativeTo: nil)
+        let controller = AudioPlaybackControllerImpl()
+
+        try await controller.prepare(securityScopedBookmark: bookmark, mode: .plainFallback)
+        try await controller.play(from: 0, until: nil)
+
+        try await Task.sleep(nanoseconds: 100_000_000) // well past the ~10ms fade
+        let volume = await controller.volumeForTesting
+        XCTAssertEqual(volume, 1.0)
+
+        await controller.stop()
+    }
 }

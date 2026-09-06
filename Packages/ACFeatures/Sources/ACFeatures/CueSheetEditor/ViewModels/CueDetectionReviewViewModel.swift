@@ -28,6 +28,17 @@ public final class CueDetectionReviewViewModel {
     /// stable; bundling them would force needless recomputation on every
     /// playhead tick.
     public private(set) var playheadOffsetSeconds: Double?
+    /// Drives the play/stop button's icon and spacebar's toggle direction —
+    /// `true` only while `AudioPlaybackController.stateUpdates` reports
+    /// `.playing`, `false` for both `.paused` and `.stopped` (this screen
+    /// never pauses, only stops, per SPEC.md §4.20's play-or-stop model).
+    public private(set) var isPlaying = false
+    /// Wherever playback last was — updated on every seek (click-to-play,
+    /// play-marker-span) and by the live `stateUpdates` subscription while
+    /// playing/paused. Read by `togglePlayback()` so pressing spacebar after
+    /// a stop resumes from "current position" rather than always restarting
+    /// at the file's beginning — `0` if nothing has played yet this session.
+    private var lastKnownPlaybackPositionSeconds: Double = 0
     /// Set on a thrown `GenerateWaveformDetailUseCase`/
     /// `AudioPlaybackController` error — e.g. a `.plainFallback` bookmark
     /// that no longer resolves on a reopened project (SPEC.md §4.10, §4.21).
@@ -100,7 +111,7 @@ public final class CueDetectionReviewViewModel {
                 overviewPeaks = peaks
                 fileDurationSeconds = max(asset.duration.seconds, 0.001)
                 visibleRangeSeconds = 0 ... fileDurationSeconds
-                displayData = Self.mapToDisplayData(peaks.buckets)
+                displayData = Self.mapToDisplayData(peaks.buckets, representedRangeSeconds: visibleRangeSeconds)
                 hasLoadedInitialRange = true
             }
             await preparePlaybackIfNeeded()
@@ -116,10 +127,17 @@ public final class CueDetectionReviewViewModel {
             guard let self else { return }
             for await state in audioPlaybackController.stateUpdates {
                 switch state {
-                case let .playing(position), let .paused(position):
+                case let .playing(position):
                     playheadOffsetSeconds = position
+                    lastKnownPlaybackPositionSeconds = position
+                    isPlaying = true
+                case let .paused(position):
+                    playheadOffsetSeconds = position
+                    lastKnownPlaybackPositionSeconds = position
+                    isPlaying = false
                 case .stopped:
                     playheadOffsetSeconds = nil
+                    isPlaying = false
                 }
             }
         }
@@ -152,15 +170,16 @@ public final class CueDetectionReviewViewModel {
             restoreOverviewIfNeeded()
             return
         }
+        let requestedRange = visibleRangeSeconds
         do {
             let buckets = try await generateWaveformDetailUseCase.generate(
                 projectID: projectID,
                 for: asset,
-                startSeconds: visibleRangeSeconds.lowerBound,
-                endSeconds: visibleRangeSeconds.upperBound,
+                startSeconds: requestedRange.lowerBound,
+                endSeconds: requestedRange.upperBound,
                 resolution: max(Int(pixelWidth), 1)
             )
-            displayData = Self.mapToDisplayData(buckets)
+            displayData = Self.mapToDisplayData(buckets, representedRangeSeconds: requestedRange)
         } catch {
             errorMessage = Self.reimportErrorMessage
         }
@@ -168,7 +187,7 @@ public final class CueDetectionReviewViewModel {
 
     private func restoreOverviewIfNeeded() {
         guard let overviewPeaks, displayData.buckets.count != overviewPeaks.buckets.count else { return }
-        displayData = Self.mapToDisplayData(overviewPeaks.buckets)
+        displayData = Self.mapToDisplayData(overviewPeaks.buckets, representedRangeSeconds: 0 ... fileDurationSeconds)
     }
 
     // MARK: - Reposition / split / merge
@@ -240,6 +259,7 @@ public final class CueDetectionReviewViewModel {
     // MARK: - Playback
 
     public func playFromPoint(atSeconds seconds: Double) {
+        lastKnownPlaybackPositionSeconds = seconds
         Task { [weak self] in
             guard let self else { return }
             do {
@@ -253,10 +273,33 @@ public final class CueDetectionReviewViewModel {
     public func playMarkerSpan(markerID: Int) {
         guard cues.indices.contains(markerID), let start = cues[markerID].startTimecode else { return }
         let end = start.offsetSeconds + cues[markerID].duration.seconds
+        lastKnownPlaybackPositionSeconds = start.offsetSeconds
         Task { [weak self] in
             guard let self else { return }
             do {
                 try await audioPlaybackController.play(from: start.offsetSeconds, until: end)
+            } catch {
+                errorMessage = Self.reimportErrorMessage
+            }
+        }
+    }
+
+    /// The explicit play/stop control (button + spacebar) — standard DAW
+    /// toggle semantics: playing stops it, anything else starts it from
+    /// wherever playback last was (`lastKnownPlaybackPositionSeconds`,
+    /// `0` if nothing has played yet this session). Never bounded (`until:
+    /// nil`) — a manual toggle is a free transport action, not tied to any
+    /// one cue's span.
+    public func togglePlayback() {
+        if isPlaying {
+            Task { [weak self] in await self?.audioPlaybackController.stop() }
+            return
+        }
+        let startSeconds = lastKnownPlaybackPositionSeconds
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                try await audioPlaybackController.play(from: startSeconds, until: nil)
             } catch {
                 errorMessage = Self.reimportErrorMessage
             }
@@ -276,7 +319,13 @@ public final class CueDetectionReviewViewModel {
         }
     }
 
-    private static func mapToDisplayData(_ buckets: [WaveformPeakBucket]) -> WaveformDisplayData {
-        WaveformDisplayData(buckets: buckets.map { WaveformDisplayData.Bucket(min: $0.min, max: $0.max) })
+    private static func mapToDisplayData(
+        _ buckets: [WaveformPeakBucket],
+        representedRangeSeconds: ClosedRange<Double>
+    ) -> WaveformDisplayData {
+        WaveformDisplayData(
+            buckets: buckets.map { WaveformDisplayData.Bucket(min: $0.min, max: $0.max) },
+            representedRangeSeconds: representedRangeSeconds
+        )
     }
 }

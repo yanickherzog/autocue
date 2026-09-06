@@ -19,9 +19,22 @@ public struct WaveformDisplayData: Equatable {
     }
 
     public let buckets: [Bucket]
+    /// The time range `buckets` actually spans — e.g. the whole file for the
+    /// coarse overview tier, or the exact fetched sub-range for the on-demand
+    /// detail tier (SPEC.md §4.15's two-tier model). `WaveformView` positions
+    /// each bucket by where it actually falls within the *current*
+    /// `visibleRangeSeconds`, rather than assuming `buckets` already spans
+    /// exactly that range — the two can legitimately disagree for a brief
+    /// window while a zoom/pan's on-demand detail fetch is still debounced
+    /// in flight, and drawing against the true represented range (instead of
+    /// always stretching bucket index linearly across the full canvas) is
+    /// what keeps the displayed shape geometrically correct throughout that
+    /// window instead of visibly wrong-then-jumping once the fetch resolves.
+    public let representedRangeSeconds: ClosedRange<Double>
 
-    public init(buckets: [Bucket]) {
+    public init(buckets: [Bucket], representedRangeSeconds: ClosedRange<Double> = 0 ... 1) {
         self.buckets = buckets
+        self.representedRangeSeconds = representedRangeSeconds
     }
 }
 
