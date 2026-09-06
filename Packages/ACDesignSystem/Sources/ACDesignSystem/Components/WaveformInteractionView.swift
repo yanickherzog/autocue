@@ -48,6 +48,24 @@ final class WaveformInteractionNSView: NSView {
     private var mouseDownMarkerID: Int?
     private static let clickVsDragThreshold: CGFloat = 2
 
+    /// Test-only, read-only diagnostic accessors — `internal`, not exposed
+    /// as public API; `@testable import` reaches these but nothing outside
+    /// the package can. Added while diagnosing the reported merge-gesture
+    /// bug so the test can assert on gesture classification directly rather
+    /// than only on its downstream effect.
+    var mouseDownMarkerIDForTesting: Int? {
+        mouseDownMarkerID
+    }
+
+    var activeDragDescriptionForTesting: String? {
+        switch activeDrag {
+        case .reposition: "reposition"
+        case .mergeCommitted: "mergeCommitted"
+        case .pan: "pan"
+        case nil: nil
+        }
+    }
+
     override var isFlipped: Bool {
         true
     }
