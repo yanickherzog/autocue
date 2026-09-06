@@ -45,6 +45,24 @@ import SwiftData
 /// library of hundreds of projects touched in one session. Opportunistic
 /// pruning (drop entries whose task has already completed) is a real, cheap
 /// option later if this ever stops being true — not needed now.
+///
+/// ## Reader/writer barrier
+///
+/// `writeTails` alone only serializes writes against *other writes for the
+/// same `Project.ID`*. It says nothing about `fetchAllProjects` — the
+/// all-projects snapshot fetch used after every write and on new
+/// subscription — which touches *every* project's entity graph, including
+/// ones with no relationship to whichever write just completed. A real
+/// crash was reproduced (2026-09-05, live under a debugger — see
+/// `docs/DECISIONS.md`) where one project's snapshot fetch was
+/// mid-fault-resolution on a *different* project's entity at the exact
+/// moment that other project's own, entirely independent write deleted and
+/// reinserted it — different `Project.ID`s are deliberately allowed to
+/// write concurrently, so nothing prevented that overlap. See
+/// `ProjectRepositoryImpl+ReaderWriterBarrier.swift` for the fix and its
+/// full reasoning (split into its own file purely to keep this one under
+/// this project's line-length limit — it's still the same type, just via
+/// an extension).
 public actor ProjectRepositoryImpl: ProjectRepository {
     /// Every `SwiftDataModels` entity type — the schema `DependencyContainer`
     /// (`ROADMAP.md` D6/T6.1) constructs the real, on-disk `ModelContainer`
@@ -75,7 +93,12 @@ public actor ProjectRepositoryImpl: ProjectRepository {
         ])
     }
 
-    private let modelContainer: ModelContainer
+    /// Not `private`: read from `ProjectRepositoryImpl+ReaderWriterBarrier.swift`'s
+    /// extension (Swift extensions can't add stored properties, so the
+    /// barrier's SwiftData-work methods that need it live in a different
+    /// file from this declaration) — `internal`, never exposed outside the
+    /// `ACPersistence` module.
+    let modelContainer: ModelContainer
     private var writeTails: [Project.ID: Task<Void, Error>] = [:]
     private var subscribers: [UUID: AsyncStream<[Project]>.Continuation] = [:]
 
@@ -88,6 +111,30 @@ public actor ProjectRepositoryImpl: ProjectRepository {
     /// stays `nil` (a no-op `await`) in every real code path. Set only via
     /// `setWriteHook(_:)`, not direct assignment — see that method's comment.
     private var writeHook: (@Sendable (Project.ID) async -> Void)?
+
+    /// Testing-only synchronization seams for the reader/writer barrier
+    /// (`ProjectRepositoryImpl+ReaderWriterBarrier.swift`): if set, awaited
+    /// immediately after a write's mutation phase (or a snapshot fetch's
+    /// reader phase) actually acquires its barrier slot — before any real
+    /// work happens while holding it. Lets `ACPersistenceTests`
+    /// deterministically pause a writer/reader *while it genuinely holds
+    /// the barrier* (proving the other role actually blocks), or inject a
+    /// thrown error at that exact point (proving a slot is still released
+    /// on failure). Never set outside `@testable import` test code; stay
+    /// `nil` (a no-op) in every real code path. Not `private` — set and
+    /// fired from that extension file; see `modelContainer`'s comment for
+    /// why.
+    var postAcquireWriterSlotHook: (@Sendable () async throws -> Void)?
+    var postAcquireReaderSlotHook: (@Sendable () async throws -> Void)?
+
+    /// Reader/writer barrier state (`ProjectRepositoryImpl+ReaderWriterBarrier.swift`).
+    /// Declared here because Swift extensions can't add stored properties;
+    /// not `private` for the same cross-file reason as `modelContainer`,
+    /// above.
+    var activeWriterCount = 0
+    var writerWaiters: [UUID: CheckedContinuation<Void, Error>] = [:]
+    var activeReaderCount = 0
+    var readerWaiters: [UUID: CheckedContinuation<Void, Error>] = [:]
 
     public init(modelContainer: ModelContainer) {
         self.modelContainer = modelContainer
@@ -102,7 +149,10 @@ public actor ProjectRepositoryImpl: ProjectRepository {
     }
 
     public func fetchAll() async throws -> [Project] {
-        try Self.fetchAllProjects(in: modelContainer)
+        try await acquireReaderSlot()
+        defer { releaseReaderSlot() }
+        try await postAcquireReaderSlotHook?()
+        return try Self.fetchAllProjects(in: modelContainer)
     }
 
     public func fetch(id: Project.ID) async throws -> Project? {
@@ -129,27 +179,35 @@ public actor ProjectRepositoryImpl: ProjectRepository {
         id: Project.ID,
         transform: @escaping @Sendable (Project) throws -> Project
     ) async throws -> Project? {
-        let updated: Project? = try await enqueueWrite(for: id) { [modelContainer, writeHook] in
-            await writeHook?(id)
-            guard let current = try Self.fetchProject(id: id, in: modelContainer) else {
-                return nil
+        let result: UpdateResult? =
+            try await enqueueWrite(for: id) { [self, writeHook] () async throws -> UpdateResult? in
+                await writeHook?(id)
+                guard let current = try Self.fetchProject(id: id, in: self.modelContainer) else {
+                    return nil
+                }
+                let updated = try transform(current)
+                let snapshot = try await self.upsertProjectAndFetchSnapshot(updated)
+                return UpdateResult(updated: updated, snapshot: snapshot)
             }
-            let updated = try transform(current)
-            try Self.upsertProject(updated, in: modelContainer)
-            return updated
-        }
-        if updated != nil {
-            publishSnapshot()
-        }
-        return updated
+        guard let result else { return nil }
+        publish(result.snapshot)
+        return result.updated
+    }
+
+    /// Named instead of an anonymous tuple purely to keep the closure
+    /// signature above under this project's line-length limit — no
+    /// behavior reason to prefer one over the other.
+    private struct UpdateResult: Sendable {
+        let updated: Project
+        let snapshot: [Project]
     }
 
     public func delete(id: Project.ID) async throws {
-        try await enqueueWrite(for: id) { [modelContainer, writeHook] in
+        let snapshot = try await enqueueWrite(for: id) { [self, writeHook] in
             await writeHook?(id)
-            try Self.deleteProject(id: id, in: modelContainer)
+            return try await deleteProjectAndFetchSnapshot(id: id)
         }
-        publishSnapshot()
+        publish(snapshot)
     }
 
     public nonisolated func observeAll() -> AsyncStream<[Project]> {
@@ -166,11 +224,11 @@ public actor ProjectRepositoryImpl: ProjectRepository {
     // MARK: - Writes
 
     private func write(_ project: Project) async throws {
-        try await enqueueWrite(for: project.id) { [modelContainer, writeHook] in
+        let snapshot = try await enqueueWrite(for: project.id) { [self, writeHook] in
             await writeHook?(project.id)
-            try Self.upsertProject(project, in: modelContainer)
+            return try await upsertProjectAndFetchSnapshot(project)
         }
-        publishSnapshot()
+        publish(snapshot)
     }
 
     /// See the type's doc comment — the critical section below (reading
@@ -219,8 +277,10 @@ public actor ProjectRepositoryImpl: ProjectRepository {
 
     // MARK: - Subscribers
 
-    private func register(_ continuation: AsyncStream<[Project]>.Continuation, as subscriberID: UUID) {
+    private func register(_ continuation: AsyncStream<[Project]>.Continuation, as subscriberID: UUID) async {
         subscribers[subscriberID] = continuation
+        guard await (try? acquireReaderSlot()) != nil else { return }
+        defer { releaseReaderSlot() }
         if let snapshot = try? Self.fetchAllProjects(in: modelContainer) {
             continuation.yield(snapshot)
         }
@@ -230,54 +290,9 @@ public actor ProjectRepositoryImpl: ProjectRepository {
         subscribers.removeValue(forKey: subscriberID)
     }
 
-    private func publishSnapshot() {
-        guard let snapshot = try? Self.fetchAllProjects(in: modelContainer) else { return }
+    private func publish(_ snapshot: [Project]) {
         for continuation in subscribers.values {
             continuation.yield(snapshot)
         }
-    }
-
-    // MARK: - SwiftData work (static: no actor isolation, safe to run inside a dispatched `Task`)
-
-    private static func fetchAllProjects(in container: ModelContainer) throws -> [Project] {
-        let context = ModelContext(container)
-        let entities = try context.fetch(FetchDescriptor<ProjectEntity>())
-        return try entities.map(ProjectMapper.toDomain)
-    }
-
-    private static func fetchProject(id: Project.ID, in container: ModelContainer) throws -> Project? {
-        let context = ModelContext(container)
-        guard let entity = try fetchEntity(id: id, in: context) else { return nil }
-        return try ProjectMapper.toDomain(entity)
-    }
-
-    /// Upsert: if `project.id` already has a persisted entity, its scalar
-    /// fields are updated and every child relationship is replaced wholesale
-    /// (existing children deleted, fresh ones inserted from `project`'s
-    /// current state) rather than diffed field-by-field. This mirrors
-    /// `InMemoryProjectRepository`'s fake, where `create`/`update` are the
-    /// same operation — the protocol draws no real distinction between them
-    /// — and avoids the real complexity of matching old vs. new child rows
-    /// for a cue-sheet-sized collection where that cost is not justified.
-    private static func upsertProject(_ project: Project, in container: ModelContainer) throws {
-        let context = ModelContext(container)
-        if let existing = try fetchEntity(id: project.id, in: context) {
-            context.delete(existing)
-        }
-        context.insert(ProjectMapper.toEntity(project))
-        try context.save()
-    }
-
-    private static func deleteProject(id: Project.ID, in container: ModelContainer) throws {
-        let context = ModelContext(container)
-        guard let existing = try fetchEntity(id: id, in: context) else { return }
-        context.delete(existing)
-        try context.save()
-    }
-
-    private static func fetchEntity(id: Project.ID, in context: ModelContext) throws -> ProjectEntity? {
-        var descriptor = FetchDescriptor<ProjectEntity>(predicate: #Predicate { $0.id == id })
-        descriptor.fetchLimit = 1
-        return try context.fetch(descriptor).first
     }
 }
