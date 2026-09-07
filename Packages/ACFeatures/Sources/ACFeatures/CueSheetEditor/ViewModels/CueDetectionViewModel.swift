@@ -88,6 +88,27 @@ public final class CueDetectionViewModel {
         }
     }
 
+    /// Resets back to `.idle` — called by `ProjectWindowView` whenever
+    /// `CueSheetSectionViewModel.resumeState` routes back to
+    /// `.needsCueDetection` for a *new* detection run (a fresh import after
+    /// a previous cycle's audio was cleared). Without this, this long-lived,
+    /// per-window ViewModel (constructed once, never recreated — `CLAUDE.md`,
+    /// "Document & Window Model") kept `phase == .completed` from the
+    /// *previous* cycle forever, so `runDetectionIfNeeded`'s own idempotency
+    /// guard (`phase == .idle`) silently blocked every later cycle's
+    /// detection run from ever starting — not a hang in the async work
+    /// itself, `detectCues` never even got called. `CueSheetSectionViewModel
+    /// .resumeState` stayed stuck on `.needsCueDetection` forever as a
+    /// result, since `Project.cues` never populated. The exact same bug
+    /// shape as `AudioImportViewModel.resetIfNeeded()` already fixes for the
+    /// import screen — same root cause, different long-lived ViewModel. A
+    /// no-op whenever `phase` is already `.idle` (the common, first-ever-
+    /// detection case).
+    public func resetIfNeeded() {
+        guard phase != .idle else { return }
+        phase = .idle
+    }
+
     /// One-shot read of the live stream's first emission — same "settles on
     /// the very first snapshot" pattern `SetupViewModel.load()` already
     /// establishes.

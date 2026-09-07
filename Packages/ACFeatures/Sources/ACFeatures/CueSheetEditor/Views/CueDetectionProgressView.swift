@@ -35,7 +35,19 @@ public struct CueDetectionProgressView: View {
         .padding(Theme.Spacing.lg)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Theme.Surface.primary.background)
-        .task { viewModel.runDetectionIfNeeded() }
+        .task {
+            // `resetIfNeeded()` must run before `runDetectionIfNeeded()`,
+            // in the same `.task` closure — see `resetIfNeeded()`'s doc
+            // comment for why a stale `.completed`/`.failed` phase from a
+            // previous import/clear cycle would otherwise silently block
+            // this cycle's detection from ever starting. Two separate
+            // `.task` modifiers (one here, one at the call site) would not
+            // guarantee this ordering — SwiftUI doesn't promise which of
+            // two independent `.task`s attached to the same appearing view
+            // runs first.
+            viewModel.resetIfNeeded()
+            viewModel.runDetectionIfNeeded()
+        }
     }
 
     private var fractionCompleted: Double? {

@@ -71,6 +71,13 @@ struct ProjectWindowView: View {
     /// exact finding already being the reason `ProjectWindowFrameSaver`
     /// exists at all, not a new assumption made here.
     @State private var saveFlusher: ProjectWindowSaveFlusher?
+    /// See `ProjectWindowFrameSaver`'s doc comment, same reasoning again —
+    /// stops any playback `cueDetectionReviewViewModel` started the moment
+    /// this window is about to close. Real bug, not hypothetical: closing a
+    /// Project window while audio was playing left it running and audible
+    /// with no way to stop it, since the play/stop button and spacebar
+    /// handler live in the now-closed window.
+    @State private var playbackStopper: ProjectWindowPlaybackStopper?
 
     // @State, deliberately, not plain `let` — a View `struct`'s `init` reruns
     // on every SwiftUI reconstruction of it (which happens on every
@@ -133,6 +140,10 @@ struct ProjectWindowView: View {
                 }
                 frameSaver = ProjectWindowFrameSaver(window: window, projectID: projectID)
                 saveFlusher = ProjectWindowSaveFlusher(window: window, setupViewModel: setupViewModel)
+                playbackStopper = ProjectWindowPlaybackStopper(
+                    window: window,
+                    cueDetectionReviewViewModel: cueDetectionReviewViewModel
+                )
             }
         )
         .onDisappear {
@@ -245,6 +256,7 @@ struct ProjectWindowView: View {
                 .background(Theme.Surface.primary.background)
         case .needsImport:
             AudioImportView(viewModel: audioImportViewModel)
+                .task { audioImportViewModel.resetIfNeeded() }
         case let .needsWaveformGeneration(asset):
             AudioImportView(viewModel: audioImportViewModel)
                 .task { audioImportViewModel.resumeWaveformGeneration(for: asset) }

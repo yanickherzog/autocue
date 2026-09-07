@@ -27,6 +27,19 @@ public actor AudioPlaybackControllerImpl: AudioPlaybackController {
     private var accessScopedURL: URL?
     private var boundedEndSeconds: Double?
     private var pollTask: Task<Void, Never>?
+    /// Bumped by every `play`/`pause`/`stop`/`prepare` call — lets `play(from:
+    /// until:)` detect, after its own fade-down `await`, whether it's been
+    /// superseded by a concurrent call before unconditionally reviving
+    /// playback. Real, confirmed race, not theoretical: this `actor` is
+    /// reentrant across the `await Task.sleep` fade-down below, so a
+    /// concurrent `stop()` (e.g. from a window closing, or the clear-imported-
+    /// audio action, both real trigger points) can run to completion —
+    /// stopping the player and cancelling the poll task — *during* that
+    /// sleep, and then `play`'s resumed continuation would go on to call
+    /// `player.play()`/`startPolling()` again regardless, undoing the stop
+    /// and leaving audio audibly playing with nothing left watching for
+    /// another stop request.
+    private var playbackGeneration: UInt64 = 0
 
     private let continuation: AsyncStream<PlaybackState>.Continuation
     public nonisolated let stateUpdates: AsyncStream<PlaybackState>
@@ -50,6 +63,7 @@ public actor AudioPlaybackControllerImpl: AudioPlaybackController {
 
     deinit {
         pollTask?.cancel()
+        player?.stop()
         accessScopedURL?.stopAccessingSecurityScopedResource()
     }
 
@@ -93,8 +107,15 @@ public actor AudioPlaybackControllerImpl: AudioPlaybackController {
     /// actually closes the gap when interrupting live playback.
     public func play(from startSeconds: Double, until endSeconds: Double?) async throws {
         guard let player else { throw AudioPlaybackControllerImplError.notPrepared }
+        playbackGeneration += 1
+        let generation = playbackGeneration
         player.setVolume(0, fadeDuration: Self.seekFadeSeconds)
         try? await Task.sleep(nanoseconds: UInt64(Self.seekFadeSeconds * 1_000_000_000))
+        // Superseded by a concurrent stop()/pause()/play()/prepare() while
+        // this call was suspended above — reviving playback now would undo
+        // whatever that concurrent call just did. Abort silently, matching
+        // this method's other "no explicit stop() required first" semantics.
+        guard generation == playbackGeneration else { return }
         player.currentTime = startSeconds
         boundedEndSeconds = endSeconds
         if !player.isPlaying {
@@ -105,12 +126,14 @@ public actor AudioPlaybackControllerImpl: AudioPlaybackController {
     }
 
     public func pause() async {
+        playbackGeneration += 1
         player?.pause()
         pollTask?.cancel()
         continuation.yield(.paused(positionSeconds: player?.currentTime ?? 0))
     }
 
     public func stop() async {
+        playbackGeneration += 1
         player?.stop()
         pollTask?.cancel()
         boundedEndSeconds = nil
@@ -153,7 +176,16 @@ public actor AudioPlaybackControllerImpl: AudioPlaybackController {
         player?.volume
     }
 
+    /// Test-only, read-only, same visibility reasoning as `volumeForTesting`
+    /// above. Lets a test confirm a superseded `play(from:until:)` call
+    /// doesn't revive playback after a concurrent `stop()` — see
+    /// `playbackGeneration`'s doc comment for the race this guards.
+    var isPlayingForTesting: Bool {
+        player?.isPlaying ?? false
+    }
+
     private func tearDownCurrentPlayer() {
+        playbackGeneration += 1
         pollTask?.cancel()
         player?.stop()
         player = nil

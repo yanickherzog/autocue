@@ -65,7 +65,7 @@ public struct AudioImportView: View {
                 EmptyStateView(
                     systemImage: "checkmark.circle",
                     title: "Audio Imported",
-                    message: [bookmarkAccessWarning, "Cue detection and editing are coming in ROADMAP.md D9–D10."]
+                    message: [bookmarkAccessWarning, "Moving on to cue detection…"]
                         .compactMap { $0 }
                         .joined(separator: " "),
                     surface: .primary

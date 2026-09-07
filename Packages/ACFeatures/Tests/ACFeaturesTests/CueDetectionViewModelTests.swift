@@ -87,6 +87,46 @@ final class CueDetectionViewModelTests: XCTestCase {
         }
     }
 
+    /// The real regression this guards: without `resetIfNeeded()`, a second
+    /// detection run after a previous cycle's `.completed` was never even
+    /// blocked visibly — `runDetectionIfNeeded`'s own idempotency guard
+    /// silently no-op'd, `Project.cues` never populated, and
+    /// `CueSheetSectionViewModel.resumeState` stayed stuck on
+    /// `.needsCueDetection` forever (looked like a hang, not a guard).
+    func test_resetIfNeeded_afterCompleted_allowsANewDetectionRunToActuallyStart() async throws {
+        let asset = InMemoryAudioAnalysisRepository.placeholderAudioAsset()
+        let project = Self.makeProject(audioAsset: asset)
+        let detected = [
+            Cue(
+                title: "",
+                duration: MediaDuration(seconds: 30),
+                rightHolders: [],
+                source: .detectedFromAudio,
+                startTimecode: Timecode(offsetSeconds: 10)
+            ),
+        ]
+        let (viewModel, projectRepository) = makeViewModel(project: project, detectedCues: detected)
+        viewModel.runDetectionIfNeeded()
+        try await waitUntil(timeout: 2.0) { viewModel.phase == .completed }
+
+        viewModel.resetIfNeeded()
+        XCTAssertEqual(viewModel.phase, .idle)
+        viewModel.runDetectionIfNeeded()
+
+        try await waitUntil(timeout: 2.0) { viewModel.phase == .completed }
+        let persisted = try await projectRepository.fetch(id: project.id)
+        XCTAssertEqual(persisted?.cues.count, 1)
+    }
+
+    func test_resetIfNeeded_alreadyIdle_staysIdle() {
+        let project = Self.makeProject(audioAsset: nil)
+        let (viewModel, _) = makeViewModel(project: project)
+
+        viewModel.resetIfNeeded()
+
+        XCTAssertEqual(viewModel.phase, .idle)
+    }
+
     private func waitUntil(
         timeout: TimeInterval,
         condition: @escaping () -> Bool

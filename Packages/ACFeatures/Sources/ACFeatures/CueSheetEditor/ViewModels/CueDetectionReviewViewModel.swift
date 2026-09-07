@@ -20,8 +20,9 @@ import Foundation
 public final class CueDetectionReviewViewModel {
     public let projectID: Project.ID
     public private(set) var cues: [Cue] = []
-    public private(set) var displayData = WaveformDisplayData(buckets: [])
-    public private(set) var fileDurationSeconds: Double = 0.001
+    /// `internal(set)`: reset from `+ClearImportedAudio.swift`'s `resetForNewImportCycle()`.
+    public internal(set) var displayData = WaveformDisplayData(buckets: [])
+    public internal(set) var fileDurationSeconds: Double = 0.001
     public var visibleRangeSeconds: ClosedRange<Double> = 0 ... 0.001
     /// Kept separate from `displayData` per SPEC.md §4.15 — updates
     /// continuously during playback while the waveform data is comparatively
@@ -38,7 +39,8 @@ public final class CueDetectionReviewViewModel {
     /// playing/paused. Read by `togglePlayback()` so pressing spacebar after
     /// a stop resumes from "current position" rather than always restarting
     /// at the file's beginning — `0` if nothing has played yet this session.
-    private var lastKnownPlaybackPositionSeconds: Double = 0
+    /// Not `private` — reset from `+ClearImportedAudio.swift`, same reason as `overviewPeaks` et al. below.
+    var lastKnownPlaybackPositionSeconds: Double = 0
     /// Set on a thrown `GenerateWaveformDetailUseCase`/
     /// `AudioPlaybackController` error — e.g. a `.plainFallback` bookmark
     /// that no longer resolves on a reopened project (SPEC.md §4.10, §4.21).
@@ -68,9 +70,15 @@ public final class CueDetectionReviewViewModel {
     let audioPlaybackController: AudioPlaybackController
 
     private var asset: AudioAsset?
-    private var overviewPeaks: WaveformPeaks?
-    private var hasLoadedInitialRange = false
-    private var hasPreparedPlayback = false
+    /// These three, plus `lastKnownPlaybackPositionSeconds` above, aren't
+    /// `private` — reset from `+ClearImportedAudio.swift`'s
+    /// `resetForNewImportCycle()`, same cross-file-extension reason
+    /// `clearImportedAudioUseCase` above isn't `private` either.
+    var overviewPeaks: WaveformPeaks?
+    var hasLoadedInitialRange = false
+    var hasPreparedPlayback = false
+    /// Unlike the latches above, never reset across cycles — see `startObservingPlayback()`.
+    private var hasStartedObservingPlayback = false
     private var pixelWidth: Double = 800
     /// `@ObservationIgnored` + `nonisolated(unsafe)`: `deinit` is never
     /// actor-isolated, even on a `@MainActor` class — same pattern
@@ -128,8 +136,24 @@ public final class CueDetectionReviewViewModel {
     /// Begins observing `AudioPlaybackController.stateUpdates` for the
     /// playhead — a separate subscription from `load()`, since playback
     /// state has nothing to do with `Project` data.
+    ///
+    /// **Idempotent — runs at most once per instance, ever.**
+    /// `CueDetectionReviewView`'s hosting `.task` calls this every time the
+    /// review screen re-appears (once per import/clear cycle). This used to
+    /// cancel-and-restart its `for await` loop on every call, but
+    /// `stateUpdates` is one `AsyncStream` for this window's whole
+    /// lifetime, and cancelling the `Task` consuming an `AsyncStream`
+    /// terminates the *stream*, not just that consumer — so every call
+    /// after the first left the subscription permanently dead (confirmed
+    /// live: the playhead stopped updating and `isPlaying` froze, so
+    /// `togglePlayback()` always took the "start" branch). Fix: subscribe
+    /// exactly once; `audioPlaybackController` never changes, so there's
+    /// nothing later cycles need to re-subscribe to. See
+    /// `CueDetectionPlaybackAndDisplayTests`'s regression test for the
+    /// full account.
     public func startObservingPlayback() {
-        playbackObservationTask?.cancel()
+        guard !hasStartedObservingPlayback else { return }
+        hasStartedObservingPlayback = true
         playbackObservationTask = Task { [weak self] in
             guard let self else { return }
             for await state in audioPlaybackController.stateUpdates {
@@ -311,6 +335,22 @@ public final class CueDetectionReviewViewModel {
                 errorMessage = Self.reimportErrorMessage
             }
         }
+    }
+
+    /// Stops any in-flight playback this screen started — called explicitly
+    /// when this window is about to close (`AutoCue/ProjectWindowPlaybackStopper.swift`),
+    /// the same `NSWindow.willCloseNotification` pattern already established
+    /// for a pending debounced Setup save (`ProjectWindowSaveFlusher`) and
+    /// window-frame persistence (`ProjectWindowFrameSaver`). Without an
+    /// explicit hook here, closing this window while audio is playing left
+    /// it running and audible with no way to stop it — the play/stop button
+    /// and spacebar handler live in this now-closed window, and neither this
+    /// type's own `deinit` nor `AudioPlaybackControllerImpl`'s can reach
+    /// `stop()`: it's `async` on an actor, and `deinit` is synchronous.
+    /// Safe to call even if nothing is currently playing (`stop()` is a
+    /// no-op in that case).
+    public func stopPlaybackForWindowClose() async {
+        await audioPlaybackController.stop()
     }
 
     /// The explicit play/stop control (button + spacebar) — standard DAW

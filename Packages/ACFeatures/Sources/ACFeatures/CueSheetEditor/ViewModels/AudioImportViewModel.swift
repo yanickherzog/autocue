@@ -94,6 +94,22 @@ public final class AudioImportViewModel {
         phase = .failed(message: message)
     }
 
+    /// Resets back to `.idle` — called by `ProjectWindowView` whenever
+    /// `CueSheetSectionViewModel.resumeState` routes back to `.needsImport`
+    /// (including after `ClearImportedAudioUseCase` clears a previously-
+    /// imported asset). Without this, this long-lived, per-window ViewModel
+    /// (constructed once, never recreated — `CLAUDE.md`, "Document & Window
+    /// Model") kept showing this screen's *previous* cycle's terminal phase
+    /// (`.completed`/`.failed`) instead of a genuine fresh import prompt the
+    /// second time a project cycled through import → clear → import →
+    /// clear — `.completed` renders no "Choose File…" button at all, so the
+    /// screen looked stuck. A no-op whenever `phase` is already `.idle`
+    /// (the common, first-ever-import case).
+    public func resetIfNeeded() {
+        guard phase != .idle else { return }
+        phase = .idle
+    }
+
     private func runImport(from url: URL) async throws -> AudioAsset {
         var importedAsset: AudioAsset?
         for try await event in importAudioUseCase.importAudio(projectID: projectID, from: url) {

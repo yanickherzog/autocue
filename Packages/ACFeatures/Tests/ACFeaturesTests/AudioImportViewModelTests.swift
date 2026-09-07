@@ -113,6 +113,31 @@ final class AudioImportViewModelTests: XCTestCase {
         }
     }
 
+    /// The "import → clear → import → clear" regression: without a reset,
+    /// this long-lived, per-window ViewModel kept showing the *previous*
+    /// cycle's `.completed` phase (no "Choose File…" button at all) instead
+    /// of a genuine fresh import prompt the second time a project cycled
+    /// through import → clear → import → clear.
+    func test_resetIfNeeded_afterCompleted_returnsToIdle() async throws {
+        let project = Self.makeProject()
+        let (viewModel, _) = makeViewModel(project: project)
+        viewModel.importFile(from: URL(fileURLWithPath: "/tmp/fixture.wav"))
+        try await waitUntil(timeout: 2.0) { viewModel.phase == .completed(bookmarkAccessWarning: nil) }
+
+        viewModel.resetIfNeeded()
+
+        XCTAssertEqual(viewModel.phase, .idle)
+    }
+
+    func test_resetIfNeeded_alreadyIdle_staysIdle() {
+        let project = Self.makeProject()
+        let (viewModel, _) = makeViewModel(project: project)
+
+        viewModel.resetIfNeeded()
+
+        XCTAssertEqual(viewModel.phase, .idle)
+    }
+
     private func waitUntil(
         timeout: TimeInterval,
         condition: @escaping () -> Bool

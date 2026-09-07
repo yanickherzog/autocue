@@ -166,6 +166,23 @@ final class CueDetectionReviewViewModelTests: XCTestCase {
         loadTask.cancel()
     }
 
+    func test_stopPlaybackForWindowClose_stopsPlayback() async throws {
+        let env = makeCueDetectionReviewEnvironment(cues: [])
+        let viewModel = env.viewModel
+        let playbackController = env.playbackController
+        let loadTask = Task { await viewModel.load() }
+        try await waitUntilCueDetectionReviewConditionMet { await playbackController.prepareCallCount == 1 }
+
+        viewModel.playFromPoint(atSeconds: 5)
+        try await waitUntilCueDetectionReviewConditionMet { await !(playbackController.playCalls.isEmpty) }
+
+        await viewModel.stopPlaybackForWindowClose()
+
+        let stopCallCount = await playbackController.stopCallCount
+        XCTAssertEqual(stopCallCount, 1)
+        loadTask.cancel()
+    }
+
     // MARK: - Clear imported audio
 
     func test_clearImportedAudio_removesAssetPeaksAndCues_andStopsPlaybackFirst() async throws {

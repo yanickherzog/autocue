@@ -110,4 +110,39 @@ final class AudioPlaybackControllerImplTests: XCTestCase {
 
         await controller.stop()
     }
+
+    /// Guards the real, confirmed race behind "playback keeps going after
+    /// stop()/window-close/clear-audio": `play(from:until:)` suspends for
+    /// ~10ms during its fade-down (`await Task.sleep`) before touching
+    /// `player.play()` again. Calling `stop()` immediately after `play()`,
+    /// with no `await` in between, deterministically lands the `stop()`
+    /// inside that suspension window — pre-fix, `play()`'s resumed
+    /// continuation would go on to call `player.play()` regardless of the
+    /// intervening `stop()`, reviving playback right after it was silenced.
+    func test_stopDuringPlaysFadeDown_playbackStaysStoppedAndDoesNotRevive() async throws {
+        let url = try makeFixture(seconds: 3.0)
+        let bookmark = try url.bookmarkData(options: [], includingResourceValuesForKeys: nil, relativeTo: nil)
+        let controller = AudioPlaybackControllerImpl()
+        try await controller.prepare(securityScopedBookmark: bookmark, mode: .plainFallback)
+
+        Task { try? await controller.play(from: 0, until: nil) }
+        // A short head start lets `play()` actually begin executing and
+        // reach its own internal fade-down sleep before `stop()` is issued
+        // below — long enough to reliably be scheduled, short enough to
+        // still land inside that ~10ms window. `async let` was tried first
+        // here and was too nondeterministic: with no `await` between
+        // kicking it off and calling `stop()`, the concurrent executor
+        // sometimes ran `stop()` to completion before `play()`'s child task
+        // had even started, which doesn't exercise the race this test is
+        // for at all.
+        try await Task.sleep(nanoseconds: 2_000_000)
+        await controller.stop()
+
+        // Well past the ~10ms fade-down `play()` was suspended in — long
+        // enough for a pre-fix revival to have already resumed playback.
+        try await Task.sleep(nanoseconds: 150_000_000)
+
+        let isPlaying = await controller.isPlayingForTesting
+        XCTAssertFalse(isPlaying)
+    }
 }
