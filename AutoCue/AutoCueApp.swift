@@ -93,6 +93,15 @@ struct AutoCueApp: App {
             }
         }
         .defaultSize(Theme.Layout.defaultWindowSize)
+        .commands {
+            // Real ⌘Z/⌘⇧Z for whichever Project window currently has focus —
+            // see `ProjectUndoManagerFocusedValue.swift` for why this goes
+            // through `FocusedValues` rather than SwiftUI's own (read-only)
+            // `\.undoManager` or an `NSWindowDelegate` hook.
+            CommandGroup(replacing: .undoRedo) {
+                ProjectUndoRedoCommands()
+            }
+        }
 
         Settings {
             // App-level, project-unscoped (SPEC.md §4.7) — entirely outside

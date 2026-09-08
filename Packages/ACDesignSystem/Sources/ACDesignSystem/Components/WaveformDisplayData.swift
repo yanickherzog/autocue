@@ -61,3 +61,16 @@ public struct WaveformMarker: Identifiable, Equatable {
         self.durationSeconds = durationSeconds
     }
 }
+
+/// Identifies which edge of which `WaveformMarker` a boundary gesture
+/// targets — `cueIndex` is the same "index into the caller's ordered cue
+/// list" identifier `WaveformMarker.id` already uses, never a `Cue.ID`
+/// (`CLAUDE.md`'s Design System rule: no domain type crosses into
+/// `ACDesignSystem`). SPEC.md §4.19's "Boundary markers: contiguous vs.
+/// non-contiguous": every cue with a `startTimecode` has a start edge (at
+/// `offsetSeconds`) and an end edge (at `offsetSeconds + durationSeconds`),
+/// both independently hit-testable and draggable.
+public enum WaveformBoundaryMarker: Hashable {
+    case start(cueIndex: Int)
+    case end(cueIndex: Int)
+}

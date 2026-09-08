@@ -18,11 +18,15 @@ import SwiftUI
 /// never persisted** — `verticalScale` resets to `1.0` every time this view
 /// is reopened, per SPEC.md §4.15's explicit, confirmed decision.
 public struct WaveformView: View {
-    private let displayData: WaveformDisplayData
-    private let markers: [WaveformMarker]
+    /// Not `private`: `WaveformView+Drawing.swift`'s `Canvas` drawing
+    /// functions (split into their own file purely to stay under this
+    /// project's file-length lint limit) need these too — still `internal`,
+    /// never exposed as public API.
+    let displayData: WaveformDisplayData
+    let markers: [WaveformMarker]
     private let fileDurationSeconds: Double
-    private let playheadOffsetSeconds: Double?
-    private let onBoundaryDragged: (Int, Double) -> Void
+    let playheadOffsetSeconds: Double?
+    private let onBoundaryDragged: (WaveformBoundaryMarker, Double) -> Void
     private let onMergeRequested: (Int) -> Void
     private let onSplitRequested: (Double) -> Void
     private let onPlayFromPoint: (Double) -> Void
@@ -34,15 +38,22 @@ public struct WaveformView: View {
     /// without a second, separately-plumbed width channel.
     private let onVisibleRangeChanged: (ClosedRange<Double>, Double) -> Void
 
-    @Binding private var visibleRangeSeconds: ClosedRange<Double>
-    @State private var liveDragPreview: LiveDragPreview?
-    @State private var verticalScale: Double = 1.0
-    @State private var lastKnownWidth: CGFloat = 100
-
-    private struct LiveDragPreview: Equatable {
-        let markerID: Int
-        let offsetSeconds: Double
-    }
+    @Binding var visibleRangeSeconds: ClosedRange<Double>
+    /// Up to two entries during a contiguous push-through (SPEC.md §4.19) —
+    /// the grabbed marker's own preview, and, only while actually pushing
+    /// into an already-touching neighbor, that neighbor's preview too, so
+    /// both spans visibly move together during the drag rather than only
+    /// snapping into place once the drag commits.
+    @State var liveDragPreviews: [WaveformBoundaryMarker: Double] = [:]
+    /// Which marker was hit-tested at `mouseDown`, kept only for the
+    /// coincident-tie-break highlight — set the instant a marker is grabbed,
+    /// before any drag motion, and cleared on every `mouseUp` regardless of
+    /// outcome (SPEC.md §4.19), so a plain click never leaves it stuck.
+    /// Deliberately separate from `liveDragPreviews`: that only ever
+    /// populates once real movement occurs, which would miss the
+    /// no-movement click-and-hold case this exists to cover.
+    @State var grabbedMarker: WaveformBoundaryMarker?
+    @State var verticalScale: Double = 1.0
 
     public init(
         displayData: WaveformDisplayData,
@@ -50,7 +61,7 @@ public struct WaveformView: View {
         visibleRangeSeconds: Binding<ClosedRange<Double>>,
         fileDurationSeconds: Double,
         playheadOffsetSeconds: Double? = nil,
-        onBoundaryDragged: @escaping (Int, Double) -> Void = { _, _ in },
+        onBoundaryDragged: @escaping (WaveformBoundaryMarker, Double) -> Void = { _, _ in },
         onMergeRequested: @escaping (Int) -> Void = { _ in },
         onSplitRequested: @escaping (Double) -> Void = { _ in },
         onPlayFromPoint: @escaping (Double) -> Void = { _ in },
@@ -81,25 +92,31 @@ public struct WaveformView: View {
                         visibleRangeSeconds: visibleRangeSeconds,
                         fileDurationSeconds: fileDurationSeconds,
                         markers: markers,
-                        onBoundaryDragging: { markerID, seconds in
-                            liveDragPreview = LiveDragPreview(markerID: markerID, offsetSeconds: seconds)
+                        onBoundaryDragging: { marker, seconds in
+                            liveDragPreviews[marker] = seconds
                         },
-                        onBoundaryDragged: { markerID, seconds in
-                            // `liveDragPreview` deliberately stays active
+                        onBoundaryDragged: { marker, seconds in
+                            // `liveDragPreviews` deliberately stays active
                             // here — clearing it synchronously on release
                             // used to cause a visible snap-back-then-jump
                             // glitch, since the marker would briefly fall
                             // back to reading its pre-drag position from
                             // `markers` before the async persist + live-
-                            // stream round trip caught up. It's cleared
-                            // below, in `onChange(of: markers)`, only once
-                            // `markers` actually reflects the dropped
-                            // position — closing that gap instead of
-                            // exposing it.
-                            onBoundaryDragged(markerID, seconds)
+                            // stream round trip caught up. Each entry is
+                            // cleared below, in `onChange(of: markers)`,
+                            // only once `markers` actually reflects that
+                            // entry's dropped position — closing that gap
+                            // instead of exposing it.
+                            onBoundaryDragged(marker, seconds)
+                        },
+                        onMarkerGrabbed: { marker in
+                            grabbedMarker = marker
+                        },
+                        onMarkerReleased: {
+                            grabbedMarker = nil
                         },
                         onMergeRequested: { markerID in
-                            liveDragPreview = nil
+                            liveDragPreviews = [:]
                             onMergeRequested(markerID)
                         },
                         onSplitRequested: onSplitRequested,
@@ -110,7 +127,6 @@ public struct WaveformView: View {
                     )
                 }
             }
-            .overlay(alignment: .topTrailing) { zoomControls }
             .overlay(alignment: .bottomTrailing) { verticalScaleControl }
             .clipped()
             .background(Theme.Surface.reversed.background)
@@ -119,24 +135,24 @@ public struct WaveformView: View {
             .frame(minHeight: 1) // keeps geometry.size well-defined in previews
             .onAppear {
                 clampVisibleRange(toFit: geometry.size)
-                lastKnownWidth = geometry.size.width
                 onVisibleRangeChanged(visibleRangeSeconds, geometry.size.width)
             }
             .onChange(of: geometry.size.width) { _, newWidth in
-                lastKnownWidth = newWidth
                 onVisibleRangeChanged(visibleRangeSeconds, newWidth)
             }
             .onChange(of: markers) { _, newMarkers in
-                guard let liveDragPreview else { return }
-                guard let updated = newMarkers.first(where: { $0.id == liveDragPreview.markerID }) else {
-                    // The dragged marker's cue no longer exists (e.g. an
-                    // unrelated concurrent edit removed it) — nothing left
-                    // to reconcile the preview against.
-                    self.liveDragPreview = nil
-                    return
-                }
-                if abs(updated.offsetSeconds - liveDragPreview.offsetSeconds) < 0.0005 {
-                    self.liveDragPreview = nil
+                guard !liveDragPreviews.isEmpty else { return }
+                for (marker, previewOffset) in liveDragPreviews {
+                    guard let realOffset = Self.realOffset(for: marker, in: newMarkers) else {
+                        // The dragged marker's cue no longer exists (e.g. an
+                        // unrelated concurrent edit removed it) — nothing
+                        // left to reconcile this entry's preview against.
+                        liveDragPreviews.removeValue(forKey: marker)
+                        continue
+                    }
+                    if abs(realOffset - previewOffset) < 0.0005 {
+                        liveDragPreviews.removeValue(forKey: marker)
+                    }
                 }
             }
         }
@@ -147,40 +163,11 @@ public struct WaveformView: View {
         onVisibleRangeChanged(newRange, width)
     }
 
-    private var zoomControls: some View {
-        HStack(spacing: Theme.Spacing.xs) {
-            Button {
-                zoom(by: 1 / 1.5)
-            } label: {
-                Image(systemName: "minus.magnifyingglass")
-            }
-            Button {
-                zoom(by: 1.5)
-            } label: {
-                Image(systemName: "plus.magnifyingglass")
-            }
-        }
-        .buttonStyle(SharpButtonStyle(emphasis: .secondary, surface: .reversed))
-        .padding(Theme.Spacing.xs)
-    }
-
     private var verticalScaleControl: some View {
         Slider(value: $verticalScale, in: 0.25 ... 4)
             .frame(width: 100)
             .tint(Theme.Colors.accent)
             .padding(Theme.Spacing.xs)
-    }
-
-    private func zoom(by factor: Double) {
-        let center = (visibleRangeSeconds.lowerBound + visibleRangeSeconds.upperBound) / 2
-        let newRange = WaveformCoordinateMapper.zooming(
-            visibleRangeSeconds,
-            by: factor,
-            aroundSeconds: center,
-            fileDurationSeconds: fileDurationSeconds
-        )
-        visibleRangeSeconds = newRange
-        onVisibleRangeChanged(newRange, lastKnownWidth)
     }
 
     private func clampVisibleRange(toFit _: CGSize) {
@@ -191,118 +178,36 @@ public struct WaveformView: View {
         )
     }
 
-    private func effectiveOffset(for marker: WaveformMarker) -> Double {
-        if let liveDragPreview, liveDragPreview.markerID == marker.id {
-            return liveDragPreview.offsetSeconds
-        }
-        return marker.offsetSeconds
+    func effectiveStartOffset(for marker: WaveformMarker) -> Double {
+        liveDragPreviews[.start(cueIndex: marker.id)] ?? marker.offsetSeconds
     }
 
-    /// How far from the top of the view each cue's "CUE N" label is drawn —
-    /// a fixed pixel offset, not proportional to the view's own height: the
-    /// label reads as a small annotation near the top edge regardless of
-    /// how tall the waveform strip is, not something that should visually
-    /// drift further down on a taller view.
-    private static let cueLabelTopOffset: CGFloat = 25
+    func effectiveEndOffset(for marker: WaveformMarker) -> Double {
+        liveDragPreviews[.end(cueIndex: marker.id)] ?? (marker.offsetSeconds + marker.durationSeconds)
+    }
 
-    /// Cue-span rectangles, drawn *before* the waveform stroke below so
-    /// they render behind it — one per cue, spanning its full extent
-    /// (`offsetSeconds ..< offsetSeconds + durationSeconds`, SPEC.md
-    /// §4.3's derived TC Out), automatically up to date on every redraw
-    /// since it's computed directly from `markers`, the same live data the
-    /// gesture layer already uses — no separate state to keep in sync.
-    /// Answers the "where does a cue actually end vs. where does silence
-    /// before the next one begin" ambiguity a start-only marker can't.
-    private func drawCueSpans(context: GraphicsContext, size: CGSize) {
-        for marker in markers {
-            let startX = WaveformCoordinateMapper.pixelAtSeconds(
-                marker.offsetSeconds,
-                viewWidth: size.width,
-                visibleRangeSeconds: visibleRangeSeconds
-            )
-            let endX = WaveformCoordinateMapper.pixelAtSeconds(
-                marker.offsetSeconds + marker.durationSeconds,
-                viewWidth: size.width,
-                visibleRangeSeconds: visibleRangeSeconds
-            )
-            guard endX > 0, startX < size.width else { continue } // fully off-screen either side
-            let clampedStart = max(0, startX)
-            let clampedEnd = min(size.width, endX)
-            guard clampedEnd > clampedStart else { continue }
-
-            let rect = CGRect(x: clampedStart, y: 0, width: clampedEnd - clampedStart, height: size.height)
-            context.fill(Path(rect), with: .color(Theme.Colors.white.opacity(0.15)))
-
-            // 1-indexed, in left-to-right (`markers`' own, already-sorted-
-            // by-start) order — `marker.id` is the cue's index in that same
-            // order, so `id + 1` is exactly that position, no separate
-            // numbering scheme to maintain.
-            let label = Text("CUE \(marker.id + 1)")
-                .font(Theme.Typography.font(.medium, size: 11))
-                .foregroundColor(Theme.Colors.carbonBlack)
-            context.draw(label, at: CGPoint(x: (clampedStart + clampedEnd) / 2, y: Self.cueLabelTopOffset))
+    private static func realOffset(for marker: WaveformBoundaryMarker, in markers: [WaveformMarker]) -> Double? {
+        switch marker {
+        case let .start(cueIndex):
+            return markers.first { $0.id == cueIndex }?.offsetSeconds
+        case let .end(cueIndex):
+            guard let found = markers.first(where: { $0.id == cueIndex }) else { return nil }
+            return found.offsetSeconds + found.durationSeconds
         }
     }
 
-    private func draw(context: GraphicsContext, size: CGSize) {
-        let bucketCount = displayData.buckets.count
-        guard bucketCount > 0, size.width > 0 else { return }
-        let midY = size.height / 2
-        let representedRange = displayData.representedRangeSeconds
-        let representedSpan = representedRange.upperBound - representedRange.lowerBound
-
+    func draw(context: GraphicsContext, size: CGSize) {
+        guard displayData.buckets.count > 0, size.width > 0 else { return }
+        // Waveform first, cue spans/labels on top of it — at high vertical
+        // zoom the trace's peaks can reach well past the span rect's fill
+        // and the "CUE N" label; drawing the overlay second keeps it
+        // legible regardless of amplitude/zoom level. The span fill stays
+        // translucent specifically so the trace remains visible underneath
+        // it, same as before — only the draw order changed.
+        drawWaveform(context: context, size: size)
         drawCueSpans(context: context, size: size)
-
-        var wavePath = Path()
-        for (bucketIndex, bucket) in displayData.buckets.enumerated() {
-            // Positioned by the time `bucketIndex` actually represents,
-            // mapped through the *current* `visibleRangeSeconds` — not a
-            // blind linear stretch across the canvas — so a still-coarser
-            // or still-stale `displayData` (e.g. while a zoom's on-demand
-            // detail fetch is debounced) still renders at the geometrically
-            // correct position/width for the current zoom level.
-            let bucketTimeSeconds = representedSpan > 0
-                ? representedRange.lowerBound + (Double(bucketIndex) / Double(bucketCount)) * representedSpan
-                : representedRange.lowerBound
-            let xPosition = WaveformCoordinateMapper.pixelAtSeconds(
-                bucketTimeSeconds,
-                viewWidth: size.width,
-                visibleRangeSeconds: visibleRangeSeconds
-            )
-            guard xPosition >= 0, xPosition <= size.width else { continue }
-            let topY = midY - CGFloat(bucket.max) * midY * CGFloat(verticalScale)
-            let bottomY = midY - CGFloat(bucket.min) * midY * CGFloat(verticalScale)
-            wavePath.move(to: CGPoint(x: xPosition, y: topY))
-            wavePath.addLine(to: CGPoint(x: xPosition, y: bottomY))
-        }
-        context.stroke(wavePath, with: .color(Theme.Colors.accent), lineWidth: 1)
-
-        for marker in markers {
-            let markerPixelX = WaveformCoordinateMapper.pixelAtSeconds(
-                effectiveOffset(for: marker),
-                viewWidth: size.width,
-                visibleRangeSeconds: visibleRangeSeconds
-            )
-            guard markerPixelX >= 0, markerPixelX <= size.width else { continue }
-            var markerPath = Path()
-            markerPath.move(to: CGPoint(x: markerPixelX, y: 0))
-            markerPath.addLine(to: CGPoint(x: markerPixelX, y: size.height))
-            context.stroke(markerPath, with: .color(Theme.Surface.reversed.foreground), lineWidth: 2)
-        }
-
-        if let playheadOffsetSeconds {
-            let playheadPixelX = WaveformCoordinateMapper.pixelAtSeconds(
-                playheadOffsetSeconds,
-                viewWidth: size.width,
-                visibleRangeSeconds: visibleRangeSeconds
-            )
-            if playheadPixelX >= 0, playheadPixelX <= size.width {
-                var playheadPath = Path()
-                playheadPath.move(to: CGPoint(x: playheadPixelX, y: 0))
-                playheadPath.addLine(to: CGPoint(x: playheadPixelX, y: size.height))
-                context.stroke(playheadPath, with: .color(Theme.Colors.accent), lineWidth: 1.5)
-            }
-        }
+        drawMarkerLines(context: context, size: size)
+        drawPlayhead(context: context, size: size)
     }
 }
 

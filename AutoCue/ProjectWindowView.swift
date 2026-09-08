@@ -59,6 +59,23 @@ struct ProjectWindowView: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var appState = AppState()
+    /// Per-window, like `appState` above — not a single app-wide instance,
+    /// since two windows' undo histories must never mix (`CLAUDE.md`,
+    /// "Document & Window Model": a given `Project` is editable from at most
+    /// one window at a time, but two *different* Projects' windows are
+    /// fully independent). **Not injected via SwiftUI's own `\.undoManager`
+    /// environment key** — that key is read-only (confirmed at compile
+    /// time), reserved for `DocumentGroup`/`NSDocument` scenes to *publish*
+    /// an `UndoManager` they already own, not for an arbitrary `WindowGroup`
+    /// to *supply* one. Real ⌘Z/⌘⇧Z reaches this instance via
+    /// `.focusedSceneValue(\.projectUndoManager, undoManager)` below, read
+    /// back by `AutoCueApp`'s `CommandGroup(replacing: .undoRedo)` — see
+    /// `ProjectUndoManagerFocusedValue.swift` for the full reasoning,
+    /// including why the more obvious `NSWindowDelegate` hook was also
+    /// rejected. `CueDetectionReviewView`'s own need for this same instance
+    /// (to pass into `deleteCue`) is separate — a plain `init` parameter,
+    /// below, not routed through this mechanism.
+    @State private var undoManager = UndoManager()
     /// Retains the observer for this window's lifetime — see
     /// `ProjectWindowFrameSaver`'s doc comment for why this can't just be a
     /// local variable in the closure below.
@@ -150,6 +167,7 @@ struct ProjectWindowView: View {
             registry.unregister(projectID)
         }
         .errorAlert(message: $navigationBlockedMessage)
+        .focusedSceneValue(\.projectUndoManager, undoManager)
         .task { await cueSheetSectionViewModel.load() }
     }
 
@@ -263,7 +281,7 @@ struct ProjectWindowView: View {
         case .needsCueDetection:
             CueDetectionProgressView(viewModel: cueDetectionViewModel)
         case .readyForReview:
-            CueDetectionReviewView(viewModel: cueDetectionReviewViewModel)
+            CueDetectionReviewView(viewModel: cueDetectionReviewViewModel, undoManager: undoManager)
         }
     }
 }

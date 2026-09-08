@@ -45,7 +45,7 @@ final class CueDetectionReviewViewModelTests: XCTestCase {
         let loadTask = Task { await viewModel.load() }
         try await waitUntilCueDetectionReviewConditionMet { viewModel.cues.count == 1 }
 
-        viewModel.boundaryDragged(markerID: 0, toSeconds: 15)
+        viewModel.boundaryDragged(marker: .start(cueIndex: 0), toSeconds: 15)
 
         try await waitUntilCueDetectionReviewConditionMet {
             let updated = try await projectRepository.fetch(id: project.id)
@@ -55,6 +55,65 @@ final class CueDetectionReviewViewModelTests: XCTestCase {
         XCTAssertEqual(updated?.cues.first?.source, .manual)
         // TC Out (end) stays fixed at the original 40 — only the start moved.
         XCTAssertEqual(try XCTUnwrap(updated?.cues.first?.duration.seconds), 25, accuracy: 0.0001)
+        loadTask.cancel()
+    }
+
+    /// Confirms the wiring specifically — `.end(cueIndex:)` translates to
+    /// the right `Cue.ID` and `UpdateCueUseCase.moveBoundary`'s `.end`
+    /// branch, not a re-test of the clamp/independence logic itself
+    /// (already exhaustively covered at the `ACTestSupport` level against
+    /// the real `UpdateCueUseCase`, SPEC.md §4.19).
+    func test_boundaryDragged_endMarker_nonContiguous_movesOnlyThatCue() async throws {
+        let preceding = makeCueDetectionReviewCue(startSeconds: 10, duration: 30) // [10, 40)
+        let following = makeCueDetectionReviewCue(startSeconds: 50, duration: 20) // [50, 70), real gap
+        let env = makeCueDetectionReviewEnvironment(cues: [preceding, following])
+        let viewModel = env.viewModel
+        let projectRepository = env.projectRepository
+        let project = env.project
+
+        let loadTask = Task { await viewModel.load() }
+        try await waitUntilCueDetectionReviewConditionMet { viewModel.cues.count == 2 }
+
+        viewModel.boundaryDragged(marker: .end(cueIndex: 0), toSeconds: 35)
+
+        try await waitUntilCueDetectionReviewConditionMet {
+            let updated = try await projectRepository.fetch(id: project.id)
+            return try XCTUnwrap(updated?.cues.first?.duration.seconds) == 25
+        }
+        let updated = try await projectRepository.fetch(id: project.id)
+        XCTAssertEqual(updated?.cues.first?.source, .manual)
+        // The following cue is untouched — no neighbor coupling for a real gap.
+        XCTAssertEqual(updated?.cues.last?.startTimecode, Timecode(offsetSeconds: 50))
+        XCTAssertEqual(updated?.cues.last?.duration, MediaDuration(seconds: 20))
+        loadTask.cancel()
+    }
+
+    /// Confirms the atomic two-cue push-through is reachable end-to-end from
+    /// this ViewModel's entry point, not just from `UpdateCueUseCase`
+    /// directly — the wiring must forward a single `moveBoundary` call and
+    /// let it decide the one-vs-two-cue write, never pre-empt that decision.
+    func test_boundaryDragged_contiguousBoundary_pushThrough_atomicallyMovesBothCues() async throws {
+        let preceding = makeCueDetectionReviewCue(startSeconds: 10, duration: 30) // [10, 40)
+        let following = makeCueDetectionReviewCue(startSeconds: 40, duration: 20) // [40, 60), touching
+        let env = makeCueDetectionReviewEnvironment(cues: [preceding, following])
+        let viewModel = env.viewModel
+        let projectRepository = env.projectRepository
+        let project = env.project
+
+        let loadTask = Task { await viewModel.load() }
+        try await waitUntilCueDetectionReviewConditionMet { viewModel.cues.count == 2 }
+
+        viewModel.boundaryDragged(marker: .end(cueIndex: 0), toSeconds: 45)
+
+        try await waitUntilCueDetectionReviewConditionMet {
+            let updated = try await projectRepository.fetch(id: project.id)
+            return try XCTUnwrap(updated?.cues.first?.duration.seconds) == 35
+        }
+        let updated = try await projectRepository.fetch(id: project.id)
+        XCTAssertEqual(updated?.cues.first?.source, .manual)
+        XCTAssertEqual(updated?.cues.last?.startTimecode, Timecode(offsetSeconds: 45))
+        XCTAssertEqual(updated?.cues.last?.duration, MediaDuration(seconds: 15)) // own end (60) held fixed
+        XCTAssertEqual(updated?.cues.last?.source, .manual)
         loadTask.cancel()
     }
 

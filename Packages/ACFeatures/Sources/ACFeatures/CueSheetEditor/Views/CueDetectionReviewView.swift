@@ -12,9 +12,20 @@ public struct CueDetectionReviewView: View {
     @Bindable private var viewModel: CueDetectionReviewViewModel
     @FocusState private var isFocused: Bool
     @State private var isConfirmingClearAudio = false
+    /// `ProjectWindowView` constructs this window's own `UndoManager` and
+    /// passes it here directly — a plain `init` parameter, not SwiftUI's
+    /// environment (`ProjectUndoManagerFocusedValue.swift`, App target,
+    /// explains why: SwiftUI's built-in `\.undoManager` environment key is
+    /// read-only, reserved for `DocumentGroup`/`NSDocument` scenes). Real
+    /// ⌘Z/⌘⇧Z menu wiring is separate, via `FocusedValues` — this reference
+    /// exists only so `CueTableView`'s ✕ delete button can pass it to
+    /// `viewModel.deleteCue`, which registers the actual inverse action on
+    /// it, per SPEC.md §4.18.
+    private let undoManager: UndoManager?
 
-    public init(viewModel: CueDetectionReviewViewModel) {
+    public init(viewModel: CueDetectionReviewViewModel, undoManager: UndoManager?) {
         self.viewModel = viewModel
+        self.undoManager = undoManager
     }
 
     public var body: some View {
@@ -33,6 +44,23 @@ public struct CueDetectionReviewView: View {
                         viewModel.togglePlayback()
                     } label: {
                         Image(systemName: viewModel.isPlaying ? "stop.fill" : "play.fill")
+                    }
+                    .buttonStyle(SharpButtonStyle(emphasis: .secondary, surface: .primary))
+
+                    // Button-triggered waveform zoom — moved here from
+                    // an in-waveform overlay so it sits with the other
+                    // transport-adjacent controls in the header row.
+                    Button {
+                        viewModel.zoom(by: 1 / 1.5)
+                    } label: {
+                        Image(systemName: "minus.magnifyingglass")
+                    }
+                    .buttonStyle(SharpButtonStyle(emphasis: .secondary, surface: .primary))
+
+                    Button {
+                        viewModel.zoom(by: 1.5)
+                    } label: {
+                        Image(systemName: "plus.magnifyingglass")
                     }
                     .buttonStyle(SharpButtonStyle(emphasis: .secondary, surface: .primary))
 
@@ -61,11 +89,10 @@ public struct CueDetectionReviewView: View {
                     }
                 }
 
-                // Capped at roughly a third of this screen's own height,
-                // deliberately leaving the remainder empty for now — D10's
-                // cue list (CueTableView) lands below this, not yet wired
-                // in, but the proportions are right from the start rather
-                // than a full-height waveform that would need redoing.
+                // Capped at roughly a third of this screen's own height —
+                // CueTableView (D10/T10.2, minimal pull-forward) now fills
+                // the remainder below it, per the proportions this layout
+                // was left room for from the start.
                 WaveformView(
                     displayData: viewModel.displayData,
                     markers: viewModel.markers,
@@ -81,7 +108,9 @@ public struct CueDetectionReviewView: View {
                 )
                 .frame(height: max(160, geometry.size.height / 3))
 
-                Spacer(minLength: 0)
+                CueTableView(rows: viewModel.tableRows) { index in
+                    viewModel.deleteCue(at: index, undoManager: undoManager)
+                }
             }
             .padding(Theme.Spacing.lg)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
