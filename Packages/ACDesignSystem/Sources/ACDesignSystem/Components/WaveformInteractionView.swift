@@ -23,9 +23,22 @@ final class WaveformInteractionNSView: NSView {
     /// Live preview during a reposition drag — fired continuously so the
     /// host can redraw the dragged marker following the cursor without
     /// writing through to any Use Case; `onBoundaryDragged` (below) is the
-    /// one, single commit point.
-    var onBoundaryDragging: ((Int, Double) -> Void)?
-    var onBoundaryDragged: ((Int, Double) -> Void)?
+    /// one, single commit point. May fire twice per drag frame while
+    /// pushing through an already-contiguous boundary (SPEC.md §4.19) — once
+    /// for the grabbed marker, once for the neighbor being carried along —
+    /// so the host can preview both moving together, not just the one
+    /// actually grabbed.
+    var onBoundaryDragging: ((WaveformBoundaryMarker, Double) -> Void)?
+    var onBoundaryDragged: ((WaveformBoundaryMarker, Double) -> Void)?
+    /// Fired the instant a marker is hit-tested at `mouseDown` — *before*
+    /// any drag motion, so the host can highlight which cue a coincident
+    /// (zero-gap) tie-break actually resolved to right away, not only once
+    /// the user has already started moving the mouse (SPEC.md §4.19).
+    /// `onMarkerReleased` always fires on `mouseUp`, regardless of gesture
+    /// outcome (click, reposition commit, merge, or pan/none), so a plain
+    /// click-to-play-span never leaves the highlight stuck on.
+    var onMarkerGrabbed: ((WaveformBoundaryMarker) -> Void)?
+    var onMarkerReleased: (() -> Void)?
     var onMergeRequested: ((Int) -> Void)?
     var onSplitRequested: ((Double) -> Void)?
     var onPanChanged: ((ClosedRange<Double>) -> Void)?
@@ -35,17 +48,17 @@ final class WaveformInteractionNSView: NSView {
 
     private enum ActiveDrag {
         case pan(startRange: ClosedRange<Double>, startLocationX: CGFloat)
-        case reposition(markerID: Int)
+        case reposition(marker: WaveformBoundaryMarker)
         /// Classified once a reposition drag crosses the strip's vertical
         /// bounds — from this point on, horizontal movement is ignored and
         /// the gesture resolves to merge-or-cancel on release, never back to
         /// reposition (SPEC.md §4.15's one-time gesture-classification rule).
-        case mergeCommitted(markerID: Int)
+        case mergeCommitted(marker: WaveformBoundaryMarker)
     }
 
     private var activeDrag: ActiveDrag?
     private var mouseDownLocation: NSPoint?
-    private var mouseDownMarkerID: Int?
+    private var mouseDownMarker: WaveformBoundaryMarker?
     private static let clickVsDragThreshold: CGFloat = 2
 
     /// Test-only, read-only diagnostic accessors — `internal`, not exposed
@@ -53,8 +66,8 @@ final class WaveformInteractionNSView: NSView {
     /// the package can. Added while diagnosing the reported merge-gesture
     /// bug so the test can assert on gesture classification directly rather
     /// than only on its downstream effect.
-    var mouseDownMarkerIDForTesting: Int? {
-        mouseDownMarkerID
+    var mouseDownMarkerForTesting: WaveformBoundaryMarker? {
+        mouseDownMarker
     }
 
     var activeDragDescriptionForTesting: String? {
@@ -73,8 +86,11 @@ final class WaveformInteractionNSView: NSView {
     override func mouseDown(with event: NSEvent) {
         let location = convert(event.locationInWindow, from: nil)
         mouseDownLocation = location
-        mouseDownMarkerID = hitTestMarker(at: location)
+        mouseDownMarker = hitTestMarker(at: location)
         activeDrag = nil
+        if let mouseDownMarker {
+            onMarkerGrabbed?(mouseDownMarker)
+        }
     }
 
     override func mouseDragged(with event: NSEvent) {
@@ -86,18 +102,18 @@ final class WaveformInteractionNSView: NSView {
         }
 
         switch activeDrag {
-        case let .reposition(markerID):
+        case let .reposition(marker):
             if location.y < 0 || location.y > bounds.height {
                 // Crossed the vertical bound for the first time — commit to
                 // merge-or-cancel; horizontal movement no longer matters.
-                activeDrag = .mergeCommitted(markerID: markerID)
+                activeDrag = .mergeCommitted(marker: marker)
             } else {
                 let seconds = WaveformCoordinateMapper.secondsAtPixel(
                     location.x,
                     viewWidth: bounds.width,
                     visibleRangeSeconds: visibleRangeSeconds
                 )
-                onBoundaryDragging?(markerID, seconds)
+                previewDrag(of: marker, toSeconds: seconds)
             }
         case let .pan(startRange, startLocationX):
             let deltaPixels = location.x - startLocationX
@@ -118,7 +134,8 @@ final class WaveformInteractionNSView: NSView {
         defer {
             activeDrag = nil
             mouseDownLocation = nil
-            mouseDownMarkerID = nil
+            mouseDownMarker = nil
+            onMarkerReleased?()
         }
         guard let start = mouseDownLocation else { return }
         let location = convert(event.locationInWindow, from: nil)
@@ -130,15 +147,15 @@ final class WaveformInteractionNSView: NSView {
         }
 
         switch activeDrag {
-        case let .mergeCommitted(markerID):
-            onMergeRequested?(markerID)
-        case let .reposition(markerID):
+        case let .mergeCommitted(marker):
+            onMergeRequested?(followingCueIndex(for: marker))
+        case let .reposition(marker):
             let seconds = WaveformCoordinateMapper.secondsAtPixel(
                 location.x,
                 viewWidth: bounds.width,
                 visibleRangeSeconds: visibleRangeSeconds
             )
-            onBoundaryDragged?(markerID, seconds)
+            onBoundaryDragged?(marker, seconds)
         case .pan, .none:
             break
         }
@@ -185,8 +202,8 @@ final class WaveformInteractionNSView: NSView {
     // MARK: - Gesture classification
 
     private func classifyDragStart(from location: NSPoint) -> ActiveDrag? {
-        if let markerID = mouseDownMarkerID {
-            return .reposition(markerID: markerID)
+        if let marker = mouseDownMarker {
+            return .reposition(marker: marker)
         }
         guard visibleRangeSeconds.upperBound - visibleRangeSeconds.lowerBound < fileDurationSeconds else {
             return nil // unzoomed background drag: nothing to pan
@@ -195,8 +212,8 @@ final class WaveformInteractionNSView: NSView {
     }
 
     private func handleClick(at location: NSPoint, modifierFlags: NSEvent.ModifierFlags) {
-        if let markerID = mouseDownMarkerID {
-            onPlayMarkerSpan?(markerID)
+        if let marker = mouseDownMarker {
+            onPlayMarkerSpan?(cueIndex(for: marker))
             return
         }
         let seconds = WaveformCoordinateMapper.secondsAtPixel(
@@ -210,17 +227,6 @@ final class WaveformInteractionNSView: NSView {
             onPlayFromPoint?(seconds)
         }
     }
-
-    private func hitTestMarker(at point: NSPoint) -> Int? {
-        markers.first {
-            let markerPixelX = WaveformCoordinateMapper.pixelAtSeconds(
-                $0.offsetSeconds,
-                viewWidth: bounds.width,
-                visibleRangeSeconds: visibleRangeSeconds
-            )
-            return abs(markerPixelX - point.x) <= markerHitRadius
-        }?.id
-    }
 }
 
 /// `NSViewRepresentable` wrapper — plumbs `WaveformView`'s current state
@@ -230,8 +236,10 @@ struct WaveformInteractionRepresentable: NSViewRepresentable {
     let visibleRangeSeconds: ClosedRange<Double>
     let fileDurationSeconds: Double
     let markers: [WaveformMarker]
-    let onBoundaryDragging: (Int, Double) -> Void
-    let onBoundaryDragged: (Int, Double) -> Void
+    let onBoundaryDragging: (WaveformBoundaryMarker, Double) -> Void
+    let onBoundaryDragged: (WaveformBoundaryMarker, Double) -> Void
+    let onMarkerGrabbed: (WaveformBoundaryMarker) -> Void
+    let onMarkerReleased: () -> Void
     let onMergeRequested: (Int) -> Void
     let onSplitRequested: (Double) -> Void
     let onPanChanged: (ClosedRange<Double>) -> Void
@@ -249,6 +257,8 @@ struct WaveformInteractionRepresentable: NSViewRepresentable {
         nsView.markers = markers
         nsView.onBoundaryDragging = onBoundaryDragging
         nsView.onBoundaryDragged = onBoundaryDragged
+        nsView.onMarkerGrabbed = onMarkerGrabbed
+        nsView.onMarkerReleased = onMarkerReleased
         nsView.onMergeRequested = onMergeRequested
         nsView.onSplitRequested = onSplitRequested
         nsView.onPanChanged = onPanChanged

@@ -59,6 +59,29 @@ struct ProjectWindowView: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var appState = AppState()
+    /// Per-window, like `appState` above — not a single app-wide instance,
+    /// since two windows' undo histories must never mix (`CLAUDE.md`,
+    /// "Document & Window Model": a given `Project` is editable from at most
+    /// one window at a time, but two *different* Projects' windows are
+    /// fully independent). **Not injected via SwiftUI's own `\.undoManager`
+    /// environment key** — that key is read-only (confirmed at compile
+    /// time), reserved for `DocumentGroup`/`NSDocument` scenes to *publish*
+    /// an `UndoManager` they already own, not for an arbitrary `WindowGroup`
+    /// to *supply* one. Real ⌘Z/⌘⇧Z reaches this instance via
+    /// `.focusedSceneValue(\.projectUndoManager, undoManager)` below, read
+    /// back by `AutoCueApp`'s `CommandGroup(replacing: .undoRedo)` — see
+    /// `ProjectUndoManagerFocusedValue.swift` for the full reasoning,
+    /// including why the more obvious `NSWindowDelegate` hook was also
+    /// rejected. `CueDetectionReviewView`'s own need for this same instance
+    /// (to pass into `deleteCue`) is separate — a plain `init` parameter,
+    /// below, not routed through this mechanism.
+    @State private var undoManager: UndoManager
+    /// Bridges `undoManager`'s state into SwiftUI's Observation system —
+    /// see `ProjectUndoManagerFocusedValue.swift` for why this exists
+    /// (`UndoManager` itself is a plain `NSObject`, invisible to SwiftUI's
+    /// `@FocusedValue` re-evaluation when it mutates on its own). Published
+    /// via `.focusedSceneValue` below instead of `undoManager` directly.
+    @State private var undoManagerObserver: ProjectUndoManagerObserver
     /// Retains the observer for this window's lifetime — see
     /// `ProjectWindowFrameSaver`'s doc comment for why this can't just be a
     /// local variable in the closure below.
@@ -112,6 +135,9 @@ struct ProjectWindowView: View {
         _cueSheetSectionViewModel = State(initialValue: container.makeCueSheetSectionViewModel(for: projectID))
         _cueDetectionViewModel = State(initialValue: container.makeCueDetectionViewModel(for: projectID))
         _cueDetectionReviewViewModel = State(initialValue: container.makeCueDetectionReviewViewModel(for: projectID))
+        let freshUndoManager = UndoManager()
+        _undoManager = State(initialValue: freshUndoManager)
+        _undoManagerObserver = State(initialValue: ProjectUndoManagerObserver(undoManager: freshUndoManager))
     }
 
     var body: some View {
@@ -150,6 +176,7 @@ struct ProjectWindowView: View {
             registry.unregister(projectID)
         }
         .errorAlert(message: $navigationBlockedMessage)
+        .focusedSceneValue(\.projectUndoManager, undoManagerObserver)
         .task { await cueSheetSectionViewModel.load() }
     }
 
@@ -263,7 +290,7 @@ struct ProjectWindowView: View {
         case .needsCueDetection:
             CueDetectionProgressView(viewModel: cueDetectionViewModel)
         case .readyForReview:
-            CueDetectionReviewView(viewModel: cueDetectionReviewViewModel)
+            CueDetectionReviewView(viewModel: cueDetectionReviewViewModel, undoManager: undoManager)
         }
     }
 }

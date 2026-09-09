@@ -23,6 +23,7 @@
 		B1B2C3D4E5F647890ABCDEF9 /* ProjectWindowPlaybackStopper.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F647890ABCDEF9 /* ProjectWindowPlaybackStopper.swift */; };
 		B1B2C3D4E5F647890ABCDEF3 /* LibraryWindowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F647890ABCDEF3 /* LibraryWindowView.swift */; };
 		B1B2C3D4E5F647890ABCDEF4 /* ProjectWindowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F647890ABCDEF4 /* ProjectWindowView.swift */; };
+		B1B2C3D4E5F647890ABCDEFA /* ProjectUndoManagerFocusedValue.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F647890ABCDEFA /* ProjectUndoManagerFocusedValue.swift */; };
 		1500D5C218BB4D8A9F48D79B /* AutoCueTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1D5CC5A2D264932A71CAA50 /* AutoCueTests.swift */; };
 		C2B2C3D4E5F647890ABCDEF1 /* OpenProjectWindowRegistryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1B2C3D4E5F647890ABCDEF1 /* OpenProjectWindowRegistryTests.swift */; };
 		C2B2C3D4E5F647890ABCDEF2 /* ProjectWindowFrameStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1B2C3D4E5F647890ABCDEF2 /* ProjectWindowFrameStoreTests.swift */; };
@@ -51,6 +52,7 @@
 		A1B2C3D4E5F647890ABCDEF9 /* ProjectWindowPlaybackStopper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectWindowPlaybackStopper.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F647890ABCDEF3 /* LibraryWindowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryWindowView.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F647890ABCDEF4 /* ProjectWindowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectWindowView.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F647890ABCDEFA /* ProjectUndoManagerFocusedValue.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProjectUndoManagerFocusedValue.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F647890ABCDEF5 /* AutoCue.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = AutoCue.entitlements; sourceTree = "<group>"; };
 		E1D5CC5A2D264932A71CAA50 /* AutoCueTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutoCueTests.swift; sourceTree = "<group>"; };
 		C1B2C3D4E5F647890ABCDEF1 /* OpenProjectWindowRegistryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenProjectWindowRegistryTests.swift; sourceTree = "<group>"; };
@@ -108,6 +110,7 @@
 				A1B2C3D4E5F647890ABCDEF2 /* WindowAccessor.swift */,
 				A1B2C3D4E5F647890ABCDEF3 /* LibraryWindowView.swift */,
 				A1B2C3D4E5F647890ABCDEF4 /* ProjectWindowView.swift */,
+				A1B2C3D4E5F647890ABCDEFA /* ProjectUndoManagerFocusedValue.swift */,
 				A1B2C3D4E5F647890ABCDEF5 /* AutoCue.entitlements */,
 				A1B2C3D4E5F647890ABCDEF6 /* ProjectWindowFrameStore.swift */,
 				A1B2C3D4E5F647890ABCDEF7 /* ProjectWindowFrameSaver.swift */,
@@ -246,6 +249,7 @@
 				B1B2C3D4E5F647890ABCDEF2 /* WindowAccessor.swift in Sources */,
 				B1B2C3D4E5F647890ABCDEF3 /* LibraryWindowView.swift in Sources */,
 				B1B2C3D4E5F647890ABCDEF4 /* ProjectWindowView.swift in Sources */,
+				B1B2C3D4E5F647890ABCDEFA /* ProjectUndoManagerFocusedValue.swift in Sources */,
 				B1B2C3D4E5F647890ABCDEF5 /* ProjectWindowFrameStore.swift in Sources */,
 				B1B2C3D4E5F647890ABCDEF6 /* ProjectWindowFrameSaver.swift in Sources */,
 				B1B2C3D4E5F647890ABCDEF8 /* ProjectWindowSaveFlusher.swift in Sources */,

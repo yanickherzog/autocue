@@ -8,7 +8,10 @@ import XCTest
 /// `WaveformCoordinateMapper`'s pure math alone, which doesn't exercise
 /// `mouseDown`/`mouseDragged`/`mouseUp` at all.
 final class WaveformInteractionNSViewTests: XCTestCase {
-    private func makeHostedView(markers: [WaveformMarker]) -> (view: WaveformInteractionNSView, window: NSWindow) {
+    /// Not `private`: `WaveformInteractionNSViewTests+BoundaryDragging.swift`
+    /// (split into its own file purely to stay under this project's
+    /// type-body-length lint limit) needs these two helpers too.
+    func makeHostedView(markers: [WaveformMarker]) -> (view: WaveformInteractionNSView, window: NSWindow) {
         let frame = NSRect(x: 0, y: 0, width: 400, height: 160)
         let view = WaveformInteractionNSView(frame: frame)
         view.visibleRangeSeconds = 0 ... 100
@@ -25,7 +28,7 @@ final class WaveformInteractionNSViewTests: XCTestCase {
         return (view, window)
     }
 
-    private func mouseEvent(
+    func mouseEvent(
         type: NSEvent.EventType,
         locationInWindow: NSPoint,
         window: NSWindow
@@ -58,7 +61,7 @@ final class WaveformInteractionNSViewTests: XCTestCase {
             locationInWindow: NSPoint(x: 200, y: 80),
             window: window
         ))
-        XCTAssertNotNil(view.mouseDownMarkerIDForTesting, "Precondition: mouseDown must hit-test the marker")
+        XCTAssertNotNil(view.mouseDownMarkerForTesting, "Precondition: mouseDown must hit-test the marker")
 
         // Drag straight down, well past the view's bottom edge (height 160).
         try view.mouseDragged(with: mouseEvent(
@@ -118,7 +121,7 @@ final class WaveformInteractionNSViewTests: XCTestCase {
         let (view, window) = makeHostedView(markers: [marker])
 
         var mergeRequestedID: Int?
-        var dragged: (Int, Double)?
+        var dragged: (WaveformBoundaryMarker, Double)?
         view.onMergeRequested = { mergeRequestedID = $0 }
         view.onBoundaryDragged = { dragged = ($0, $1) }
 

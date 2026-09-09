@@ -6,7 +6,11 @@ import XCTest
 /// pulled forward from D10/T10.1 — see `docs/DECISIONS.md`) against the real
 /// `InMemoryProjectRepository` fake, per `CONTRIBUTING.md` §5.
 final class UpdateCueUseCaseTests: XCTestCase {
-    private static func makeProject(cues: [Cue]) -> Project {
+    /// Not `private`: `UpdateCueUseCaseTests+Delete.swift` needs these too —
+    /// split into its own file purely to stay under this project's
+    /// type-body-length lint limit, same reason
+    /// `UpdateCueUseCaseMoveBoundaryTests+EdgeCases.swift` already is.
+    static func makeProject(cues: [Cue]) -> Project {
         Project(
             name: "Reel One",
             createdAt: Date(timeIntervalSince1970: 0),
@@ -24,7 +28,7 @@ final class UpdateCueUseCaseTests: XCTestCase {
         )
     }
 
-    private static func makeCue(
+    static func makeCue(
         title: String = "Detected Cue",
         duration: Double = 30,
         source: CueSource = .detectedFromAudio,

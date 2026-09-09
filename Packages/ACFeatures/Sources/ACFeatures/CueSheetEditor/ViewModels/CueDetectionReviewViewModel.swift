@@ -20,6 +20,11 @@ import Foundation
 public final class CueDetectionReviewViewModel {
     public let projectID: Project.ID
     public private(set) var cues: [Cue] = []
+    /// `Setup.timecodeFrameRate`, kept in step with the live subscription
+    /// below — needed only for `CueTableView`'s TC In/TC Out formatting
+    /// (`+TableRows.swift`), SPEC.md §4.9/§4.3. Not `private`: that
+    /// extension file needs it too.
+    var timecodeFrameRate: TimecodeFrameRate = .fps25
     /// `internal(set)`: reset from `+ClearImportedAudio.swift`'s `resetForNewImportCycle()`.
     public internal(set) var displayData = WaveformDisplayData(buckets: [])
     public internal(set) var fileDurationSeconds: Double = 0.001
@@ -61,11 +66,11 @@ public final class CueDetectionReviewViewModel {
 
     private let observeProjectsUseCase: ObserveProjectsUseCase
     private let generateWaveformDetailUseCase: GenerateWaveformDetailUseCase
-    private let updateCueUseCase: UpdateCueUseCase
-    /// Not `private`: read from this type's `+ClearImportedAudio.swift`
-    /// extension (split into its own file purely to stay under this
-    /// project's type-body-length lint limit) — still `internal`, never
-    /// exposed as public API.
+    /// Not `private`: read from this type's `+BoundaryDragging.swift`/
+    /// `+ClearImportedAudio.swift` extensions (each split into its own file
+    /// purely to stay under this project's type-body-length lint limit) —
+    /// still `internal`, never exposed as public API.
+    let updateCueUseCase: UpdateCueUseCase
     let clearImportedAudioUseCase: ClearImportedAudioUseCase
     let audioPlaybackController: AudioPlaybackController
 
@@ -121,6 +126,7 @@ public final class CueDetectionReviewViewModel {
             guard let project = projects.first(where: { $0.id == projectID }) else { continue }
             cues = project.cues
             asset = project.audioAsset
+            timecodeFrameRate = project.setup.timecodeFrameRate
 
             if !hasLoadedInitialRange, let peaks = project.waveformPeaks, let asset = project.audioAsset {
                 overviewPeaks = peaks
@@ -175,6 +181,26 @@ public final class CueDetectionReviewViewModel {
     }
 
     // MARK: - Zoom / pan
+
+    /// Backs the header row's +/- zoom buttons (`CueDetectionReviewView`) —
+    /// the button-triggered equivalent of `WaveformView`'s pinch/scroll zoom
+    /// gestures, which call `visibleRangeChanged` directly from inside that
+    /// view. Buttons live outside `WaveformView` (moved to the header, next
+    /// to the playback/clear-audio controls), so zooming from a button goes
+    /// through this method instead, reusing the same `WaveformCoordinateMapper`
+    /// math and funneling into the same `visibleRangeChanged` path so
+    /// on-demand detail refetch stays a single code path regardless of
+    /// which input triggered the zoom.
+    public func zoom(by factor: Double) {
+        let center = (visibleRangeSeconds.lowerBound + visibleRangeSeconds.upperBound) / 2
+        let newRange = WaveformCoordinateMapper.zooming(
+            visibleRangeSeconds,
+            by: factor,
+            aroundSeconds: center,
+            fileDurationSeconds: fileDurationSeconds
+        )
+        visibleRangeChanged(to: newRange, pixelWidth: pixelWidth)
+    }
 
     /// Called whenever `WaveformView`'s zoom/pan gestures change
     /// `visibleRangeSeconds` — debounced/coalesced during a continuous
@@ -243,34 +269,7 @@ public final class CueDetectionReviewViewModel {
         displayData = Self.mapToDisplayData(overviewPeaks.buckets, representedRangeSeconds: 0 ... fileDurationSeconds)
     }
 
-    // MARK: - Reposition / split / merge
-
-    public func boundaryDragged(markerID: Int, toSeconds seconds: Double) {
-        guard cues.indices.contains(markerID), let oldStart = cues[markerID].startTimecode else { return }
-        let oldEnd = oldStart.offsetSeconds + cues[markerID].duration.seconds
-        let newDuration = MediaDuration(seconds: max(0, oldEnd - seconds))
-        let cueID = cues[markerID].id
-        Task { [weak self] in
-            guard let self else { return }
-            do {
-                try await updateCueUseCase.edit(projectID: projectID, cueID: cueID) { existing in
-                    Cue(
-                        id: existing.id,
-                        title: existing.title,
-                        workNumber: existing.workNumber,
-                        duration: newDuration,
-                        rightHolders: existing.rightHolders,
-                        isArrangementOfProtectedOriginal: existing.isArrangementOfProtectedOriginal,
-                        source: existing.source,
-                        startTimecode: Timecode(offsetSeconds: seconds),
-                        notes: existing.notes
-                    )
-                }
-            } catch {
-                errorMessage = error.localizedDescription
-            }
-        }
-    }
+    // MARK: - Split / merge
 
     /// An ⌥-click within a cue's plotted region — SPEC.md §4.15. Clicks
     /// outside any cue's region (silence/gap space) find no containing cue

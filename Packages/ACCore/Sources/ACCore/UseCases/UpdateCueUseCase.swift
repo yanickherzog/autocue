@@ -5,7 +5,7 @@ import Foundation
 /// **Minimal scope for `ROADMAP.md` D9, a deliberate pull-forward from
 /// D10/T10.1 — not the full type that Deliverable will eventually own.**
 /// `WaveformView`'s drag-to-reposition, split, and merge gestures (D9/T9.3)
-/// write through this Use Case's `edit`/`split`/`merge` methods, per
+/// write through this Use Case's `moveBoundary`/`split`/`merge` methods, per
 /// `SPEC.md` §4.19's already-fully-specified field-by-field rules — D9's own
 /// Acceptance Criteria (a dragged boundary actually updates `startTimecode`,
 /// a split/merge actually mutates `Project.cues`) are structurally
@@ -41,7 +41,10 @@ import Foundation
 /// documented default (`true`) — revisit once D14 adds a real `Settings`
 /// repository this Use Case can actually consult.
 public struct UpdateCueUseCase: Sendable {
-    private let projectRepository: ProjectRepository
+    /// Not `private`: `UpdateCueUseCase+MoveBoundary.swift`'s extension
+    /// needs this too, and `private` is file-scoped in Swift — `internal`
+    /// (the default) still keeps it out of the public API.
+    let projectRepository: ProjectRepository
 
     public init(projectRepository: ProjectRepository) {
         self.projectRepository = projectRepository
@@ -165,7 +168,7 @@ public struct UpdateCueUseCase: Sendable {
                 throw UpdateCueUseCaseError.mergeNotContiguous
             }
             let precedingEnd = precedingStart.offsetSeconds + preceding.duration.seconds
-            guard abs(precedingEnd - followingStart.offsetSeconds) <= Self.mergeEpsilonSeconds else {
+            guard abs(precedingEnd - followingStart.offsetSeconds) <= Self.contiguityEpsilonSeconds else {
                 throw UpdateCueUseCaseError.mergeNotContiguous
             }
 
@@ -198,6 +201,57 @@ public struct UpdateCueUseCase: Sendable {
         return merged
     }
 
+    /// Deletes `cueID` outright — SPEC.md §4.18's delete path (also
+    /// SPEC.md §4.19 capability 2: "remove one the analysis wrongly
+    /// created" is this same path, not a separate "reject detection" UI).
+    /// **Minimal scope, pulled forward from D10/T10.1** the same way
+    /// `moveBoundary`/`split`/`merge` already were — see this file's own
+    /// top-level doc comment; `docs/DECISIONS.md` records this specific
+    /// pull-forward. No confirmation, no soft-delete: the row is gone from
+    /// `Project.cues` the instant this returns, exactly per §4.18's
+    /// "deliberate — no confirmation dialog." Undo is the caller's
+    /// responsibility, per this type's "Undo registration is not this Use
+    /// Case's job" doc comment above — the ViewModel must capture the full
+    /// `Cue` (and its index) from its own live snapshot *before* calling
+    /// this, since once this returns there's nothing left here to recover
+    /// it from.
+    public func delete(projectID: Project.ID, cueID: Cue.ID) async throws {
+        let updated = try await projectRepository.update(id: projectID) { project in
+            guard let index = project.cues.firstIndex(where: { $0.id == cueID }) else {
+                throw UpdateCueUseCaseError.cueNotFound(cueID)
+            }
+            var cues = project.cues
+            cues.remove(at: index)
+            return project.replacingCues(cues)
+        }
+        guard updated != nil else { throw ProjectNotFoundError(projectID: projectID) }
+    }
+
+    /// `delete`'s own undo counterpart — reinserts `cue` (its full, exact,
+    /// pre-delete field values, captured by the caller before the original
+    /// `delete` call) back at `atIndex`. **Not** the D10/T10.1 "+ Add Cue"
+    /// entry point, which is a different operation with different defaults
+    /// (a fresh, mostly-empty `Cue`) — this exists only so ⌘Z after a delete
+    /// can restore the exact cue that was removed, in its original position,
+    /// per SPEC.md §4.18's undo requirement. `atIndex` is clamped to the
+    /// current `cues.count` so an undo racing a concurrent structural edit
+    /// (e.g. another window deleted a different cue in between) still
+    /// inserts somewhere valid rather than trapping.
+    @discardableResult
+    public func insertForUndo(projectID: Project.ID, cue: Cue, atIndex: Int) async throws -> Cue {
+        let updated = try await projectRepository.update(id: projectID) { project in
+            var cues = project.cues
+            let clampedIndex = min(max(atIndex, 0), cues.count)
+            cues.insert(cue, at: clampedIndex)
+            return project.replacingCues(cues)
+        }
+        guard let updated else { throw ProjectNotFoundError(projectID: projectID) }
+        guard let reinserted = updated.cues.first(where: { $0.id == cue.id }) else {
+            throw UpdateCueUseCaseError.cueNotFound(cue.id)
+        }
+        return reinserted
+    }
+
     /// "Prefer the earlier value if non-empty/non-nil, otherwise the later"
     /// — SPEC.md §4.19's merge rule, stated once, shared by `workNumber` and
     /// `notes`.
@@ -207,7 +261,14 @@ public struct UpdateCueUseCase: Sendable {
     }
 
     private static let splitEpsilonSeconds = 0.001
-    private static let mergeEpsilonSeconds = 0.001
+    /// Shared by `merge`'s eligibility check and `moveBoundary`'s
+    /// contiguous/non-contiguous branch decision (`UpdateCueUseCase
+    /// +MoveBoundary.swift`) — one epsilon, not two independently-drifting
+    /// copies of the same "genuinely touching" tolerance (SPEC.md §4.19).
+    /// Not `private`: that file's extension needs to read it too, and
+    /// `private` is file-scoped in Swift, not just type-scoped — `internal`
+    /// (the default) is still invisible outside this module.
+    static let contiguityEpsilonSeconds = 0.001
 }
 
 public enum UpdateCueUseCaseError: Error, Equatable {
@@ -217,7 +278,10 @@ public enum UpdateCueUseCaseError: Error, Equatable {
     case mergeNotContiguous
 }
 
-private extension Cue {
+/// Not `private`: `UpdateCueUseCase+MoveBoundary.swift`'s planning functions
+/// need this too, and `private` is file-scoped in Swift — `internal` (the
+/// default) still keeps it invisible outside this module.
+extension Cue {
     func reclassifiedAsManual() -> Cue {
         Cue(
             id: id,
@@ -233,12 +297,15 @@ private extension Cue {
     }
 }
 
-private extension Project {
+/// Not `private`: `UpdateCueUseCase+MoveBoundary.swift` needs `replacingCues`
+/// too — `internal` (the default) still keeps this out of the public
+/// `Project` API, just visible module-wide instead of file-wide.
+extension Project {
     /// Reconstructs `self` with `cues` replaced and `updatedAt`/
     /// `totalMusicRuntime` recomputed together — the one place `UpdateCueUseCase`
     /// needs to touch every field `Project`'s memberwise initializer
-    /// requires, kept local to this file rather than a public `Project`
-    /// API, since no other caller needs it yet.
+    /// requires, kept internal to this module rather than a public `Project`
+    /// API, since no caller outside it needs this yet.
     func replacingCues(_ cues: [Cue]) -> Project {
         Project(
             id: id,
