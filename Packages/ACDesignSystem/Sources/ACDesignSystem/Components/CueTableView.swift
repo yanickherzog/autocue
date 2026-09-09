@@ -100,6 +100,7 @@ public struct CueTableView: View {
                 } label: {
                     Image(systemName: "xmark")
                         .font(.system(size: 10, weight: .medium))
+                        .foregroundStyle(Theme.Colors.white)
                 }
                 .buttonStyle(SharpButtonStyle(emphasis: .secondary, surface: .primary))
                 // Accessible/precise hit target for a row-scoped destructive

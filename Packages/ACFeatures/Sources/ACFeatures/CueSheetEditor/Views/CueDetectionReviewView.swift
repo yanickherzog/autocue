@@ -23,6 +23,19 @@ public struct CueDetectionReviewView: View {
     /// it, per SPEC.md §4.18.
     private let undoManager: UndoManager?
 
+    /// A fixed icon footprint for every header-row button (play/stop, zoom
+    /// out, zoom in, remove-file) — found during manual testing that the
+    /// zoom buttons rendered visibly shorter than the others, despite all
+    /// four sharing the same `SharpButtonStyle` (same padding, same label
+    /// font size): different SF Symbols aren't guaranteed the same glyph
+    /// bounding-box height at a given point size (`plus.magnifyingglass`/
+    /// `minus.magnifyingglass` measure shorter than `play.fill`/`stop.fill`/
+    /// `xmark` here), so `SharpButtonStyle`'s otherwise-identical padding
+    /// still produced visibly different total button heights. Framing every
+    /// icon to the same explicit box removes the per-symbol metric
+    /// difference entirely, rather than tuning a font size per icon.
+    private static let headerIconSize: CGFloat = 16
+
     public init(viewModel: CueDetectionReviewViewModel, undoManager: UndoManager?) {
         self.viewModel = viewModel
         self.undoManager = undoManager
@@ -44,6 +57,7 @@ public struct CueDetectionReviewView: View {
                         viewModel.togglePlayback()
                     } label: {
                         Image(systemName: viewModel.isPlaying ? "stop.fill" : "play.fill")
+                            .frame(width: Self.headerIconSize, height: Self.headerIconSize)
                     }
                     .buttonStyle(SharpButtonStyle(emphasis: .secondary, surface: .primary))
 
@@ -54,6 +68,7 @@ public struct CueDetectionReviewView: View {
                         viewModel.zoom(by: 1 / 1.5)
                     } label: {
                         Image(systemName: "minus.magnifyingglass")
+                            .frame(width: Self.headerIconSize, height: Self.headerIconSize)
                     }
                     .buttonStyle(SharpButtonStyle(emphasis: .secondary, surface: .primary))
 
@@ -61,6 +76,7 @@ public struct CueDetectionReviewView: View {
                         viewModel.zoom(by: 1.5)
                     } label: {
                         Image(systemName: "plus.magnifyingglass")
+                            .frame(width: Self.headerIconSize, height: Self.headerIconSize)
                     }
                     .buttonStyle(SharpButtonStyle(emphasis: .secondary, surface: .primary))
 
@@ -73,6 +89,7 @@ public struct CueDetectionReviewView: View {
                         isConfirmingClearAudio = true
                     } label: {
                         Image(systemName: "xmark")
+                            .frame(width: Self.headerIconSize, height: Self.headerIconSize)
                     }
                     .buttonStyle(SharpButtonStyle(emphasis: .secondary, surface: .primary))
                     .confirmationDialog(

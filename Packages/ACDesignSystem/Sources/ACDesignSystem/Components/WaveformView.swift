@@ -163,10 +163,26 @@ public struct WaveformView: View {
         onVisibleRangeChanged(newRange, width)
     }
 
+    /// **Not a z-order bug — root-caused via a real, on-screen, window-
+    /// server-composited capture, not assumed.** AppKit's stock `Slider`
+    /// knob renders **translucent** (~50% alpha) against this dark,
+    /// colorful background when given no opaque backing of its own — the
+    /// waveform trace/cue-span/marker-line pixels underneath were never on
+    /// top of the slider at all; they were visible *through* it. A first
+    /// fix gave the stock `Slider` an opaque `.background(Rectangle()...)`
+    /// backing plate, which did stop the bleed-through but introduced its
+    /// own visible rectangle behind the control — not acceptable either.
+    /// **Real fix: a custom-drawn track/thumb (`VerticalScaleSlider`,
+    /// below), the same "stock AppKit-backed control's rendering can't be
+    /// fully controlled from SwiftUI, so draw it ourselves" shape this
+    /// project already established for `SharpButtonStyle`/
+    /// `SharpCheckboxToggleStyle`.** Every shape drawn is a solid, fully
+    /// opaque fill — no separate background layer at all, so there is
+    /// nothing to show through *and* nothing extra visible beyond the
+    /// track/thumb's own bounds. See `docs/DECISIONS.md`.
     private var verticalScaleControl: some View {
-        Slider(value: $verticalScale, in: 0.25 ... 4)
+        VerticalScaleSlider(value: $verticalScale, range: 0.25 ... 4)
             .frame(width: 100)
-            .tint(Theme.Colors.accent)
             .padding(Theme.Spacing.xs)
     }
 
