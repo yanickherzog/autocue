@@ -49,6 +49,17 @@ private struct ThresholdCalibration {
         // floor statistic, inconclusive (→ fallback) below 5 measurements.
         let leadingWindowSeconds = 2.0
         let minimumMeasurementsForConfidence = 5
+        // "Found and fixed 2026-09-10" (SPEC.md §4.11, docs/DECISIONS.md):
+        // a candidate threshold more than this many dB shallower than the
+        // *previous* interval's own calibrated threshold is treated as
+        // implausible — the leading window almost certainly landed inside
+        // real content, not silence — and the previous interval's threshold
+        // is carried forward instead of trusting the bad measurement. 20dB
+        // comfortably allows a genuine ambient-floor shift between
+        // intervals (a real location/scene change) while firmly rejecting
+        // the kind of jump a leading window landing in active music
+        // produces (confirmed empirically at ~74dB on a real fixture).
+        let implausibleJumpMarginDb = 20.0
 
         var thresholds: [Double] = []
         thresholds.reserveCapacity(intervalCount)
@@ -63,7 +74,12 @@ private struct ThresholdCalibration {
                 continue
             }
             let measuredNoiseFloorDb = leadingMeasurements.map(\.rmsDb).min() ?? settings.silenceThresholdDb
-            thresholds.append(measuredNoiseFloorDb + settings.calibrationMarginDb)
+            let candidateThreshold = measuredNoiseFloorDb + settings.calibrationMarginDb
+            if interval > 0, candidateThreshold > thresholds[interval - 1] + implausibleJumpMarginDb {
+                thresholds.append(thresholds[interval - 1])
+            } else {
+                thresholds.append(candidateThreshold)
+            }
         }
         intervalThresholds = thresholds
     }

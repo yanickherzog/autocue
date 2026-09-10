@@ -8,6 +8,14 @@ import Foundation
 /// No `id` field — this is a plain configuration value, not an entity with
 /// its own identity (`CLAUDE.md`, "Domain Model Value-Type Conformances").
 public struct AnalysisSettings: Equatable, Hashable, Sendable {
+    /// Default `.automatic` since 2026-09-10 (SPEC.md §4.11, "Threshold:
+    /// manual vs. automatic"; `docs/DECISIONS.md`) — a fixed `.manual`
+    /// threshold cannot serve both a normally-mixed file and a
+    /// significantly quieter one (e.g. music mixed down as a background
+    /// bed) with the same value, confirmed across four real gain tiers of
+    /// the same content plus three genuinely distinct real pieces
+    /// (choral, sustained/vibrato, electronic) with no defect found once
+    /// the re-estimation sanity check (below) was in place.
     public let noiseFloorCalibrationMode: NoiseFloorCalibrationMode
     public let silenceThresholdDb: Double
     public let calibrationMarginDb: Double
@@ -23,6 +31,19 @@ public struct AnalysisSettings: Equatable, Hashable, Sendable {
     public let minimumSilenceDurationSeconds: Double
     public let minimumCueDurationSeconds: Double
     public let tailToleranceDb: Double
+    /// **Must stay strictly below `minimumSilenceDurationSeconds`.** The
+    /// stricter-threshold branch this field gates can only start counting
+    /// once the signal has *already* dropped below the deeper
+    /// `silenceThresholdDb − tailToleranceDb` reference — which happens no
+    /// earlier than the ordinary main-threshold gap started — so
+    /// `stricterGapDuration ≤ mainGapDuration` holds at every instant, for
+    /// every gap, by construction. If `tailCapSeconds ≥ minimumSilenceDurationSeconds`,
+    /// the main-gap condition (`mainGapDuration ≥ minimumSilenceDurationSeconds`)
+    /// always resolves at or before the stricter condition ever could, making
+    /// this branch mathematically unreachable — confirmed both by this proof
+    /// and, previously, by zero stricter-branch firings across a real
+    /// multi-cue fixture file where several tails should have triggered it.
+    /// See `docs/DECISIONS.md`, 2026-09-10.
     public let tailCapSeconds: Double
     public let embeddedMarkerMergeToleranceSeconds: Double
     /// Stage 2 only: how far, in seconds, before/after the stage-1
@@ -55,7 +76,7 @@ public struct AnalysisSettings: Equatable, Hashable, Sendable {
     public let superFluxAdaptiveThresholdOffset: Double
 
     public init(
-        noiseFloorCalibrationMode: NoiseFloorCalibrationMode = .manual,
+        noiseFloorCalibrationMode: NoiseFloorCalibrationMode = .automatic,
         silenceThresholdDb: Double = -40.0,
         calibrationMarginDb: Double = 6.0,
         noiseFloorReestimationIntervalSeconds: Double = 300.0,
@@ -64,7 +85,7 @@ public struct AnalysisSettings: Equatable, Hashable, Sendable {
         minimumSilenceDurationSeconds: Double = 2.0,
         minimumCueDurationSeconds: Double = 3.0,
         tailToleranceDb: Double = 6.0,
-        tailCapSeconds: Double = 2.0,
+        tailCapSeconds: Double = 0.5,
         embeddedMarkerMergeToleranceSeconds: Double = 1.0,
         superFluxRefinementSearchWindowSeconds: Double = 0.5,
         superFluxHopSeconds: Double = 0.01,

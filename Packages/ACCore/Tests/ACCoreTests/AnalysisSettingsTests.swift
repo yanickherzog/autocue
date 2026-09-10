@@ -20,7 +20,7 @@ final class AnalysisSettingsTests: XCTestCase {
     func test_defaultsMatchSpec() {
         let settings = AnalysisSettings()
 
-        XCTAssertEqual(settings.noiseFloorCalibrationMode, .manual)
+        XCTAssertEqual(settings.noiseFloorCalibrationMode, .automatic)
         XCTAssertEqual(settings.silenceThresholdDb, -40.0)
         XCTAssertEqual(settings.calibrationMarginDb, 6.0)
         XCTAssertEqual(settings.noiseFloorReestimationIntervalSeconds, 300.0)
@@ -29,7 +29,7 @@ final class AnalysisSettingsTests: XCTestCase {
         XCTAssertEqual(settings.minimumSilenceDurationSeconds, 2.0)
         XCTAssertEqual(settings.minimumCueDurationSeconds, 3.0)
         XCTAssertEqual(settings.tailToleranceDb, 6.0)
-        XCTAssertEqual(settings.tailCapSeconds, 2.0)
+        XCTAssertEqual(settings.tailCapSeconds, 0.5)
         XCTAssertEqual(settings.embeddedMarkerMergeToleranceSeconds, 1.0)
         XCTAssertEqual(settings.superFluxRefinementSearchWindowSeconds, 0.5)
         XCTAssertEqual(settings.superFluxHopSeconds, 0.01)
