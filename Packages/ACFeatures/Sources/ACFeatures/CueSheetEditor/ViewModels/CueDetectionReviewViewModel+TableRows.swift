@@ -12,14 +12,25 @@ extension CueDetectionReviewViewModel {
     /// `CueTableView`. TC In/TC Out both fall back to the shared `"—"`
     /// placeholder when `startTimecode` is `nil`; Length never needs one
     /// (`Cue.duration` is never optional).
+    ///
+    /// **`Setup.timecodeStart` is added before formatting, not `cue.startTimecode`
+    /// alone.** `Cue.startTimecode` stays audio-file-relative everywhere else
+    /// in this ViewModel (waveform markers, playback, drag/split/merge math)
+    /// — it has to, since that's the coordinate system the waveform view and
+    /// `AudioPlaybackController` actually operate in. TC In/TC Out are the
+    /// one place a cue's position is shown to a human as the film's own
+    /// absolute timecode, so `timecodeStart`'s offset is added here, at the
+    /// point of display, and nowhere else. See SPEC.md §4.3.
     public var tableRows: [CueTableRow] {
-        cues.enumerated().map { index, cue in
+        let startOffset = timecodeStart?.offsetSeconds ?? 0
+        return cues.enumerated().map { index, cue in
             let tcIn: String
             let tcOut: String
             if let start = cue.startTimecode {
-                tcIn = start.formatted(at: timecodeFrameRate)
-                let end = Timecode(offsetSeconds: start.offsetSeconds + cue.duration.seconds)
-                tcOut = end.formatted(at: timecodeFrameRate)
+                let displayStart = Timecode(offsetSeconds: startOffset + start.offsetSeconds)
+                tcIn = displayStart.formatted(at: timecodeFrameRate)
+                let displayEnd = Timecode(offsetSeconds: displayStart.offsetSeconds + cue.duration.seconds)
+                tcOut = displayEnd.formatted(at: timecodeFrameRate)
             } else {
                 tcIn = Self.noTimecodePlaceholder
                 tcOut = Self.noTimecodePlaceholder

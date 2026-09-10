@@ -360,3 +360,17 @@ Not a new Deliverable — a correction to D8 (already marked "Complete" above), 
 **Refactoring suggestions:** None this pass.
 
 **Follow-ups filed:** `docs/DECISIONS.md` gained two entries this date. No `ROADMAP.md` changes — both are bug fixes to already-landed PR #21 work, not new scope. No `// TODO` comments added.
+
+---
+
+## 2026-09-10 — Displayed cue timecodes ignored `Setup.timecodeStart`; fixed at the display layer, `SPEC.md` §4.3 corrected
+
+**Architecture observations:** the bug (every displayed TC In/TC Out silently missing `Setup.timecodeStart`'s offset) existed in exactly one real call site — `CueDetectionReviewViewModel+TableRows.swift` — confirmed by tracing every non-test reference to `Cue.startTimecode`/`Timecode` project-wide before proposing any fix, not assumed from a single grep hit. `Cue.startTimecode` itself was correctly audio-file-relative throughout `ACAudioKit`/`ACCore`/`ACDesignSystem` (waveform plotting, playback seek targets, drag/split/merge math) and stays that way — the fix is entirely display-layer, adding `Setup.timecodeStart`'s offset only at the one point a cue's position becomes text a human reads as a real-world timecode. Full investigation and the reasoning behind fixing it here rather than upstream: `docs/DECISIONS.md`, 2026-09-10.
+
+**Code quality observations:** `SPEC.md` §4.3's own TC In/TC Out definition was itself wrong before this pass — it never mentioned `Setup.timecodeStart` at all, despite that section explicitly claiming to be the one authoritative definition every display site references. Corrected in the same change as the code fix, including an explicit, separately-reasoned statement (not inherited by analogy from `Setup.timecodeFrameRate`'s similar-looking behavior) that changing `Setup.timecodeStart` on a project with existing cues updates every cue's display automatically, with no migration and no warning — see `docs/DECISIONS.md` for the full reasoning behind that product decision.
+
+**Technical debt:** a real, pre-existing gap closed in the same change: no test coverage existed for `CueDetectionReviewViewModel.tableRows`/TC In/TC Out at all before this pass. `CueDetectionReviewViewModel+TableRowsTests.swift` is new, covering the offset addition, the `nil`-`timecodeStart` zero-offset case, the nil-`startTimecode` placeholder rule staying intact, Length staying unaffected, and markers staying audio-file-relative in the same render pass TC In/TC Out are film-absolute.
+
+**Refactoring suggestions:** None this pass.
+
+**Follow-ups filed:** `docs/DECISIONS.md` gained one entry this date. `SPEC.md` §4.3 corrected in the same change. No `ROADMAP.md` changes — a bug fix to already-landed D9 work, not new scope. No `// TODO` comments added.

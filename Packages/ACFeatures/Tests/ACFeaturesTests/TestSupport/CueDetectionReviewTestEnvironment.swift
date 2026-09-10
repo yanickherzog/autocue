@@ -24,7 +24,12 @@ func makeCueDetectionReviewCue(
     )
 }
 
-func makeCueDetectionReviewProject(cues: [Cue], audioAsset: AudioAsset, waveformPeaks: WaveformPeaks?) -> Project {
+func makeCueDetectionReviewProject(
+    cues: [Cue],
+    audioAsset: AudioAsset,
+    waveformPeaks: WaveformPeaks?,
+    timecodeStart: Timecode? = nil
+) -> Project {
     Project(
         name: "Reel One",
         createdAt: Date(timeIntervalSince1970: 0),
@@ -38,6 +43,7 @@ func makeCueDetectionReviewProject(cues: [Cue], audioAsset: AudioAsset, waveform
             productionYear: 2026,
             containsAdditionalUndeclaredWorks: .no,
             productionTypes: [.documentaryFilm],
+            timecodeStart: timecodeStart,
             declarationDate: Date(timeIntervalSince1970: 0)
         ),
         cues: cues
@@ -52,14 +58,22 @@ struct CueDetectionReviewTestEnvironment {
 }
 
 @MainActor
-func makeCueDetectionReviewEnvironment(cues: [Cue]) -> CueDetectionReviewTestEnvironment {
+func makeCueDetectionReviewEnvironment(
+    cues: [Cue],
+    timecodeStart: Timecode? = nil
+) -> CueDetectionReviewTestEnvironment {
     let asset = InMemoryAudioAnalysisRepository.placeholderAudioAsset()
     let peaks = WaveformPeaks(
         audioAssetID: asset.id,
         resolution: 4,
         buckets: (0 ..< 4).map { _ in WaveformPeakBucket(min: -0.5, max: 0.5) }
     )
-    let project = makeCueDetectionReviewProject(cues: cues, audioAsset: asset, waveformPeaks: peaks)
+    let project = makeCueDetectionReviewProject(
+        cues: cues,
+        audioAsset: asset,
+        waveformPeaks: peaks,
+        timecodeStart: timecodeStart
+    )
     let projectRepository = InMemoryProjectRepository(projects: [project])
     let audioAnalysisRepository = InMemoryAudioAnalysisRepository(importedAsset: asset)
     let playbackController = InMemoryAudioPlaybackController()

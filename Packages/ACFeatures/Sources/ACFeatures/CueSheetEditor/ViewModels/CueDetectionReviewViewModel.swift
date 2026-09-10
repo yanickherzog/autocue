@@ -20,11 +20,10 @@ import Foundation
 public final class CueDetectionReviewViewModel {
     public let projectID: Project.ID
     public private(set) var cues: [Cue] = []
-    /// `Setup.timecodeFrameRate`, kept in step with the live subscription
-    /// below — needed only for `CueTableView`'s TC In/TC Out formatting
-    /// (`+TableRows.swift`), SPEC.md §4.9/§4.3. Not `private`: that
-    /// extension file needs it too.
+    /// Kept in step with the live subscription below, for `+TableRows.swift`'s
+    /// TC In/TC Out (SPEC.md §4.3/§4.9). Not `private`: needed there too.
     var timecodeFrameRate: TimecodeFrameRate = .fps25
+    var timecodeStart: Timecode?
     /// `internal(set)`: reset from `+ClearImportedAudio.swift`'s `resetForNewImportCycle()`.
     public internal(set) var displayData = WaveformDisplayData(buckets: [])
     public internal(set) var fileDurationSeconds: Double = 0.001
@@ -127,6 +126,7 @@ public final class CueDetectionReviewViewModel {
             cues = project.cues
             asset = project.audioAsset
             timecodeFrameRate = project.setup.timecodeFrameRate
+            timecodeStart = project.setup.timecodeStart
 
             if !hasLoadedInitialRange, let peaks = project.waveformPeaks, let asset = project.audioAsset {
                 overviewPeaks = peaks
