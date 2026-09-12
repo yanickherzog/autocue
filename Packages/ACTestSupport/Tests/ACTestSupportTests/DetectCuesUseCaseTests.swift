@@ -9,7 +9,16 @@ import XCTest
 /// Domain logic over plain values. Real-fixture accuracy of the underlying
 /// `SilenceDetector` boundaries is covered separately in `ACAudioKitTests`.
 final class DetectCuesUseCaseTests: XCTestCase {
-    private static func makeProject(cues: [Cue] = [], audioAsset: AudioAsset) -> Project {
+    /// `static`/non-`private` below (not just `makeProject`) specifically so
+    /// `DetectCuesUseCaseTests+FirstFrameOfActionExclusion.swift` can reuse
+    /// them — same "split into its own file/extension to stay under this
+    /// project's type-body-length lint limit" pattern
+    /// `UpdateCueUseCaseTests+Delete.swift` already establishes.
+    static func makeProject(
+        cues: [Cue] = [],
+        audioAsset: AudioAsset,
+        timecodeStart: Timecode? = nil
+    ) -> Project {
         Project(
             name: "Reel One",
             createdAt: Date(timeIntervalSince1970: 0),
@@ -22,13 +31,14 @@ final class DetectCuesUseCaseTests: XCTestCase {
                 productionYear: 2026,
                 containsAdditionalUndeclaredWorks: .no,
                 productionTypes: [.documentaryFilm],
+                timecodeStart: timecodeStart,
                 declarationDate: Date(timeIntervalSince1970: 0)
             ),
             cues: cues
         )
     }
 
-    private static func makeAsset(
+    static func makeAsset(
         durationSeconds: Double = 600,
         embeddedMarkers: [EmbeddedMarker] = []
     ) -> AudioAsset {
@@ -44,7 +54,7 @@ final class DetectCuesUseCaseTests: XCTestCase {
         )
     }
 
-    private static func makeDetectedCue(startSeconds: Double, duration: Double) -> Cue {
+    static func makeDetectedCue(startSeconds: Double, duration: Double) -> Cue {
         Cue(
             title: "",
             duration: MediaDuration(seconds: duration),
@@ -54,13 +64,14 @@ final class DetectCuesUseCaseTests: XCTestCase {
         )
     }
 
-    private func run(
+    func run(
         detectedCues: [Cue],
         asset: AudioAsset,
         existingCues: [Cue] = [],
-        settings: AnalysisSettings = AnalysisSettings()
+        settings: AnalysisSettings = AnalysisSettings(),
+        timecodeStart: Timecode? = nil
     ) async throws -> [Cue] {
-        let project = Self.makeProject(cues: existingCues, audioAsset: asset)
+        let project = Self.makeProject(cues: existingCues, audioAsset: asset, timecodeStart: timecodeStart)
         let projectRepository = InMemoryProjectRepository(projects: [project])
         let audioAnalysisRepository = InMemoryAudioAnalysisRepository(
             importedAsset: asset,

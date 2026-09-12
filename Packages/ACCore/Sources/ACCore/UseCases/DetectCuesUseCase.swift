@@ -69,8 +69,12 @@ public struct DetectCuesUseCase: Sendable {
     /// invoking this method at all; Use Cases don't own UI.
     private func persist(_ merged: [Cue], projectID: Project.ID) async throws -> [Cue] {
         let updated = try await projectRepository.update(id: projectID) { project in
+            let ffoaFiltered = FirstFrameOfActionExclusion.apply(
+                to: merged,
+                timecodeStart: project.setup.timecodeStart
+            )
             let preserved = project.cues.filter { $0.source != .detectedFromAudio }
-            let combined = (preserved + merged).sorted { lhs, rhs in
+            let combined = (preserved + ffoaFiltered).sorted { lhs, rhs in
                 (lhs.startTimecode?.offsetSeconds ?? .infinity) < (rhs.startTimecode?.offsetSeconds ?? .infinity)
             }
             return Project(
@@ -239,5 +243,80 @@ private extension Cue {
             startTimecode: position,
             notes: notes
         )
+    }
+
+    /// Keeps every field except `startTimecode`/`duration`, which move to
+    /// start exactly at `newStartSeconds` while the cue's original *end*
+    /// stays fixed — the same "snap start, keep end" shape
+    /// `reclassifiedAsEmbeddedMarker` above already uses, applied here for
+    /// `FirstFrameOfActionExclusion`'s straddling-FFOA case instead.
+    func truncatingStart(toOffsetSeconds newStartSeconds: Double) -> Cue {
+        guard let start = startTimecode?.offsetSeconds else { return self }
+        let end = start + duration.seconds
+        return Cue(
+            id: id,
+            title: title,
+            workNumber: workNumber,
+            duration: MediaDuration(seconds: end - newStartSeconds),
+            rightHolders: rightHolders,
+            isArrangementOfProtectedOriginal: isArrangementOfProtectedOriginal,
+            source: source,
+            startTimecode: Timecode(offsetSeconds: newStartSeconds),
+            notes: notes
+        )
+    }
+}
+
+/// SPEC.md §4.11, "First Frame of Action exclusion" — no detected or
+/// embedded-marker-derived cue is ever constructed (or left standing) with
+/// real content entirely before First Frame of Action (`10:00:00:00`, the
+/// industry-standard FFOA convention). This is applied **after**
+/// `EmbeddedMarkerMerge`, to its combined output, deliberately — that's
+/// what makes it apply uniformly regardless of a cue's source
+/// (`.detectedFromAudio` or `.embeddedMarker`): "an embedded marker is
+/// always authoritative" (SPEC.md §4.11) resolves which *real* candidate
+/// wins between competing detections, it was never meant to admit material
+/// that's categorically not music (a 2-pop's own embedded marker included).
+/// Kept as its own pure, stateless algorithm rather than folded into
+/// `EmbeddedMarkerMerge` — that type's own doc comment scopes it
+/// specifically to marker-vs-detection reconciliation, a different concern
+/// than gating on absolute film position.
+enum FirstFrameOfActionExclusion {
+    /// Absolute (film-timeline) FFOA position, in seconds — `10:00:00:00`.
+    /// Hardcoded, never `Setup`-configurable: only `Setup.timecodeStart`
+    /// varies per project (SPEC.md §4.11). Exactly frame-rate-independent —
+    /// `10:00:00:00` has `0` frames, the same property `Setup.timecodeStart`'s
+    /// own default (`09:59:52:00`) already relies on, so no
+    /// `TimecodeFrameRate` conversion or rounding is involved anywhere in
+    /// this comparison.
+    static let absoluteSeconds: Double = 36000.0
+
+    /// No-op when `timecodeStart` is `nil` — with no absolute reference
+    /// point, there's nothing to compare a cue's audio-file-relative
+    /// position against, so nothing is excluded or truncated.
+    static func apply(to cues: [Cue], timecodeStart: Timecode?) -> [Cue] {
+        guard let timecodeStart else { return cues }
+        let ffoaOffsetSeconds = absoluteSeconds - timecodeStart.offsetSeconds
+
+        return cues.compactMap { cue -> Cue? in
+            guard let start = cue.startTimecode?.offsetSeconds else { return cue }
+            let end = start + cue.duration.seconds
+
+            if end <= ffoaOffsetSeconds {
+                // Entirely before FFOA -- leader/2-pop/sync-tone material,
+                // never real music. Never construct a Cue for it at all.
+                return nil
+            }
+            if start < ffoaOffsetSeconds {
+                // Straddles FFOA -- truncate to start exactly at it rather
+                // than dropping real content that happens to share one
+                // detected region with a sliver of pre-FFOA material (a
+                // real case on real production audio, not hypothetical --
+                // see docs/DECISIONS.md, this date, for the SEA_STEM cue1
+                // finding that motivated this branch).
+                return cue.truncatingStart(toOffsetSeconds: ffoaOffsetSeconds)
+            }
+            return cue
+        }
     }
 }
