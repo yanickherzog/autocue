@@ -20,6 +20,13 @@ final class SilenceDetectorRealFixtureTests: XCTestCase {
         let groundTruthOffsetSeconds: Double
         let groundTruthEndOffsetSeconds: Double?
         let notes: String?
+        /// `true` marks this entry as a **false-positive exclusion zone**,
+        /// not a real ground-truth cue — `groundTruthOffsetSeconds`/
+        /// `groundTruthEndOffsetSeconds` are the zone's bounds, not a cue's
+        /// onset/offset. `nil`/absent is treated as `false` (an ordinary
+        /// cue entry) — the overwhelming majority of this manifest.
+        /// `docs/DECISIONS.md`, this date.
+        let expectedZeroCues: Bool?
     }
 
     /// Walks up from this source file's own location to find the repo
@@ -63,7 +70,10 @@ final class SilenceDetectorRealFixtureTests: XCTestCase {
             throw XCTSkip("Could not resolve repo root.")
         }
 
-        for entry in manifest {
+        // False-positive exclusion zones aren't ground-truth cues at all —
+        // see test_falsePositiveExclusionZones below for their own,
+        // differently-shaped assertion.
+        for entry in manifest where entry.expectedZeroCues != true {
             let fixtureURL = repoRoot.appendingPathComponent("Audio_Analysis_Test")
                 .appendingPathComponent(entry.filename)
             let reader = try WAVStreamingReader(url: fixtureURL)
@@ -98,7 +108,9 @@ final class SilenceDetectorRealFixtureTests: XCTestCase {
             throw XCTSkip("Could not resolve repo root.")
         }
 
-        let entriesWithEndOffset = manifest.filter { $0.groundTruthEndOffsetSeconds != nil }
+        let entriesWithEndOffset = manifest.filter {
+            $0.groundTruthEndOffsetSeconds != nil && $0.expectedZeroCues != true
+        }
         guard !entriesWithEndOffset.isEmpty else {
             throw XCTSkip("No manifest entries document a ground-truth end offset.")
         }
@@ -119,6 +131,47 @@ final class SilenceDetectorRealFixtureTests: XCTestCase {
                 groundTruthEnd,
                 accuracy: oneFrameToleranceSeconds,
                 "\(entry.filename) (\(entry.scenario)): offset accuracy"
+            )
+        }
+    }
+
+    /// A different shape of assertion from the two above — these manifest
+    /// entries (`expectedZeroCues == true`) aren't ground-truth cues at all,
+    /// they're confirmed-silent spans where `SilenceDetector` genuinely
+    /// detects a region that shouldn't exist (a real, calibration-depth
+    /// false positive, not a logic defect — `docs/DECISIONS.md`, this
+    /// date). "Closest region" matching doesn't apply here; the only
+    /// meaningful check is that **no** detected region overlaps the zone at
+    /// all.
+    func test_falsePositiveExclusionZones_noDetectedRegionOverlapsAConfirmedSilentSpan() throws {
+        guard let manifest = try loadManifest() else {
+            throw XCTSkip("Audio_Analysis_Test/manifest.json not present — real-fixture tier skipped.")
+        }
+        guard let repoRoot = repoRootURL() else {
+            throw XCTSkip("Could not resolve repo root.")
+        }
+
+        let zones = manifest.filter { $0.expectedZeroCues == true }
+        guard !zones.isEmpty else {
+            throw XCTSkip("No manifest entries mark a false-positive exclusion zone.")
+        }
+
+        for zone in zones {
+            guard let zoneEnd = zone.groundTruthEndOffsetSeconds else {
+                XCTFail("\(zone.filename) (\(zone.scenario)): expectedZeroCues entries must have an end offset.")
+                continue
+            }
+            let zoneStart = zone.groundTruthOffsetSeconds
+            let fixtureURL = repoRoot.appendingPathComponent("Audio_Analysis_Test")
+                .appendingPathComponent(zone.filename)
+            let reader = try WAVStreamingReader(url: fixtureURL)
+            let regions = try SilenceDetector.detectRegions(reader: reader, settings: .init())
+
+            let overlapping = regions.filter { $0.startSeconds < zoneEnd && $0.endSeconds > zoneStart }
+            XCTAssertTrue(
+                overlapping.isEmpty,
+                "\(zone.filename) (\(zone.scenario)): expected zero detected regions in [\(zoneStart), " +
+                    "\(zoneEnd)) but found \(overlapping.count): \(overlapping)"
             )
         }
     }
