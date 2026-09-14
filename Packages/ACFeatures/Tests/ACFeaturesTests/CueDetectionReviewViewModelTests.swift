@@ -45,7 +45,7 @@ final class CueDetectionReviewViewModelTests: XCTestCase {
         let loadTask = Task { await viewModel.load() }
         try await waitUntilCueDetectionReviewConditionMet { viewModel.cues.count == 1 }
 
-        viewModel.boundaryDragged(marker: .start(cueIndex: 0), toSeconds: 15)
+        viewModel.boundaryDragged(marker: .start(cueIndex: 0), toSeconds: 15, undoManager: nil)
 
         try await waitUntilCueDetectionReviewConditionMet {
             let updated = try await projectRepository.fetch(id: project.id)
@@ -74,7 +74,7 @@ final class CueDetectionReviewViewModelTests: XCTestCase {
         let loadTask = Task { await viewModel.load() }
         try await waitUntilCueDetectionReviewConditionMet { viewModel.cues.count == 2 }
 
-        viewModel.boundaryDragged(marker: .end(cueIndex: 0), toSeconds: 35)
+        viewModel.boundaryDragged(marker: .end(cueIndex: 0), toSeconds: 35, undoManager: nil)
 
         try await waitUntilCueDetectionReviewConditionMet {
             let updated = try await projectRepository.fetch(id: project.id)
@@ -103,7 +103,7 @@ final class CueDetectionReviewViewModelTests: XCTestCase {
         let loadTask = Task { await viewModel.load() }
         try await waitUntilCueDetectionReviewConditionMet { viewModel.cues.count == 2 }
 
-        viewModel.boundaryDragged(marker: .end(cueIndex: 0), toSeconds: 45)
+        viewModel.boundaryDragged(marker: .end(cueIndex: 0), toSeconds: 45, undoManager: nil)
 
         try await waitUntilCueDetectionReviewConditionMet {
             let updated = try await projectRepository.fetch(id: project.id)
@@ -127,7 +127,7 @@ final class CueDetectionReviewViewModelTests: XCTestCase {
         let loadTask = Task { await viewModel.load() }
         try await waitUntilCueDetectionReviewConditionMet { viewModel.cues.count == 1 }
 
-        viewModel.splitRequested(atSeconds: 25)
+        viewModel.splitRequested(atSeconds: 25, undoManager: nil)
 
         try await waitUntilCueDetectionReviewConditionMet {
             let updated = try await projectRepository.fetch(id: project.id)
@@ -146,7 +146,7 @@ final class CueDetectionReviewViewModelTests: XCTestCase {
         let loadTask = Task { await viewModel.load() }
         try await waitUntilCueDetectionReviewConditionMet { viewModel.cues.count == 1 }
 
-        viewModel.splitRequested(atSeconds: 5) // before the cue's own start
+        viewModel.splitRequested(atSeconds: 5, undoManager: nil) // before the cue's own start
 
         try await Task.sleep(nanoseconds: 50_000_000)
         let updated = try await projectRepository.fetch(id: project.id)
@@ -165,7 +165,7 @@ final class CueDetectionReviewViewModelTests: XCTestCase {
         let loadTask = Task { await viewModel.load() }
         try await waitUntilCueDetectionReviewConditionMet { viewModel.cues.count == 2 }
 
-        viewModel.mergeRequested(markerID: 1)
+        viewModel.mergeRequested(markerID: 1, undoManager: nil)
 
         try await waitUntilCueDetectionReviewConditionMet {
             let updated = try await projectRepository.fetch(id: project.id)
@@ -184,7 +184,7 @@ final class CueDetectionReviewViewModelTests: XCTestCase {
         let loadTask = Task { await viewModel.load() }
         try await waitUntilCueDetectionReviewConditionMet { viewModel.cues.count == 1 }
 
-        viewModel.mergeRequested(markerID: 0) // no preceding neighbor
+        viewModel.mergeRequested(markerID: 0, undoManager: nil) // no preceding neighbor
 
         try await Task.sleep(nanoseconds: 50_000_000)
         let updated = try await projectRepository.fetch(id: project.id)

@@ -44,6 +44,44 @@ public extension UpdateCueUseCase {
             try await moveStart(projectID: projectID, cueID: cueID, toOffsetSeconds: toOffsetSeconds)
         }
     }
+
+    /// Pure, synchronous re-derivation of exactly what `moveBoundary` will
+    /// write, from an already-available `cues` snapshot — lets a caller
+    /// (`CueDetectionReviewViewModel+BoundaryDragging.swift`) know, *before*
+    /// committing to the async write, precisely which cue(s) will be
+    /// touched, so it can capture their pre-move values and register a
+    /// correct inverse `UndoManager` action synchronously, matching this
+    /// project's established register-before-the-async-write discipline
+    /// (`CueDetectionReviewViewModel+Delete.swift`'s doc comment). Reuses
+    /// `planStartMove`/`planEndMove` directly — the exact same planning
+    /// logic `moveBoundary` itself runs, not a second, independently-drifting
+    /// copy of it.
+    ///
+    /// This is a *prediction* from the caller's own already-live snapshot,
+    /// not a substitute for `moveBoundary`'s own authoritative write — that
+    /// method still re-derives its plan fresh from real repository state at
+    /// call time, per this type's own architecture (above). In this app's
+    /// actual single-window-per-project model (`CLAUDE.md`, "Document &
+    /// Window Model"), the caller's live `cues` snapshot is the same data
+    /// already driving what the user sees, so the two are expected to agree.
+    static func planBoundaryMove(
+        cues: [Cue],
+        marker: BoundaryMarkerKind,
+        toOffsetSeconds: Double,
+        fileEndSeconds: Double?
+    ) -> [(index: Int, cue: Cue)] {
+        let cueID: Cue.ID = switch marker {
+        case let .start(id): id
+        case let .end(id): id
+        }
+        guard let index = cues.firstIndex(where: { $0.id == cueID }) else { return [] }
+        switch marker {
+        case .start:
+            return planStartMove(cues: cues, index: index, toOffsetSeconds: toOffsetSeconds)
+        case .end:
+            return planEndMove(cues: cues, index: index, toOffsetSeconds: toOffsetSeconds, fileEndSeconds: fileEndSeconds)
+        }
+    }
 }
 
 private extension UpdateCueUseCase {

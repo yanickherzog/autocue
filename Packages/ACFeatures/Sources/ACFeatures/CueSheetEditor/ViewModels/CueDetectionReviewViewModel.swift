@@ -269,44 +269,9 @@ public final class CueDetectionReviewViewModel {
         displayData = Self.mapToDisplayData(overviewPeaks.buckets, representedRangeSeconds: 0 ... fileDurationSeconds)
     }
 
-    // MARK: - Split / merge
-
-    /// An ⌥-click within a cue's plotted region — SPEC.md §4.15. Clicks
-    /// outside any cue's region (silence/gap space) find no containing cue
-    /// and are correctly a no-op.
-    public func splitRequested(atSeconds seconds: Double) {
-        guard let cueID = cues.first(where: { cue in
-            guard let start = cue.startTimecode else { return false }
-            let end = start.offsetSeconds + cue.duration.seconds
-            return seconds > start.offsetSeconds && seconds < end
-        })?.id else { return }
-
-        Task { [weak self] in
-            guard let self else { return }
-            // A too-close-to-endpoint rejection (`splitOffsetTooCloseToEndpoint`)
-            // is an expected, silent no-op per SPEC.md §4.15 — not a real error.
-            _ = try? await updateCueUseCase.split(projectID: projectID, cueID: cueID, atOffsetSeconds: seconds)
-        }
-    }
-
-    /// Dragging a marker off the waveform strip — eligibility (genuine
-    /// contiguity with the preceding cue) is `UpdateCueUseCase.merge`'s own
-    /// job; an ineligible attempt throws `mergeNotContiguous`, silently
-    /// absorbed here as the no-op SPEC.md §4.15 specifies ("no merge
-    /// affordance appears, the drag cancels on release").
-    public func mergeRequested(markerID: Int) {
-        guard cues.indices.contains(markerID), markerID > 0 else { return }
-        let precedingCueID = cues[markerID - 1].id
-        let followingCueID = cues[markerID].id
-        Task { [weak self] in
-            guard let self else { return }
-            _ = try? await updateCueUseCase.merge(
-                projectID: projectID,
-                precedingCueID: precedingCueID,
-                cueID: followingCueID
-            )
-        }
-    }
+    // Split / merge (with real undo/redo) now live in
+    // +SplitMergeUndo.swift — same "structural mutation gets its own file"
+    // pattern +Delete.swift/+BoundaryDragging.swift already establish.
 
     // MARK: - Playback
 

@@ -85,13 +85,19 @@ public struct UpdateCueUseCase: Sendable {
     /// cue's TC Out. Rejects a split within `0.001`s of either of the cue's
     /// own endpoints (the degenerate zero-length-half case) — not a "too
     /// short" rule.
+    /// `secondCueID` defaults to a fresh UUID but may be supplied by the
+    /// caller -- needed so a ViewModel can register this split's own undo
+    /// (delete `secondCueID`) synchronously, before this async call starts,
+    /// per the redo-correctness rule CueDetectionReviewViewModel+Delete.swift
+    /// already documents: the ID has to be known at registration time, not
+    /// only after this method returns.
     @discardableResult
     public func split(
         projectID: Project.ID,
         cueID: Cue.ID,
-        atOffsetSeconds: Double
+        atOffsetSeconds: Double,
+        secondCueID: Cue.ID = UUID()
     ) async throws -> (first: Cue, second: Cue) {
-        let secondCueID = UUID()
         let updated = try await projectRepository.update(id: projectID) { project in
             guard let index = project.cues.firstIndex(where: { $0.id == cueID }) else {
                 throw UpdateCueUseCaseError.cueNotFound(cueID)
@@ -260,15 +266,21 @@ public struct UpdateCueUseCase: Sendable {
         return earlier
     }
 
-    private static let splitEpsilonSeconds = 0.001
+    /// `public`, not `private`/`internal`: `CueDetectionReviewViewModel
+    /// +SplitMergeUndo.swift` (`ACFeatures`, a different module) needs the
+    /// exact same value to decide, *before* calling `split`, whether this
+    /// attempt is even eligible — so it can skip registering an undo action
+    /// for a split that's about to be silently rejected. One shared constant,
+    /// not two independently-drifting copies of the same tolerance.
+    public static let splitEpsilonSeconds = 0.001
     /// Shared by `merge`'s eligibility check and `moveBoundary`'s
     /// contiguous/non-contiguous branch decision (`UpdateCueUseCase
     /// +MoveBoundary.swift`) — one epsilon, not two independently-drifting
     /// copies of the same "genuinely touching" tolerance (SPEC.md §4.19).
-    /// Not `private`: that file's extension needs to read it too, and
-    /// `private` is file-scoped in Swift, not just type-scoped — `internal`
-    /// (the default) is still invisible outside this module.
-    static let contiguityEpsilonSeconds = 0.001
+    /// `public`, not `internal`: also needed by `CueDetectionReviewViewModel
+    /// +SplitMergeUndo.swift` (`ACFeatures`) for the same
+    /// check-before-registering-undo reason as `splitEpsilonSeconds` above.
+    public static let contiguityEpsilonSeconds = 0.001
 }
 
 public enum UpdateCueUseCaseError: Error, Equatable {

@@ -6,13 +6,12 @@ import Foundation
 /// type-body-length lint limit, same reason `+BoundaryDragging.swift`/
 /// `+ClearImportedAudio.swift` are already separate.
 ///
-/// **The only structural mutation in this ViewModel with real undo support**
-/// — `splitRequested`/`mergeRequested` (`CueDetectionReviewViewModel.swift`)
-/// still have none, despite SPEC.md's split/merge sections already
-/// describing an inverse `UndoManager` registration for both; `docs/REVIEW.md`
-/// flags that spec/implementation gap as a known, accepted follow-up rather
-/// than silently fixing it here too, per this project's out-of-scope-fixes
-/// discipline.
+/// **Not the only structural mutation with real undo support any more** —
+/// `splitRequested`/`mergeRequested` (`+SplitMergeUndo.swift`) gained the
+/// same real ⌘Z/⌘⇧Z support this file established first, closing the
+/// spec/implementation gap `docs/REVIEW.md` had flagged as a known,
+/// accepted follow-up. This file's own registration-timing discipline
+/// (below) is what that later file follows too.
 ///
 /// **The next inverse action is registered synchronously, *before* the async
 /// I/O it belongs to even starts — not after that I/O confirms success.**

@@ -116,9 +116,11 @@ public struct CueDetectionReviewView: View {
                     visibleRangeSeconds: $viewModel.visibleRangeSeconds,
                     fileDurationSeconds: viewModel.fileDurationSeconds,
                     playheadOffsetSeconds: viewModel.playheadOffsetSeconds,
-                    onBoundaryDragged: viewModel.boundaryDragged,
-                    onMergeRequested: viewModel.mergeRequested,
-                    onSplitRequested: viewModel.splitRequested,
+                    onBoundaryDragged: { marker, seconds in
+                        viewModel.boundaryDragged(marker: marker, toSeconds: seconds, undoManager: undoManager)
+                    },
+                    onMergeRequested: { markerID in viewModel.mergeRequested(markerID: markerID, undoManager: undoManager) },
+                    onSplitRequested: { seconds in viewModel.splitRequested(atSeconds: seconds, undoManager: undoManager) },
                     onPlayFromPoint: viewModel.playFromPoint,
                     onPlayMarkerSpan: viewModel.playMarkerSpan,
                     onVisibleRangeChanged: viewModel.visibleRangeChanged

@@ -61,6 +61,37 @@ final class WaveformInteractionNSView: NSView {
     private var mouseDownMarker: WaveformBoundaryMarker?
     private static let clickVsDragThreshold: CGFloat = 2
 
+    /// The marker a click-to-play (`handleClick`'s `onPlayMarkerSpan` branch)
+    /// most recently targeted, and when — sidesteps a real, reproduced race
+    /// (2026-09-14) rather than fixing its root cause, which wasn't pinned
+    /// down at the AppKit/event-delivery level: starting a *new* gesture on
+    /// the *same* marker shortly after that marker's own click just started
+    /// playback could leave `mouseDragged`/`mouseUp` never arriving for that
+    /// gesture at all, corrupting this view's tracking state
+    /// (`activeDrag`/`mouseDownMarker`) and the host's `grabbedMarker`
+    /// highlight indefinitely — the marker's span stuck visibly "active,"
+    /// un-draggable, with nothing to undo since the drag's own completion
+    /// event never arrived to report anything to undo in the first place.
+    private var recentPlayTriggerMarker: WaveformBoundaryMarker?
+    private var recentPlayTriggerTime: TimeInterval?
+    /// Real observed failure gap between the triggering click and the
+    /// corrupted gesture's own `mouseDown`: ~105ms. 200ms leaves ~2x margin
+    /// above that while staying comfortably under the ~200-250ms floor for
+    /// even a *reflex* human reaction to an unexpected stimulus (hearing
+    /// playback start unexpectedly) — a genuine, deliberate retry (perceive
+    /// the mistake, decide to retry, move the mouse back, click again)
+    /// realistically takes well over that. Deliberately blocks a second
+    /// click-to-play on the same marker within the window too, not only a
+    /// drag — only click-then-*drag* was directly captured failing, but the
+    /// corruption point (right after `onMarkerGrabbed`, before `mouseUp`)
+    /// doesn't obviously depend on the second gesture becoming a drag
+    /// specifically, and treating both uniformly is the conservative choice
+    /// given that uncertainty. A same-marker click swallowed this way still
+    /// falls through to `onPlayFromPoint` at that same position (still
+    /// starts playback from the same point, just unbounded rather than
+    /// stopped at the cue's own end) — a graceful fallback, not a dead click.
+    private static let sameMarkerGestureCooldownSeconds: TimeInterval = 0.2
+
     /// Test-only, read-only diagnostic accessors — `internal`, not exposed
     /// as public API; `@testable import` reaches these but nothing outside
     /// the package can. Added while diagnosing the reported merge-gesture
@@ -86,7 +117,17 @@ final class WaveformInteractionNSView: NSView {
     override func mouseDown(with event: NSEvent) {
         let location = convert(event.locationInWindow, from: nil)
         mouseDownLocation = location
-        mouseDownMarker = hitTestMarker(at: location)
+        let hitMarker = hitTestMarker(at: location)
+        if let hitMarker, hitMarker == recentPlayTriggerMarker,
+           let recentPlayTriggerTime,
+           ProcessInfo.processInfo.systemUptime - recentPlayTriggerTime < Self.sameMarkerGestureCooldownSeconds {
+            // Cooldown active for this exact marker — treat as if no marker
+            // was hit, sidestepping the race rather than chasing its root
+            // cause. Falls through to background click/pan handling.
+            mouseDownMarker = nil
+        } else {
+            mouseDownMarker = hitMarker
+        }
         activeDrag = nil
         if let mouseDownMarker {
             onMarkerGrabbed?(mouseDownMarker)
@@ -213,6 +254,8 @@ final class WaveformInteractionNSView: NSView {
 
     private func handleClick(at location: NSPoint, modifierFlags: NSEvent.ModifierFlags) {
         if let marker = mouseDownMarker {
+            recentPlayTriggerMarker = marker
+            recentPlayTriggerTime = ProcessInfo.processInfo.systemUptime
             onPlayMarkerSpan?(cueIndex(for: marker))
             return
         }
