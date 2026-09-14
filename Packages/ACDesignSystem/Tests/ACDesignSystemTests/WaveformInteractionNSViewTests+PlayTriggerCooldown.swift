@@ -22,16 +22,31 @@ extension WaveformInteractionNSViewTests {
         view.onBoundaryDragged = { dragged = ($0, $1) }
 
         // Plain click on the marker -- triggers click-to-play.
-        try view.mouseDown(with: mouseEvent(type: .leftMouseDown, locationInWindow: NSPoint(x: 200, y: 80), window: window))
+        try view.mouseDown(with: mouseEvent(
+            type: .leftMouseDown,
+            locationInWindow: NSPoint(x: 200, y: 80),
+            window: window
+        ))
         try view.mouseUp(with: mouseEvent(type: .leftMouseUp, locationInWindow: NSPoint(x: 200, y: 80), window: window))
         XCTAssertEqual(playedMarkerSpanID, 0, "Precondition: the click must have triggered click-to-play")
 
         // Immediately (no real time passes in a unit test) attempt a real
         // drag on the SAME marker -- must be suppressed, not corrupted.
-        try view.mouseDown(with: mouseEvent(type: .leftMouseDown, locationInWindow: NSPoint(x: 200, y: 80), window: window))
-        XCTAssertNil(view.mouseDownMarkerForTesting, "Cooldown active: this mouseDown must resolve as if no marker was hit")
+        try view.mouseDown(with: mouseEvent(
+            type: .leftMouseDown,
+            locationInWindow: NSPoint(x: 200, y: 80),
+            window: window
+        ))
+        XCTAssertNil(
+            view.mouseDownMarkerForTesting,
+            "Cooldown active: this mouseDown must resolve as if no marker was hit"
+        )
 
-        try view.mouseDragged(with: mouseEvent(type: .leftMouseDragged, locationInWindow: NSPoint(x: 240, y: 80), window: window))
+        try view.mouseDragged(with: mouseEvent(
+            type: .leftMouseDragged,
+            locationInWindow: NSPoint(x: 240, y: 80),
+            window: window
+        ))
         try view.mouseUp(with: mouseEvent(type: .leftMouseUp, locationInWindow: NSPoint(x: 240, y: 80), window: window))
 
         XCTAssertNil(dragged, "The suppressed gesture must never resolve as a reposition")
@@ -54,11 +69,19 @@ extension WaveformInteractionNSViewTests {
         view.onPlayMarkerSpan = { _ in playMarkerSpanCallCount += 1 }
         view.onPlayFromPoint = { playFromPointSeconds = $0 }
 
-        try view.mouseDown(with: mouseEvent(type: .leftMouseDown, locationInWindow: NSPoint(x: 200, y: 80), window: window))
+        try view.mouseDown(with: mouseEvent(
+            type: .leftMouseDown,
+            locationInWindow: NSPoint(x: 200, y: 80),
+            window: window
+        ))
         try view.mouseUp(with: mouseEvent(type: .leftMouseUp, locationInWindow: NSPoint(x: 200, y: 80), window: window))
         XCTAssertEqual(playMarkerSpanCallCount, 1)
 
-        try view.mouseDown(with: mouseEvent(type: .leftMouseDown, locationInWindow: NSPoint(x: 200, y: 80), window: window))
+        try view.mouseDown(with: mouseEvent(
+            type: .leftMouseDown,
+            locationInWindow: NSPoint(x: 200, y: 80),
+            window: window
+        ))
         try view.mouseUp(with: mouseEvent(type: .leftMouseUp, locationInWindow: NSPoint(x: 200, y: 80), window: window))
 
         XCTAssertEqual(playMarkerSpanCallCount, 1, "Must not re-trigger onPlayMarkerSpan during the cooldown")
@@ -79,15 +102,27 @@ extension WaveformInteractionNSViewTests {
         view.onBoundaryDragged = { dragged = ($0, $1) }
 
         // Click marker A (50s -> x=200) to trigger playback.
-        try view.mouseDown(with: mouseEvent(type: .leftMouseDown, locationInWindow: NSPoint(x: 200, y: 80), window: window))
+        try view.mouseDown(with: mouseEvent(
+            type: .leftMouseDown,
+            locationInWindow: NSPoint(x: 200, y: 80),
+            window: window
+        ))
         try view.mouseUp(with: mouseEvent(type: .leftMouseUp, locationInWindow: NSPoint(x: 200, y: 80), window: window))
         XCTAssertEqual(playedMarkerSpanID, 0)
 
         // Immediately drag marker B (80s -> x=320) -- unaffected by A's cooldown.
-        try view.mouseDown(with: mouseEvent(type: .leftMouseDown, locationInWindow: NSPoint(x: 320, y: 80), window: window))
+        try view.mouseDown(with: mouseEvent(
+            type: .leftMouseDown,
+            locationInWindow: NSPoint(x: 320, y: 80),
+            window: window
+        ))
         XCTAssertEqual(view.mouseDownMarkerForTesting, .start(cueIndex: 1))
 
-        try view.mouseDragged(with: mouseEvent(type: .leftMouseDragged, locationInWindow: NSPoint(x: 340, y: 80), window: window))
+        try view.mouseDragged(with: mouseEvent(
+            type: .leftMouseDragged,
+            locationInWindow: NSPoint(x: 340, y: 80),
+            window: window
+        ))
         try view.mouseUp(with: mouseEvent(type: .leftMouseUp, locationInWindow: NSPoint(x: 340, y: 80), window: window))
 
         XCTAssertNotNil(dragged, "A different marker's drag must not be swallowed")
@@ -106,7 +141,11 @@ extension WaveformInteractionNSViewTests {
         view.onPlayMarkerSpan = { playedMarkerSpanID = $0 }
         view.onBoundaryDragged = { dragged = ($0, $1) }
 
-        try view.mouseDown(with: mouseEvent(type: .leftMouseDown, locationInWindow: NSPoint(x: 200, y: 80), window: window))
+        try view.mouseDown(with: mouseEvent(
+            type: .leftMouseDown,
+            locationInWindow: NSPoint(x: 200, y: 80),
+            window: window
+        ))
         try view.mouseUp(with: mouseEvent(type: .leftMouseUp, locationInWindow: NSPoint(x: 200, y: 80), window: window))
         XCTAssertEqual(playedMarkerSpanID, 0)
 
@@ -115,10 +154,18 @@ extension WaveformInteractionNSViewTests {
         // timestamps, so this has to be a genuine sleep, not a synthetic one.
         Thread.sleep(forTimeInterval: 0.35)
 
-        try view.mouseDown(with: mouseEvent(type: .leftMouseDown, locationInWindow: NSPoint(x: 200, y: 80), window: window))
+        try view.mouseDown(with: mouseEvent(
+            type: .leftMouseDown,
+            locationInWindow: NSPoint(x: 200, y: 80),
+            window: window
+        ))
         XCTAssertEqual(view.mouseDownMarkerForTesting, .start(cueIndex: 0), "Cooldown must have expired by now")
 
-        try view.mouseDragged(with: mouseEvent(type: .leftMouseDragged, locationInWindow: NSPoint(x: 240, y: 80), window: window))
+        try view.mouseDragged(with: mouseEvent(
+            type: .leftMouseDragged,
+            locationInWindow: NSPoint(x: 240, y: 80),
+            window: window
+        ))
         try view.mouseUp(with: mouseEvent(type: .leftMouseUp, locationInWindow: NSPoint(x: 240, y: 80), window: window))
 
         XCTAssertNotNil(dragged, "A genuine retry after the cooldown must succeed normally")

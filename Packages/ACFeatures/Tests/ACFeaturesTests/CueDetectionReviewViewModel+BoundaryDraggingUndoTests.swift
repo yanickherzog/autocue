@@ -14,7 +14,7 @@ import XCTest
 /// ViewModel's own `cues` snapshot, so there's no analogous
 /// "doesNotRegisterUndo" case to test here.
 @MainActor
-final class CueDetectionReviewViewModelBoundaryDraggingUndoTests: XCTestCase {
+final class CueDetectionReviewBoundaryDragUndoTests: XCTestCase {
     /// The independent (non-contiguous) branch — undo must restore the
     /// dragged cue's exact pre-drag `startTimecode`/`duration`, and must
     /// never touch the untouched neighbor across a real gap.

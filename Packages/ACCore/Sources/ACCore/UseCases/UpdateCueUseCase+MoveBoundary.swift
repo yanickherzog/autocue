@@ -79,7 +79,12 @@ public extension UpdateCueUseCase {
         case .start:
             return planStartMove(cues: cues, index: index, toOffsetSeconds: toOffsetSeconds)
         case .end:
-            return planEndMove(cues: cues, index: index, toOffsetSeconds: toOffsetSeconds, fileEndSeconds: fileEndSeconds)
+            return planEndMove(
+                cues: cues,
+                index: index,
+                toOffsetSeconds: toOffsetSeconds,
+                fileEndSeconds: fileEndSeconds
+            )
         }
     }
 }

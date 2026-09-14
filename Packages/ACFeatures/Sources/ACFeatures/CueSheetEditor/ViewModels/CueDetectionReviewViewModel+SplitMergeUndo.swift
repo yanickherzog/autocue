@@ -46,39 +46,27 @@ extension CueDetectionReviewViewModel {
         else { return }
 
         performSplit(
-            cueID: original.id,
-            atOffsetSeconds: seconds,
-            secondCueID: UUID(),
-            originalStartTimecode: start,
-            originalDuration: original.duration,
+            SplitUndoContext(
+                firstCueID: original.id,
+                secondCueID: UUID(),
+                atOffsetSeconds: seconds,
+                originalStartTimecode: start,
+                originalDuration: original.duration
+            ),
             undoManager: undoManager
         )
     }
 
-    private func performSplit(
-        cueID: Cue.ID,
-        atOffsetSeconds: Double,
-        secondCueID: Cue.ID,
-        originalStartTimecode: Timecode,
-        originalDuration: MediaDuration,
-        undoManager: UndoManager?
-    ) {
-        registerUndoForMergeBack(
-            firstCueID: cueID,
-            secondCueID: secondCueID,
-            atOffsetSeconds: atOffsetSeconds,
-            originalStartTimecode: originalStartTimecode,
-            originalDuration: originalDuration,
-            undoManager: undoManager
-        )
+    private func performSplit(_ context: SplitUndoContext, undoManager: UndoManager?) {
+        registerUndoForMergeBack(context, undoManager: undoManager)
         Task { [weak self] in
             guard let self else { return }
             do {
                 _ = try await updateCueUseCase.split(
                     projectID: projectID,
-                    cueID: cueID,
-                    atOffsetSeconds: atOffsetSeconds,
-                    secondCueID: secondCueID
+                    cueID: context.firstCueID,
+                    atOffsetSeconds: context.atOffsetSeconds,
+                    secondCueID: context.secondCueID
                 )
             } catch {
                 errorMessage = "Couldn't split the cue."
@@ -86,24 +74,10 @@ extension CueDetectionReviewViewModel {
         }
     }
 
-    private func registerUndoForMergeBack(
-        firstCueID: Cue.ID,
-        secondCueID: Cue.ID,
-        atOffsetSeconds: Double,
-        originalStartTimecode: Timecode,
-        originalDuration: MediaDuration,
-        undoManager: UndoManager?
-    ) {
+    private func registerUndoForMergeBack(_ context: SplitUndoContext, undoManager: UndoManager?) {
         guard let undoManager else { return }
         undoManager.registerUndo(withTarget: self) { viewModel in
-            viewModel.performMergeBack(
-                firstCueID: firstCueID,
-                secondCueID: secondCueID,
-                atOffsetSeconds: atOffsetSeconds,
-                originalStartTimecode: originalStartTimecode,
-                originalDuration: originalDuration,
-                undoManager: undoManager
-            )
+            viewModel.performMergeBack(context, undoManager: undoManager)
         }
         undoManager.setActionName("Split Cue")
     }
@@ -113,63 +87,35 @@ extension CueDetectionReviewViewModel {
     /// `startTimecode`/`duration` — every other field on the first `Cue`
     /// was never touched by split in the first place," so a full-field
     /// restore isn't needed here the way merge's undo needs one below.
-    private func performMergeBack(
-        firstCueID: Cue.ID,
-        secondCueID: Cue.ID,
-        atOffsetSeconds: Double,
-        originalStartTimecode: Timecode,
-        originalDuration: MediaDuration,
-        undoManager: UndoManager?
-    ) {
-        registerUndoForSplit(
-            firstCueID: firstCueID,
-            secondCueID: secondCueID,
-            atOffsetSeconds: atOffsetSeconds,
-            originalStartTimecode: originalStartTimecode,
-            originalDuration: originalDuration,
-            undoManager: undoManager
-        )
+    private func performMergeBack(_ context: SplitUndoContext, undoManager: UndoManager?) {
+        registerUndoForSplit(context, undoManager: undoManager)
         Task { [weak self] in
             guard let self else { return }
             do {
-                try await updateCueUseCase.edit(projectID: projectID, cueID: firstCueID) { cue in
+                try await updateCueUseCase.edit(projectID: projectID, cueID: context.firstCueID) { cue in
                     Cue(
                         id: cue.id,
                         title: cue.title,
                         workNumber: cue.workNumber,
-                        duration: originalDuration,
+                        duration: context.originalDuration,
                         rightHolders: cue.rightHolders,
                         isArrangementOfProtectedOriginal: cue.isArrangementOfProtectedOriginal,
                         source: cue.source,
-                        startTimecode: originalStartTimecode,
+                        startTimecode: context.originalStartTimecode,
                         notes: cue.notes
                     )
                 }
-                try await updateCueUseCase.delete(projectID: projectID, cueID: secondCueID)
+                try await updateCueUseCase.delete(projectID: projectID, cueID: context.secondCueID)
             } catch {
                 errorMessage = "Couldn't undo the split."
             }
         }
     }
 
-    private func registerUndoForSplit(
-        firstCueID: Cue.ID,
-        secondCueID: Cue.ID,
-        atOffsetSeconds: Double,
-        originalStartTimecode: Timecode,
-        originalDuration: MediaDuration,
-        undoManager: UndoManager?
-    ) {
+    private func registerUndoForSplit(_ context: SplitUndoContext, undoManager: UndoManager?) {
         guard let undoManager else { return }
         undoManager.registerUndo(withTarget: self) { viewModel in
-            viewModel.performSplit(
-                cueID: firstCueID,
-                atOffsetSeconds: atOffsetSeconds,
-                secondCueID: secondCueID,
-                originalStartTimecode: originalStartTimecode,
-                originalDuration: originalDuration,
-                undoManager: undoManager
-            )
+            viewModel.performSplit(context, undoManager: undoManager)
         }
         undoManager.setActionName("Split Cue")
     }
@@ -303,4 +249,16 @@ extension CueDetectionReviewViewModel {
         }
         undoManager.setActionName("Merge Cues")
     }
+}
+
+/// Bundles split/merge-back's five snapshot values into one parameter —
+/// purely to keep `performSplit`/`registerUndoForMergeBack`/`performMergeBack`/
+/// `registerUndoForSplit` under this project's function-parameter-count lint
+/// limit; no behavior of its own beyond the pre-split state it carries.
+private struct SplitUndoContext {
+    let firstCueID: Cue.ID
+    let secondCueID: Cue.ID
+    let atOffsetSeconds: Double
+    let originalStartTimecode: Timecode
+    let originalDuration: MediaDuration
 }

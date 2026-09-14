@@ -9,7 +9,7 @@ import XCTest
 /// the same kind of test — split into its own file for the same reason that
 /// file is separate from `CueDetectionReviewViewModelTests.swift`.
 @MainActor
-final class CueDetectionReviewViewModelSplitMergeUndoTests: XCTestCase {
+final class CueDetectionReviewSplitMergeUndoTests: XCTestCase {
     // MARK: - Split
 
     /// SPEC.md §4.19: "undo deletes the newly-created second Cue and
@@ -108,30 +108,11 @@ final class CueDetectionReviewViewModelSplitMergeUndoTests: XCTestCase {
     /// combines/drops something real, proving undo brings it *all* back
     /// rather than just the fields a naive reversal would happen to recover.
     func test_mergeRequested_undo_restoresBothOriginalCuesLossy() async throws {
-        let precedingRightHolder = CueRightHolder(
-            party: .person(UUID()), role: .composer,
-            performanceBroadcastShare: 100, mechanicalRightsShare: 100
-        )
-        let followingRightHolder = CueRightHolder(
-            party: .person(UUID()), role: .author,
-            performanceBroadcastShare: 100, mechanicalRightsShare: 100
-        )
-        let preceding = Cue(
-            title: "Opening Theme",
-            duration: MediaDuration(seconds: 30),
-            rightHolders: [precedingRightHolder],
-            source: .detectedFromAudio,
-            startTimecode: Timecode(offsetSeconds: 10),
-            notes: "preceding notes"
-        )
-        let following = Cue(
-            title: "Bridge",
-            duration: MediaDuration(seconds: 20),
-            rightHolders: [followingRightHolder],
-            source: .detectedFromAudio,
-            startTimecode: Timecode(offsetSeconds: 40),
-            notes: "following notes"
-        )
+        let fixture = Self.makeLossyMergeFixture()
+        let preceding = fixture.preceding
+        let following = fixture.following
+        let precedingRightHolder = fixture.precedingRightHolder
+        let followingRightHolder = fixture.followingRightHolder
         let env = makeCueDetectionReviewEnvironment(cues: [preceding, following])
         let viewModel = env.viewModel
         let projectRepository = env.projectRepository
@@ -230,4 +211,48 @@ final class CueDetectionReviewViewModelSplitMergeUndoTests: XCTestCase {
         XCTAssertFalse(undoManager.canUndo)
         loadTask.cancel()
     }
+
+    /// Two cues with genuinely different title/notes/rightHolders, so the
+    /// forward merge in `test_mergeRequested_undo_restoresBothOriginalCuesLossy`
+    /// actually combines/drops something real — extracted purely to keep
+    /// that test under this project's function-body-length lint limit.
+    private static func makeLossyMergeFixture() -> LossyMergeFixture {
+        let precedingRightHolder = CueRightHolder(
+            party: .person(UUID()), role: .composer,
+            performanceBroadcastShare: 100, mechanicalRightsShare: 100
+        )
+        let followingRightHolder = CueRightHolder(
+            party: .person(UUID()), role: .author,
+            performanceBroadcastShare: 100, mechanicalRightsShare: 100
+        )
+        let preceding = Cue(
+            title: "Opening Theme",
+            duration: MediaDuration(seconds: 30),
+            rightHolders: [precedingRightHolder],
+            source: .detectedFromAudio,
+            startTimecode: Timecode(offsetSeconds: 10),
+            notes: "preceding notes"
+        )
+        let following = Cue(
+            title: "Bridge",
+            duration: MediaDuration(seconds: 20),
+            rightHolders: [followingRightHolder],
+            source: .detectedFromAudio,
+            startTimecode: Timecode(offsetSeconds: 40),
+            notes: "following notes"
+        )
+        return LossyMergeFixture(
+            preceding: preceding,
+            precedingRightHolder: precedingRightHolder,
+            following: following,
+            followingRightHolder: followingRightHolder
+        )
+    }
+}
+
+private struct LossyMergeFixture {
+    let preceding: Cue
+    let precedingRightHolder: CueRightHolder
+    let following: Cue
+    let followingRightHolder: CueRightHolder
 }

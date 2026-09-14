@@ -92,6 +92,15 @@ final class WaveformInteractionNSView: NSView {
     /// stopped at the cue's own end) — a graceful fallback, not a dead click.
     private static let sameMarkerGestureCooldownSeconds: TimeInterval = 0.2
 
+    /// Extracted purely so `mouseDown`'s own `if` doesn't need a multi-line
+    /// condition (this project's SwiftFormat/SwiftLint configuration
+    /// disagree on brace placement for those) — no behavior beyond what
+    /// `mouseDown`'s doc comment above already describes.
+    private func isSameMarkerCooldownActive(for marker: WaveformBoundaryMarker) -> Bool {
+        guard marker == recentPlayTriggerMarker, let recentPlayTriggerTime else { return false }
+        return ProcessInfo.processInfo.systemUptime - recentPlayTriggerTime < Self.sameMarkerGestureCooldownSeconds
+    }
+
     /// Test-only, read-only diagnostic accessors — `internal`, not exposed
     /// as public API; `@testable import` reaches these but nothing outside
     /// the package can. Added while diagnosing the reported merge-gesture
@@ -118,9 +127,7 @@ final class WaveformInteractionNSView: NSView {
         let location = convert(event.locationInWindow, from: nil)
         mouseDownLocation = location
         let hitMarker = hitTestMarker(at: location)
-        if let hitMarker, hitMarker == recentPlayTriggerMarker,
-           let recentPlayTriggerTime,
-           ProcessInfo.processInfo.systemUptime - recentPlayTriggerTime < Self.sameMarkerGestureCooldownSeconds {
+        if let hitMarker, isSameMarkerCooldownActive(for: hitMarker) {
             // Cooldown active for this exact marker — treat as if no marker
             // was hit, sidestepping the race rather than chasing its root
             // cause. Falls through to background click/pan handling.
