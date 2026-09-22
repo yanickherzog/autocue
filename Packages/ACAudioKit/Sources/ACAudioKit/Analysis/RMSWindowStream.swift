@@ -25,6 +25,16 @@ struct RMSWindowMeasurement: Equatable {
 /// measurement array as a plain in-memory value, not as a second streaming
 /// stage.
 struct RMSWindowStream {
+    /// The amplitude floor `rmsDb` is clamped against before the
+    /// `20*log10` conversion, so a silent window reads a large-but-finite
+    /// dB value instead of `-infinity`. Named (not just inlined as `1e-9`)
+    /// because `SilenceDetectionStage1`'s local-peak-relative calibration
+    /// needs to reference this exact floor precisely, not duplicate the
+    /// magic number.
+    static let epsilonClampAmplitude: Float = 1e-9
+    /// `20 * log10(epsilonClampAmplitude)` -- the corresponding dB floor.
+    static let epsilonClampDb = -180.0
+
     let sampleRate: Double
     let windowFrameCount: Int
     let hopFrameCount: Int
@@ -55,7 +65,7 @@ struct RMSWindowStream {
                 guard let base = pointer.baseAddress else { return }
                 vDSP_rmsqv(base + localStart, 1, &rms, vDSP_Length(windowFrameCount))
             }
-            let db = 20 * log10(max(Double(rms), 1e-9))
+            let db = 20 * log10(max(Double(rms), Double(Self.epsilonClampAmplitude)))
             let centerGlobal = Double(nextWindowGlobalStart) + Double(windowFrameCount) / 2.0
             results.append(RMSWindowMeasurement(windowCenterSeconds: centerGlobal / sampleRate, rmsDb: db))
             nextWindowGlobalStart += hopFrameCount

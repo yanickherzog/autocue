@@ -200,14 +200,28 @@ enum SuperFluxOnsetRefiner {
 
     /// SPEC.md §4.11, "Adaptive local peak-picking": a candidate frame must
     /// be a local maximum *and* clear `median(local window) × multiplier +
-    /// offset × peakNoveltyInSearchWindow`. Among frames that pass, the
-    /// highest-novelty one wins. `eligiblePeakRangeSeconds` restricts which
-    /// frames may actually be *picked* (the real, unpadded search window) —
-    /// padding-only frames still contribute to `novelty`'s local medians
-    /// (giving eligible edge frames a non-truncated median) but are never
-    /// themselves candidates, and `peakNoveltyInSearchWindow` is computed
-    /// only over the eligible range too, per SPEC.md's own definition of it
-    /// as "the peak novelty... in the current stage-2 search window."
+    /// offset × peakNoveltyInSearchWindow`. **Among frames that pass, the
+    /// earliest one wins** — not the highest-novelty one (`docs/
+    /// DECISIONS.md`, this date). This is a refinement policy, not a
+    /// from-scratch onset-detection policy: `refine` is only ever called
+    /// with an already-roughly-known stage-1 candidate, and real fixture
+    /// data showed "highest novelty in the whole window" is the wrong rule
+    /// for that job — real music's energy/complexity typically *builds*
+    /// just after a true onset (the attack settles into sustain, other
+    /// elements enter), so a later, louder, unrelated event routinely
+    /// outscored the true onset's own (often softer) transient. Confirmed
+    /// via real data across every real fixture cue: the highest-novelty
+    /// rule's relocation was **never** earlier than stage 1's own
+    /// candidate (0 negative shifts out of 80 real cues checked), only
+    /// ever later, by up to the full search-window radius — a systematic,
+    /// one-directional bias, not case-by-case noise. `eligiblePeakRangeSeconds`
+    /// restricts which frames may actually be *picked* (the real, unpadded
+    /// search window) — padding-only frames still contribute to `novelty`'s
+    /// local medians (giving eligible edge frames a non-truncated median)
+    /// but are never themselves candidates, and `peakNoveltyInSearchWindow`
+    /// is computed only over the eligible range too, per SPEC.md's own
+    /// definition of it as "the peak novelty... in the current stage-2
+    /// search window."
     private static func pickPeak(
         novelty: [Double],
         settings: AnalysisSettings,
@@ -226,8 +240,6 @@ enum SuperFluxOnsetRefiner {
         let eligibleNovelty = novelty.indices.filter(isEligible).map { novelty[$0] }
         let peakNoveltyInSearchWindow = eligibleNovelty.max() ?? 0
 
-        var bestIndex: Int?
-        var bestNovelty = -Double.infinity
         for index in 1 ..< (novelty.count - 1) {
             guard isEligible(index) else { continue }
             let value = novelty[index]
@@ -241,11 +253,14 @@ enum SuperFluxOnsetRefiner {
             let threshold = localMedian * settings.superFluxAdaptiveThresholdMultiplier +
                 settings.superFluxAdaptiveThresholdOffset * peakNoveltyInSearchWindow
 
-            guard value > threshold, value > bestNovelty else { continue }
-            bestNovelty = value
-            bestIndex = index
+            // Frames are visited in chronological order (novelty/frameTimes
+            // are built in file order) -- the first one to clear the
+            // threshold is, by construction, the earliest qualifying peak.
+            if value > threshold {
+                return index
+            }
         }
-        return bestIndex
+        return nil
     }
 
     private static func median(_ values: [Double]) -> Double {

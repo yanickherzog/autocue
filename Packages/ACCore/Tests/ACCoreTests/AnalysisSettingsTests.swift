@@ -22,8 +22,9 @@ final class AnalysisSettingsTests: XCTestCase {
 
         XCTAssertEqual(settings.noiseFloorCalibrationMode, .automatic)
         XCTAssertEqual(settings.silenceThresholdDb, -40.0)
-        XCTAssertEqual(settings.calibrationMarginDb, 6.0)
-        XCTAssertEqual(settings.noiseFloorReestimationIntervalSeconds, 300.0)
+        XCTAssertEqual(settings.localPeakRadiusSeconds, 30.0)
+        XCTAssertEqual(settings.activityMarginDb, 78.0)
+        XCTAssertEqual(settings.automaticModeSilenceDurationSeconds, 2.6)
         XCTAssertEqual(settings.analysisWindowMilliseconds, 50.0)
         XCTAssertEqual(settings.analysisWindowHopMilliseconds, 10.0)
         XCTAssertEqual(settings.minimumSilenceDurationSeconds, 2.0)
@@ -43,8 +44,9 @@ final class AnalysisSettingsTests: XCTestCase {
         let settings = AnalysisSettings(
             noiseFloorCalibrationMode: .automatic,
             silenceThresholdDb: -35,
-            calibrationMarginDb: 8,
-            noiseFloorReestimationIntervalSeconds: 120,
+            localPeakRadiusSeconds: 20,
+            activityMarginDb: 70,
+            automaticModeSilenceDurationSeconds: 3.0,
             analysisWindowMilliseconds: 25,
             analysisWindowHopMilliseconds: 5,
             minimumSilenceDurationSeconds: 1.5,
@@ -62,8 +64,9 @@ final class AnalysisSettingsTests: XCTestCase {
 
         XCTAssertEqual(settings.noiseFloorCalibrationMode, .automatic)
         XCTAssertEqual(settings.silenceThresholdDb, -35)
-        XCTAssertEqual(settings.calibrationMarginDb, 8)
-        XCTAssertEqual(settings.noiseFloorReestimationIntervalSeconds, 120)
+        XCTAssertEqual(settings.localPeakRadiusSeconds, 20)
+        XCTAssertEqual(settings.activityMarginDb, 70)
+        XCTAssertEqual(settings.automaticModeSilenceDurationSeconds, 3.0)
         XCTAssertEqual(settings.analysisWindowMilliseconds, 25)
         XCTAssertEqual(settings.analysisWindowHopMilliseconds, 5)
         XCTAssertEqual(settings.minimumSilenceDurationSeconds, 1.5)

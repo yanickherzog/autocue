@@ -20,88 +20,130 @@ enum SilenceDetectionStage1 {
         guard !measurements.isEmpty else { return [] }
 
         let calibration = ThresholdCalibration(measurements: measurements, settings: settings)
+        if settings.noiseFloorCalibrationMode == .automatic {
+            var scanner = AutomaticModeScanner(measurements: measurements, calibration: calibration, settings: settings)
+            return scanner.run(totalDurationSeconds: totalDurationSeconds)
+        }
         var scanner = Stage1Scanner(measurements: measurements, calibration: calibration, settings: settings)
         return scanner.run(totalDurationSeconds: totalDurationSeconds)
     }
 }
 
-/// Precomputes one effective main threshold per `noiseFloorReestimationIntervalSeconds`
-/// interval (SPEC.md §4.11, "Threshold: manual vs. automatic" / "Time-varying
-/// noise floor"). In `.manual` mode every interval trivially resolves to the
-/// same fixed `silenceThresholdDb`.
-private struct ThresholdCalibration {
+/// Precomputes one effective main threshold per measurement (SPEC.md §4.11,
+/// "Threshold: manual vs. automatic" / "Local Peak-Relative Calibration").
+/// In `.manual` mode every measurement trivially resolves to the same fixed
+/// `silenceThresholdDb`.
+///
+/// **`.automatic` mode: Local Peak-Relative Calibration (LPRC), replacing
+/// the original fixed-cadence leading-window-minimum scheme entirely
+/// (`docs/DECISIONS.md`, 2026-09-22).** Four prior mechanisms tried to
+/// compute a single *substitute level* to stand in for a floor-pinned
+/// leading-window reading — a percentile, an N-interval consensus, a fixed
+/// fallback, a whole-file median — and all four failed for the same
+/// underlying reason: a real file can contain both genuine bit-exact
+/// digital silence between cues *and* genuine quiet-but-real dips within a
+/// cue, and no single absolute number can correctly separate both at once
+/// when their real dB ranges overlap. LPRC never computes a *floor*
+/// (a minimum, which is exactly what pins to `RMSWindowStream.epsilonClampDb`
+/// the instant a leading window lands on true silence, and — because the
+/// old implausible-jump guard then rejects every subsequent real reading as
+/// too-shallow-relative-to-the-pinned-anchor — can never legitimately
+/// recalibrate upward again for the rest of the file). It computes a
+/// *ceiling* instead: `localPeakDb(t)`, the maximum RMS reached within
+/// `localPeakRadiusSeconds` of `t` in *either* time direction (this type
+/// already operates on the full in-memory measurement array, not a
+/// streaming stage, so a symmetric/lookahead window is free). A local
+/// maximum only reads near the epsilon floor when the entire surrounding
+/// neighborhood genuinely is silent — which is exactly the case where that
+/// is the correct answer — so it cannot floor-pin the way a minimum does.
+/// The effective threshold is `localPeakDb(t) − activityMarginDb`: a
+/// *relative* margin applied against each local passage's own measured
+/// ceiling, never an absolute substitute value competing with real content.
+struct ThresholdCalibration {
     private let settings: AnalysisSettings
-    private let intervalThresholds: [Double] // indexed by interval number
+    private let thresholds: [Double] // one per measurement; empty in .manual mode
 
     init(measurements: [RMSWindowMeasurement], settings: AnalysisSettings) {
         self.settings = settings
 
-        guard settings.noiseFloorCalibrationMode == .automatic, let lastTime = measurements.last?.windowCenterSeconds
-        else {
-            intervalThresholds = []
+        guard settings.noiseFloorCalibrationMode == .automatic, !measurements.isEmpty else {
+            thresholds = []
             return
         }
 
-        let intervalLength = max(settings.noiseFloorReestimationIntervalSeconds, 0.001)
-        let intervalCount = Int(lastTime / intervalLength) + 1
-        // "Confirmed at T8.3 implementation time" (SPEC.md §4.11): a 2.0s
-        // leading sample window per interval, minimum RMS-dB as the noise
-        // floor statistic, inconclusive (→ fallback) below 5 measurements.
-        let leadingWindowSeconds = 2.0
-        let minimumMeasurementsForConfidence = 5
-        // "Found and fixed 2026-09-10" (SPEC.md §4.11, docs/DECISIONS.md):
-        // a candidate threshold more than this many dB shallower than the
-        // *previous* interval's own calibrated threshold is treated as
-        // implausible — the leading window almost certainly landed inside
-        // real content, not silence — and the previous interval's threshold
-        // is carried forward instead of trusting the bad measurement. 20dB
-        // comfortably allows a genuine ambient-floor shift between
-        // intervals (a real location/scene change) while firmly rejecting
-        // the kind of jump a leading window landing in active music
-        // produces (confirmed empirically at ~74dB on a real fixture).
-        let implausibleJumpMarginDb = 20.0
-
-        var thresholds: [Double] = []
-        thresholds.reserveCapacity(intervalCount)
-        for interval in 0 ..< intervalCount {
-            let intervalStart = Double(interval) * intervalLength
-            let leadingEnd = intervalStart + leadingWindowSeconds
-            let leadingMeasurements = measurements.filter {
-                $0.windowCenterSeconds >= intervalStart && $0.windowCenterSeconds < leadingEnd
-            }
-            guard leadingMeasurements.count >= minimumMeasurementsForConfidence else {
-                thresholds.append(settings.silenceThresholdDb)
-                continue
-            }
-            let measuredNoiseFloorDb = leadingMeasurements.map(\.rmsDb).min() ?? settings.silenceThresholdDb
-            let candidateThreshold = measuredNoiseFloorDb + settings.calibrationMarginDb
-            if interval > 0, candidateThreshold > thresholds[interval - 1] + implausibleJumpMarginDb {
-                thresholds.append(thresholds[interval - 1])
-            } else {
-                thresholds.append(candidateThreshold)
-            }
-        }
-        intervalThresholds = thresholds
+        let peaks = Self.symmetricLocalPeakDb(measurements, radiusSeconds: settings.localPeakRadiusSeconds)
+        let floor = RMSWindowStream.epsilonClampDb + 0.001
+        thresholds = peaks.map { max($0 - settings.activityMarginDb, floor) }
     }
 
-    func mainThreshold(atTime time: Double) -> Double {
-        guard settings.noiseFloorCalibrationMode == .automatic, !intervalThresholds.isEmpty else {
-            return settings.silenceThresholdDb
-        }
-        let intervalLength = max(settings.noiseFloorReestimationIntervalSeconds, 0.001)
-        let index = min(max(Int(time / intervalLength), 0), intervalThresholds.count - 1)
-        return intervalThresholds[index]
+    func mainThreshold(at index: Int) -> Double {
+        guard !thresholds.isEmpty else { return settings.silenceThresholdDb }
+        return thresholds[index]
     }
 
-    /// SPEC.md §4.11, clarified at T8.3 implementation time: always relative
-    /// to whichever main threshold is actually in effect at `time`, not the
-    /// raw `silenceThresholdDb` field when calibration has moved it.
-    func stricterThreshold(atTime time: Double) -> Double {
-        mainThreshold(atTime: time) - settings.tailToleranceDb
+    /// `.manual` mode only — used by `Stage1Scanner`, unchanged.
+    func stricterThreshold(at index: Int) -> Double {
+        mainThreshold(at: index) - settings.tailToleranceDb
+    }
+
+    /// `.automatic` mode only — used by `AutomaticModeScanner`. A separate,
+    /// re-derived margin from `.manual`'s `tailToleranceDb`: under LPRC,
+    /// `mainThreshold` is already a deep, peak-relative value (not a
+    /// shallow, near-ambient one the way `.manual`'s fixed threshold or the
+    /// old floor-pinned scheme could be), so "stricter" needs to mean
+    /// something structurally different here — see `AnalysisSettings.
+    /// automaticModeTailToleranceDb`'s doc comment and `docs/DECISIONS.md`,
+    /// 2026-09-22, for the full real-data derivation.
+    func automaticStricterThreshold(at index: Int) -> Double {
+        max(mainThreshold(at: index) - settings.automaticModeTailToleranceDb, RMSWindowStream.epsilonClampDb + 0.001)
+    }
+
+    /// Symmetric sliding-window maximum via a ring-buffer-backed monotonic
+    /// deque, O(n) amortized. `buffer[front..<back]` is always the valid
+    /// range — popping the back only ever decrements `back`, popping the
+    /// front only ever increments `front`; the two never interfere with
+    /// each other's bookkeeping (unlike an array + a separately-tracked
+    /// logical head-pointer scheme, where removing from the back can
+    /// silently invalidate the front pointer's own bookkeeping — a real bug
+    /// found and fixed while validating this mechanism, `docs/DECISIONS.md`
+    /// 2026-09-22).
+    private static func symmetricLocalPeakDb(
+        _ measurements: [RMSWindowMeasurement],
+        radiusSeconds: Double
+    ) -> [Double] {
+        let count = measurements.count
+        guard count > 0 else { return [] }
+        var result = [Double](repeating: RMSWindowStream.epsilonClampDb, count: count)
+        var buffer = [Int](repeating: 0, count: count)
+        var front = 0
+        var back = 0
+        var hi = 0
+        for measurementIndex in 0 ..< count {
+            let loBound = measurements[measurementIndex].windowCenterSeconds - radiusSeconds
+            let hiBound = measurements[measurementIndex].windowCenterSeconds + radiusSeconds
+            while hi < count, measurements[hi].windowCenterSeconds <= hiBound {
+                while back > front, measurements[buffer[back - 1]].rmsDb <= measurements[hi].rmsDb {
+                    back -= 1
+                }
+                buffer[back] = hi
+                back += 1
+                hi += 1
+            }
+            while front < back, measurements[buffer[front]].windowCenterSeconds < loBound {
+                front += 1
+            }
+            result[measurementIndex] = front < back ? measurements[buffer[front]].rmsDb : measurements[measurementIndex]
+                .rmsDb
+        }
+        return result
     }
 }
 
-/// The forward-scanning state machine over the measurement timeline.
+/// The forward-scanning state machine over the measurement timeline,
+/// `.manual` mode only (SPEC.md §4.11's "Reverb tails," unchanged since
+/// 2026-09-10). `.automatic` mode uses `AutomaticModeScanner` instead — see
+/// that type's doc comment for why a real-time race between two independent
+/// conditions doesn't carry over correctly to LPRC's threshold shape.
 /// `Stage1State` names exactly the three states SPEC.md §4.11's boundary
 /// logic distinguishes: not yet in a region, confirmed in one, or currently
 /// evaluating a below-threshold dip that hasn't yet resolved into either an
@@ -147,8 +189,8 @@ private struct Stage1Scanner {
 
     private mutating func step(at index: Int) {
         let time = measurements[index].windowCenterSeconds
-        let mainThreshold = calibration.mainThreshold(atTime: time)
-        let stricterThreshold = calibration.stricterThreshold(atTime: time)
+        let mainThreshold = calibration.mainThreshold(at: index)
+        let stricterThreshold = calibration.stricterThreshold(at: index)
         let classification = Classification(
             index: index,
             time: time,
@@ -216,7 +258,7 @@ private struct Stage1Scanner {
             let crossing = interpolateCrossing(
                 beforeIndex: stricterStart - 1,
                 atIndex: stricterStart,
-                threshold: calibration.stricterThreshold(atTime: measurements[stricterStart].windowCenterSeconds)
+                threshold: calibration.stricterThreshold(at: stricterStart)
             )
             results.append(SilenceDetectedRegion(startSeconds: regionStart, endSeconds: crossing))
             state = .betweenRegions
@@ -228,7 +270,7 @@ private struct Stage1Scanner {
             let crossing = interpolateCrossing(
                 beforeIndex: mainGapStartIndex - 1,
                 atIndex: mainGapStartIndex,
-                threshold: calibration.mainThreshold(atTime: measurements[mainGapStartIndex].windowCenterSeconds)
+                threshold: calibration.mainThreshold(at: mainGapStartIndex)
             )
             results.append(SilenceDetectedRegion(startSeconds: regionStart, endSeconds: crossing))
             state = .betweenRegions
@@ -265,17 +307,28 @@ private struct Stage1Scanner {
         regions.filter { $0.endSeconds - $0.startSeconds >= settings.minimumCueDurationSeconds }
     }
 
-    /// SPEC.md §4.11, "RMS time resolution and threshold-crossing
-    /// interpolation": `t_cross = t₁ + (thresholdDb − db₁) / (db₂ − db₁) × hop`,
-    /// applied uniformly to every crossing this contract defines. Returns
-    /// `atIndex`'s own time directly when there's no prior measurement to
-    /// interpolate against (a transition at the very first measurement).
     private func interpolateCrossing(beforeIndex: Int, atIndex: Int, threshold: Double) -> Double {
-        guard beforeIndex >= 0 else { return measurements[atIndex].windowCenterSeconds }
-        let before = measurements[beforeIndex]
-        let at = measurements[atIndex]
-        guard at.rmsDb != before.rmsDb else { return at.windowCenterSeconds }
-        let fraction = (threshold - before.rmsDb) / (at.rmsDb - before.rmsDb)
-        return before.windowCenterSeconds + fraction * (at.windowCenterSeconds - before.windowCenterSeconds)
+        crossingTime(in: measurements, beforeIndex: beforeIndex, atIndex: atIndex, threshold: threshold)
     }
+}
+
+/// SPEC.md §4.11, "RMS time resolution and threshold-crossing
+/// interpolation": `t_cross = t₁ + (thresholdDb − db₁) / (db₂ − db₁) × hop`,
+/// applied uniformly to every crossing this contract defines — shared by
+/// both `Stage1Scanner` (`.manual`) and `AutomaticModeScanner`
+/// (`.automatic`). Returns `atIndex`'s own time directly when there's no
+/// prior measurement to interpolate against (a transition at the very
+/// first measurement).
+func crossingTime(
+    in measurements: [RMSWindowMeasurement],
+    beforeIndex: Int,
+    atIndex: Int,
+    threshold: Double
+) -> Double {
+    guard beforeIndex >= 0 else { return measurements[atIndex].windowCenterSeconds }
+    let before = measurements[beforeIndex]
+    let at = measurements[atIndex]
+    guard at.rmsDb != before.rmsDb else { return at.windowCenterSeconds }
+    let fraction = (threshold - before.rmsDb) / (at.rmsDb - before.rmsDb)
+    return before.windowCenterSeconds + fraction * (at.windowCenterSeconds - before.windowCenterSeconds)
 }

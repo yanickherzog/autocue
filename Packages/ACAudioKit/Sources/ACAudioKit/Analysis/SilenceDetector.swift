@@ -219,6 +219,22 @@ enum SilenceDetector {
 /// the *computed* window additionally pads `superFluxAdaptiveThresholdWindowSeconds / 2`
 /// on each side so frames right at the real search window's own edges still
 /// get a well-formed, non-truncated local median for adaptive peak-picking.
+///
+/// **A backward-only (no-forward-search) restriction was tried and
+/// rejected by real data** (`docs/DECISIONS.md`, this date): despite SPEC's
+/// own stated rationale for SuperFlux being specifically about correcting a
+/// stage-1 crossing that lands too late, restricting the eligible window to
+/// never search forward of `candidateSeconds` made the real fixture set net
+/// worse (85-cue within-tolerance count dropped from 24 to 17) -- it
+/// blocked genuinely-needed forward corrections (newly-fixed count dropped
+/// from 9 to 1) far more than it protected already-correct stage-1
+/// candidates (broken-count only improved from 19 to 18). The symmetric
+/// window, combined with `SuperFluxOnsetRefiner.pickPeak`'s
+/// earliest-qualifying-peak selection (this date), is the validated
+/// combination -- see that function's doc comment for why picking the
+/// earliest qualifying peak in a symmetric window, rather than restricting
+/// the window's direction, is what actually fixes the systematic
+/// later-relocation bias.
 private struct SuperFluxWindowBounds {
     let paddedStartSeconds: Double
     let paddedEndSeconds: Double

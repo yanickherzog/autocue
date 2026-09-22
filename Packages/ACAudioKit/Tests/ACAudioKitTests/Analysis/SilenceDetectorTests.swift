@@ -11,8 +11,9 @@ final class SilenceDetectorTests: XCTestCase {
     private func fastSettings(
         mode: NoiseFloorCalibrationMode = .manual,
         silenceThresholdDb: Double = -40,
-        calibrationMarginDb: Double = 6,
-        reestimationInterval: Double = 300,
+        localPeakRadiusSeconds: Double = 2.0,
+        activityMarginDb: Double = 20,
+        automaticModeSilenceDurationSeconds: Double = 0.2,
         minimumSilenceDurationSeconds: Double = 0.2,
         minimumCueDurationSeconds: Double = 0.2,
         tailCapSeconds: Double = 0.2,
@@ -21,8 +22,9 @@ final class SilenceDetectorTests: XCTestCase {
         AnalysisSettings(
             noiseFloorCalibrationMode: mode,
             silenceThresholdDb: silenceThresholdDb,
-            calibrationMarginDb: calibrationMarginDb,
-            noiseFloorReestimationIntervalSeconds: reestimationInterval,
+            localPeakRadiusSeconds: localPeakRadiusSeconds,
+            activityMarginDb: activityMarginDb,
+            automaticModeSilenceDurationSeconds: automaticModeSilenceDurationSeconds,
             analysisWindowMilliseconds: 20,
             analysisWindowHopMilliseconds: 5,
             minimumSilenceDurationSeconds: minimumSilenceDurationSeconds,
@@ -60,30 +62,23 @@ final class SilenceDetectorTests: XCTestCase {
         XCTAssertEqual(regions[0].endSeconds, 3.5, accuracy: tolerance)
     }
 
-    func test_automaticCalibration_correctlyClassifiesAmbientHiss_whereManualDefaultWouldNot() {
-        let hiss = SyntheticAudioBuilder.amplitude(forRMSDb: -30)
+    /// LPRC's replacement for the old fixed-cadence leading-window-minimum
+    /// mechanism (`docs/DECISIONS.md`, 2026-09-22): a local-peak-relative
+    /// threshold correctly isolates a real onset even when it sits well
+    /// above a fixed `.manual` threshold's own blind spot on one side, and
+    /// well below it on flanking near-silence — the general property
+    /// `DefaultCalibrationModeTests` already proves in detail against real,
+    /// unmodified production defaults; this is the fast-synthetic-tier
+    /// counterpart at `fastSettings()`'s own scaled-down margin.
+    func test_automaticCalibration_isolatesOnsetAboveLocalPeakRelativeThreshold() {
+        let nearSilence = SyntheticAudioBuilder.amplitude(forRMSDb: -170)
         let tone = SyntheticAudioBuilder.amplitude(forRMSDb: -5)
         let samples = SyntheticAudioBuilder.concatenate([
-            SyntheticAudioBuilder.tone(seconds: 2.0, sampleRate: sampleRate, amplitude: hiss),
+            SyntheticAudioBuilder.tone(seconds: 2.0, sampleRate: sampleRate, amplitude: nearSilence),
             SyntheticAudioBuilder.tone(seconds: 2.0, sampleRate: sampleRate, amplitude: tone),
-            SyntheticAudioBuilder.tone(seconds: 2.0, sampleRate: sampleRate, amplitude: hiss),
+            SyntheticAudioBuilder.tone(seconds: 2.0, sampleRate: sampleRate, amplitude: nearSilence),
         ])
 
-        // -30dB ambient hiss sits ABOVE the -40dB manual default, so a fixed
-        // manual threshold never sees a gap at all — the whole buffer reads
-        // as one continuous region.
-        let manualRegions = SilenceDetector.detectRegions(
-            monoSamples: samples,
-            sampleRate: sampleRate,
-            settings: fastSettings(mode: .manual, minimumSilenceDurationSeconds: 0.5, minimumCueDurationSeconds: 0.5)
-        )
-        XCTAssertEqual(manualRegions.count, 1)
-        XCTAssertLessThan(manualRegions[0].startSeconds, 0.5)
-        XCTAssertGreaterThan(manualRegions[0].endSeconds, 5.5)
-
-        // Automatic mode measures the -30dB floor from the leading hiss and
-        // sets the effective threshold to -30 + 6 = -24dB, correctly
-        // isolating the -5dB tone as its own region.
         let automaticRegions = SilenceDetector.detectRegions(
             monoSamples: samples,
             sampleRate: sampleRate,
@@ -92,45 +87,6 @@ final class SilenceDetectorTests: XCTestCase {
         XCTAssertEqual(automaticRegions.count, 1)
         XCTAssertEqual(automaticRegions[0].startSeconds, 2.0, accuracy: 0.1)
         XCTAssertEqual(automaticRegions[0].endSeconds, 4.0, accuracy: 0.1)
-    }
-
-    /// Proves `noiseFloorReestimationIntervalSeconds` actually re-measures
-    /// periodically, rather than calibrating once globally: interval 0's
-    /// ambient floor (-30dB) is meaningfully different from interval 1's
-    /// (-15dB), and each interval's own onset is only correctly isolated if
-    /// its *own* interval's calibration is used — reusing interval 0's
-    /// threshold for interval 1 would fail to detect a gap there at all
-    /// (-15dB ambient would sit above interval 0's -24dB threshold).
-    func test_automaticCalibration_reEstimatesPeriodically_perInterval() {
-        let hiss1 = SyntheticAudioBuilder.amplitude(forRMSDb: -30)
-        let hiss2 = SyntheticAudioBuilder.amplitude(forRMSDb: -15)
-        let tone = SyntheticAudioBuilder.amplitude(forRMSDb: -5)
-
-        let samples = SyntheticAudioBuilder.concatenate([
-            SyntheticAudioBuilder.tone(seconds: 1.5, sampleRate: sampleRate, amplitude: hiss1), // interval 0
-            SyntheticAudioBuilder.tone(seconds: 1.0, sampleRate: sampleRate, amplitude: tone),
-            SyntheticAudioBuilder.tone(seconds: 1.5, sampleRate: sampleRate, amplitude: hiss1),
-            SyntheticAudioBuilder.tone(seconds: 1.5, sampleRate: sampleRate, amplitude: hiss2), // interval 1
-            SyntheticAudioBuilder.tone(seconds: 1.0, sampleRate: sampleRate, amplitude: tone),
-            SyntheticAudioBuilder.tone(seconds: 1.5, sampleRate: sampleRate, amplitude: hiss2),
-        ])
-
-        let regions = SilenceDetector.detectRegions(
-            monoSamples: samples,
-            sampleRate: sampleRate,
-            settings: fastSettings(
-                mode: .automatic,
-                reestimationInterval: 4.0,
-                minimumSilenceDurationSeconds: 0.5,
-                minimumCueDurationSeconds: 0.5
-            )
-        )
-
-        XCTAssertEqual(regions.count, 2)
-        XCTAssertEqual(regions[0].startSeconds, 1.5, accuracy: 0.1)
-        XCTAssertEqual(regions[0].endSeconds, 2.5, accuracy: 0.1)
-        XCTAssertEqual(regions[1].startSeconds, 5.5, accuracy: 0.1)
-        XCTAssertEqual(regions[1].endSeconds, 6.5, accuracy: 0.1)
     }
 
     // MARK: - SuperFlux stage 2: fade-in, flat-spectrum fallback, vibrato

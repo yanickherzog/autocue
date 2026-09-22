@@ -231,12 +231,16 @@ final class AudioAnalysisRepositoryImplTests: XCTestCase {
     /// goal. Merging against embedded markers is explicitly **not** this
     /// method's job — see `DetectCuesUseCaseTests` for that.
     func test_detectCues_mapsSilenceDetectedRegionsToPlainDetectedFromAudioCues() async throws {
-        // Silence segments must clear AnalysisSettings' default
-        // minimumSilenceDurationSeconds (2.0s) and the tone segment must
-        // clear minimumCueDurationSeconds (3.0s) — otherwise it's correctly
+        // Silence segments must clear AnalysisSettings' real .automatic-mode
+        // default, automaticModeSilenceDurationSeconds (2.6s as of
+        // 2026-09-22's LPRC mechanism -- corrected same day from this test's
+        // original 2.5s, which cleared the old 2.0s minimumSilenceDurationSeconds
+        // default but no longer clears automatic mode's own, larger default;
+        // see docs/DECISIONS.md) and the tone segment must clear
+        // minimumCueDurationSeconds (3.0s) — otherwise it's correctly
         // discarded as a spurious blip (SPEC.md §4.11), not detected at all.
         let sampleRate = 48000.0
-        let silenceFrameCount = Int(2.5 * sampleRate)
+        let silenceFrameCount = Int(3.0 * sampleRate)
         let toneFrameCount = Int(4.0 * sampleRate)
         let samples = [Float](repeating: 0, count: silenceFrameCount)
             + [Float](repeating: 0.5, count: toneFrameCount)
@@ -254,7 +258,7 @@ final class AudioAnalysisRepositoryImplTests: XCTestCase {
         XCTAssertEqual(cue.title, "")
         XCTAssertTrue(cue.rightHolders.isEmpty)
         let start = try XCTUnwrap(cue.startTimecode)
-        XCTAssertEqual(start.offsetSeconds, 2.5, accuracy: 0.05)
+        XCTAssertEqual(start.offsetSeconds, 3.0, accuracy: 0.05)
         XCTAssertEqual(cue.duration.seconds, 4.0, accuracy: 0.05)
     }
 }

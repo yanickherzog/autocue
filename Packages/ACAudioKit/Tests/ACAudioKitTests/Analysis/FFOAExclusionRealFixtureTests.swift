@@ -53,14 +53,6 @@ final class FFOAExclusionRealFixtureTests: XCTestCase {
             "No region detected near SEA_STEM cue1's ground-truth onset at all."
         )
 
-        // Real, unmodified detection currently starts this region a few
-        // milliseconds *before* FFOA (8.0s) -- confirms the straddling case
-        // this regression exists to guard is still real, not a numbers
-        // drift since the investigation that found it. If this assertion
-        // ever fails, the underlying detection has changed and this
-        // regression's premise needs re-checking, not silently loosening.
-        XCTAssertLessThan(cue1Region.startSeconds, 8.0)
-
         let rawCue = Cue(
             title: "",
             duration: MediaDuration(seconds: cue1Region.endSeconds - cue1Region.startSeconds),
@@ -71,9 +63,34 @@ final class FFOAExclusionRealFixtureTests: XCTestCase {
 
         let filtered = FirstFrameOfActionExclusion.apply(to: [rawCue], timecodeStart: sessionStartTimecodeStart)
 
-        XCTAssertEqual(filtered.count, 1, "The real straddling region must survive, truncated, not be dropped.")
+        // **2026-09-22 update, real numbers, not silently patched:** under
+        // the pre-LPRC mechanism this region's raw onset was `7.996s`, 4ms
+        // *before* FFOA (`8.0s`) -- a real straddling case, which this test
+        // originally pinned. Under LPRC the same file's raw onset is
+        // `8.0411s`, now *after* FFOA -- the straddling case no longer
+        // reproduces on this fixture. This is not a detection-quality
+        // regression: both values are artifacts of exactly where the
+        // pre-FFOA 2-pop/leader tone's own energy happens to cross
+        // whichever threshold is in effect, not a meaningful position
+        // relative to cue1's real acoustic onset (`11.36s`) either way.
+        // `DetectCuesUseCaseTests` (`ACTestSupport`) still covers the
+        // truncate-not-drop *logic* synthetically, independent of which
+        // real file currently happens to straddle FFOA -- this real-fixture
+        // test now documents the *current* real behavior (a clean
+        // pass-through, no truncation needed) rather than asserting a
+        // straddling scenario that no longer occurs here. If a future real
+        // fixture reproduces genuine straddling, add a dedicated real check
+        // for it rather than reviving this exact pinned case.
+        XCTAssertGreaterThanOrEqual(
+            cue1Region.startSeconds, 8.0,
+            "documents that this real region no longer straddles FFOA under the current mechanism"
+        )
+        XCTAssertEqual(filtered.count, 1, "a non-straddling region must pass through unchanged, not be dropped.")
         let cue = try XCTUnwrap(filtered.first)
-        XCTAssertEqual(try XCTUnwrap(cue.startTimecode?.offsetSeconds), 8.0, accuracy: 0.0001)
-        XCTAssertEqual(cue.duration.seconds, cue1Region.endSeconds - 8.0, accuracy: 0.0001)
+        XCTAssertEqual(
+            try XCTUnwrap(cue.startTimecode?.offsetSeconds), cue1Region.startSeconds, accuracy: 0.0001,
+            "no truncation should occur once the region starts at or after FFOA"
+        )
+        XCTAssertEqual(cue.duration.seconds, cue1Region.endSeconds - cue1Region.startSeconds, accuracy: 0.0001)
     }
 }
