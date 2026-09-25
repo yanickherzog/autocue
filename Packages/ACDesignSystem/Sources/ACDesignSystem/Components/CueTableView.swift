@@ -10,9 +10,9 @@ import SwiftUI
 public struct CueTableRow: Identifiable, Equatable, Sendable {
     /// The row's position in the live `cues` array at the moment this row
     /// was produced — not a stable, persisted identity. Threaded back
-    /// through `onDelete` so the caller knows exactly which cue to remove,
-    /// the same "plain `Int` index, never `Cue.ID`" boundary `WaveformMarker`
-    /// already established.
+    /// through `onRowSelected`/`onDelete` so the caller knows exactly which
+    /// cue was clicked/should be removed, the same "plain `Int` index,
+    /// never `Cue.ID`" boundary `WaveformMarker` already established.
     public let id: Int
     /// 1-indexed display position ("CUE 1", "CUE 2", …) — always `id + 1`,
     /// but named separately here so this view never has to know that's the
@@ -46,20 +46,61 @@ public struct CueTableRow: Identifiable, Equatable, Sendable {
 /// Language") — this view always renders on it, unlike `WaveformView`,
 /// which keeps its own reversed background regardless of the surrounding
 /// screen.
+///
+/// **Clicking a row (any column except the play/stop icon and the delete
+/// button) plays that cue's span** — `onRowSelected` is wired by the caller
+/// directly to the same play-cue-span mechanism a waveform marker click
+/// already triggers (`CueDetectionReviewViewModel.playMarkerSpan`), so
+/// auditing whether a cue's start is cut off doesn't require finding its
+/// marker in the waveform first. The tap gesture is repeated per-column
+/// rather than applied once to the row: `Table` has no single whole-row tap
+/// target short of its `selection:` binding, which would add persistent
+/// system-native row highlighting this view doesn't want.
+///
+/// **The leading column is a play/stop icon, not the cue number** — a
+/// triangle by default, swapping to a square for whichever row's `id`
+/// matches `playingRowID`, the same convention `CueDetectionReviewView`'s
+/// own toolbar play/stop button already uses (`play.fill`/`stop.fill`).
+/// Unlike the rest of the row, this icon toggles both directions —
+/// `onPlayToggle` fires on every tap regardless of this row's own state,
+/// and it's the caller's job (`CueDetectionReviewViewModel.
+/// toggleRowPlayback`) to decide start vs. stop from its own already-known
+/// `playingCueID`; this view only ever renders whichever icon
+/// `playingRowID` implies, never decides play/stop itself.
 public struct CueTableView: View {
     private let rows: [CueTableRow]
+    private let playingRowID: Int?
+    private let onRowSelected: (Int) -> Void
+    private let onPlayToggle: (Int) -> Void
     private let onDelete: (Int) -> Void
 
-    public init(rows: [CueTableRow], onDelete: @escaping (Int) -> Void = { _ in }) {
+    public init(
+        rows: [CueTableRow],
+        playingRowID: Int? = nil,
+        onRowSelected: @escaping (Int) -> Void = { _ in },
+        onPlayToggle: @escaping (Int) -> Void = { _ in },
+        onDelete: @escaping (Int) -> Void = { _ in }
+    ) {
         self.rows = rows
+        self.playingRowID = playingRowID
+        self.onRowSelected = onRowSelected
+        self.onPlayToggle = onPlayToggle
         self.onDelete = onDelete
     }
 
     public var body: some View {
         Table(rows) {
-            TableColumn("#") { row in
-                Text("\(row.number)")
-                    .font(Theme.Typography.font(.regular, size: 12))
+            TableColumn("") { row in
+                let isPlayingThisRow = row.id == playingRowID
+                Button {
+                    onPlayToggle(row.id)
+                } label: {
+                    Image(systemName: isPlayingThisRow ? "stop.fill" : "play.fill")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundStyle(Theme.Colors.white)
+                }
+                .buttonStyle(SharpButtonStyle(emphasis: .secondary, surface: .primary))
+                .accessibilityLabel(Text(isPlayingThisRow ? "Stop cue \(row.number)" : "Play cue \(row.number)"))
             }
             .width(32)
 
@@ -71,12 +112,18 @@ public struct CueTableView: View {
                             ? Theme.Colors.ghostTextPrimary
                             : Theme.Surface.primary.foreground
                     )
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
+                    .onTapGesture { onRowSelected(row.id) }
             }
 
             TableColumn("TC In") { row in
                 Text(row.tcIn)
                     .font(Theme.Typography.font(.regular, size: 12))
                     .monospacedDigit()
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
+                    .onTapGesture { onRowSelected(row.id) }
             }
             .width(90)
 
@@ -84,6 +131,9 @@ public struct CueTableView: View {
                 Text(row.tcOut)
                     .font(Theme.Typography.font(.regular, size: 12))
                     .monospacedDigit()
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
+                    .onTapGesture { onRowSelected(row.id) }
             }
             .width(90)
 
@@ -91,6 +141,9 @@ public struct CueTableView: View {
                 Text(row.length)
                     .font(Theme.Typography.font(.regular, size: 12))
                     .monospacedDigit()
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
+                    .onTapGesture { onRowSelected(row.id) }
             }
             .width(60)
 
@@ -126,7 +179,7 @@ public struct CueTableView: View {
         ),
         CueTableRow(id: 1, number: 2, title: "", tcIn: "—", tcOut: "—", length: "00:00"),
         CueTableRow(id: 2, number: 3, title: "End Credits", tcIn: "00:05:00:00", tcOut: "00:05:45:12", length: "00:45"),
-    ])
+    ], playingRowID: 1) // row 2 shows the stop icon; the rest show play
     .frame(width: 500, height: 200)
     .padding()
 }

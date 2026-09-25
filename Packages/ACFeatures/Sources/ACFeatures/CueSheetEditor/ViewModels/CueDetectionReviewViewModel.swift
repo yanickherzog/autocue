@@ -33,6 +33,17 @@ public final class CueDetectionReviewViewModel {
     /// stable; bundling them would force needless recomputation on every
     /// playhead tick.
     public private(set) var playheadOffsetSeconds: Double?
+    /// Which cue's row (by `CueTableRow.id`/`markers` index) `CueTableView`
+    /// should show the stop icon for — `nil` when nothing is playing, or
+    /// when what's playing isn't a specific cue's bounded span
+    /// (`playFromPoint`/`togglePlayback`). Set optimistically by
+    /// `playMarkerSpan`/`toggleRowPlayback` (same pattern as
+    /// `lastKnownPlaybackPositionSeconds`, below), cleared by
+    /// `playFromPoint`, `togglePlayback`'s "start" branch, and the
+    /// `.stopped` case in `startObservingPlayback()`'s stream — never by
+    /// `.playing`/`.paused`, since `AudioPlaybackController` itself has no
+    /// concept of "which cue," only position.
+    public private(set) var playingCueID: Int?
     /// Drives the play/stop button's icon and spacebar's toggle direction —
     /// `true` only while `AudioPlaybackController.stateUpdates` reports
     /// `.playing`, `false` for both `.paused` and `.stopped` (this screen
@@ -175,6 +186,7 @@ public final class CueDetectionReviewViewModel {
                 case .stopped:
                     playheadOffsetSeconds = nil
                     isPlaying = false
+                    playingCueID = nil
                 }
             }
         }
@@ -276,6 +288,7 @@ public final class CueDetectionReviewViewModel {
     // MARK: - Playback
 
     public func playFromPoint(atSeconds seconds: Double) {
+        playingCueID = nil
         lastKnownPlaybackPositionSeconds = seconds
         Task { [weak self] in
             guard let self else { return }
@@ -290,6 +303,7 @@ public final class CueDetectionReviewViewModel {
     public func playMarkerSpan(markerID: Int) {
         guard cues.indices.contains(markerID), let start = cues[markerID].startTimecode else { return }
         let end = start.offsetSeconds + cues[markerID].duration.seconds
+        playingCueID = markerID
         lastKnownPlaybackPositionSeconds = start.offsetSeconds
         Task { [weak self] in
             guard let self else { return }
@@ -298,6 +312,21 @@ public final class CueDetectionReviewViewModel {
             } catch {
                 errorMessage = Self.reimportErrorMessage
             }
+        }
+    }
+
+    /// `CueTableView`'s play/stop row icon — the icon's own play/stop state
+    /// is driven by `playingCueID`, so this only needs to decide which
+    /// direction to go: stop if this row is the one currently playing,
+    /// otherwise start its span exactly like a plain row click
+    /// (`playMarkerSpan`). The rest of the row (any column but the icon)
+    /// still only ever starts playback, never stops it — this is the one
+    /// control on this screen that can do both, per-row.
+    public func toggleRowPlayback(markerID: Int) {
+        if playingCueID == markerID {
+            Task { [weak self] in await self?.audioPlaybackController.stop() }
+        } else {
+            playMarkerSpan(markerID: markerID)
         }
     }
 
@@ -328,6 +357,7 @@ public final class CueDetectionReviewViewModel {
             Task { [weak self] in await self?.audioPlaybackController.stop() }
             return
         }
+        playingCueID = nil
         let startSeconds = lastKnownPlaybackPositionSeconds
         Task { [weak self] in
             guard let self else { return }

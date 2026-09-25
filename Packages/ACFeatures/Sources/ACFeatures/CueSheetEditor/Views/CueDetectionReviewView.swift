@@ -132,7 +132,19 @@ public struct CueDetectionReviewView: View {
                 )
                 .frame(height: max(160, geometry.size.height / 3))
 
-                CueTableView(rows: viewModel.tableRows) { index in
+                // Row click plays that cue's span — the same
+                // play-cue-span mechanism (`playMarkerSpan`) a waveform
+                // marker click already triggers, just a second entry
+                // point into it, so a cut-off cue start can be audited
+                // directly from the list. The leading icon is the one
+                // control that also stops — everywhere else in the row
+                // only ever starts playback.
+                CueTableView(
+                    rows: viewModel.tableRows,
+                    playingRowID: viewModel.playingCueID,
+                    onRowSelected: viewModel.playMarkerSpan,
+                    onPlayToggle: viewModel.toggleRowPlayback
+                ) { index in
                     viewModel.deleteCue(at: index, undoManager: undoManager)
                 }
             }
