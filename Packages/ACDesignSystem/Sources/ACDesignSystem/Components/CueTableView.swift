@@ -180,6 +180,6 @@ public struct CueTableView: View {
         CueTableRow(id: 1, number: 2, title: "", tcIn: "—", tcOut: "—", length: "00:00"),
         CueTableRow(id: 2, number: 3, title: "End Credits", tcIn: "00:05:00:00", tcOut: "00:05:45:12", length: "00:45"),
     ], playingRowID: 1) // row 2 shows the stop icon; the rest show play
-    .frame(width: 500, height: 200)
-    .padding()
+        .frame(width: 500, height: 200)
+        .padding()
 }
