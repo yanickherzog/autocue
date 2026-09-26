@@ -17,7 +17,8 @@ final class DetectCuesUseCaseTests: XCTestCase {
     static func makeProject(
         cues: [Cue] = [],
         audioAsset: AudioAsset,
-        timecodeStart: Timecode? = nil
+        timecodeStart: Timecode? = nil,
+        people: [Person] = []
     ) -> Project {
         Project(
             name: "Reel One",
@@ -34,7 +35,8 @@ final class DetectCuesUseCaseTests: XCTestCase {
                 timecodeStart: timecodeStart,
                 declarationDate: Date(timeIntervalSince1970: 0)
             ),
-            cues: cues
+            cues: cues,
+            people: people
         )
     }
 
@@ -69,9 +71,12 @@ final class DetectCuesUseCaseTests: XCTestCase {
         asset: AudioAsset,
         existingCues: [Cue] = [],
         settings: AnalysisSettings = AnalysisSettings(),
-        timecodeStart: Timecode? = nil
+        timecodeStart: Timecode? = nil,
+        people: [Person] = []
     ) async throws -> [Cue] {
-        let project = Self.makeProject(cues: existingCues, audioAsset: asset, timecodeStart: timecodeStart)
+        let project = Self.makeProject(
+            cues: existingCues, audioAsset: asset, timecodeStart: timecodeStart, people: people
+        )
         let projectRepository = InMemoryProjectRepository(projects: [project])
         let audioAnalysisRepository = InMemoryAudioAnalysisRepository(
             importedAsset: asset,
@@ -230,6 +235,84 @@ final class DetectCuesUseCaseTests: XCTestCase {
         XCTAssertTrue(result.contains(manualCue))
         XCTAssertFalse(result.contains(staleDetectedCue))
         XCTAssertTrue(result.contains { $0.source == .detectedFromAudio && $0.startTimecode?.offsetSeconds == 10 })
+    }
+
+    // MARK: - Title/right-holder auto-population (ROADMAP.md D10)
+
+    func test_freshlyDetectedCue_getsDefaultTitle_projectTitleUnderscoreScoreUnderscoreCueDashN() async throws {
+        let asset = Self.makeAsset()
+        let detected = [
+            Self.makeDetectedCue(startSeconds: 10, duration: 30),
+            Self.makeDetectedCue(startSeconds: 100, duration: 20),
+        ]
+
+        let result = try await run(detectedCues: detected, asset: asset)
+
+        XCTAssertEqual(result.map(\.title), ["A Swiss Story_Score_Cue-1", "A Swiss Story_Score_Cue-2"])
+    }
+
+    /// Numbering reflects each fresh cue's *final* position in the combined,
+    /// sorted list — including a preserved `.manual` cue that sits between
+    /// two freshly-detected ones — not just its position within this run's
+    /// own detected batch.
+    func test_freshCueNumbering_reflectsFinalPositionAmongPreservedCuesToo() async throws {
+        let asset = Self.makeAsset()
+        let manualCue = Cue(
+            title: "Hand-placed",
+            duration: MediaDuration(seconds: 5),
+            rightHolders: [],
+            source: .manual,
+            startTimecode: Timecode(offsetSeconds: 50)
+        )
+        let detected = [
+            Self.makeDetectedCue(startSeconds: 10, duration: 30), // before the manual cue
+            Self.makeDetectedCue(startSeconds: 100, duration: 20), // after the manual cue
+        ]
+
+        let result = try await run(detectedCues: detected, asset: asset, existingCues: [manualCue])
+
+        XCTAssertEqual(result.count, 3)
+        XCTAssertEqual(result[0].title, "A Swiss Story_Score_Cue-1")
+        XCTAssertEqual(result[1].title, "Hand-placed") // preserved, untouched
+        XCTAssertEqual(result[2].title, "A Swiss Story_Score_Cue-3")
+    }
+
+    func test_freshlyDetectedCue_autoPopulatesComposerAndArrangerRostersIndependently() async throws {
+        let composer = Person(firstName: "Ada", lastName: "Lovelace", intendedRoles: [.composer])
+        let arranger1 = Person(firstName: "Grace", lastName: "Hopper", intendedRoles: [.arranger])
+        let arranger2 = Person(firstName: "Alan", lastName: "Turing", intendedRoles: [.arranger])
+        let asset = Self.makeAsset()
+        let detected = [Self.makeDetectedCue(startSeconds: 10, duration: 30)]
+
+        let result = try await run(
+            detectedCues: detected, asset: asset, people: [composer, arranger1, arranger2]
+        )
+
+        let cue = try XCTUnwrap(result.first)
+        let composerRows = cue.rightHolders.filter { $0.role == .composer }
+        let arrangerRows = cue.rightHolders.filter { $0.role == .arranger }
+        XCTAssertEqual(composerRows.count, 1)
+        XCTAssertEqual(composerRows.first?.party, .person(composer.id))
+        XCTAssertEqual(composerRows.first?.performanceBroadcastShare, 100)
+        XCTAssertEqual(composerRows.first?.mechanicalRightsShare, 100)
+        // Two arrangers -- their own independent pool, 50/50, unaffected by
+        // the composer pool having exactly one member at 100%.
+        XCTAssertEqual(arrangerRows.count, 2)
+        XCTAssertEqual(Set(arrangerRows.map(\.performanceBroadcastShare)), [50])
+        XCTAssertEqual(Set(arrangerRows.map(\.mechanicalRightsShare)), [50])
+        XCTAssertTrue(ValidateCueRightHolderSharesUseCase.validate(cue).isEmpty)
+    }
+
+    /// A person's Interpret*in (`.performer`) roster membership never
+    /// auto-populates a cue — only Composer/Arranger do.
+    func test_performerRosterMembership_isNeverAutoPopulated() async throws {
+        let performer = Person(firstName: "Katherine", lastName: "Johnson", intendedRoles: [.performer])
+        let asset = Self.makeAsset()
+        let detected = [Self.makeDetectedCue(startSeconds: 10, duration: 30)]
+
+        let result = try await run(detectedCues: detected, asset: asset, people: [performer])
+
+        XCTAssertEqual(result.first?.rightHolders, [])
     }
 
     func test_totalMusicRuntimeRecomputedAfterDetection() async throws {

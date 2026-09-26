@@ -290,7 +290,11 @@ struct ProjectWindowView: View {
         case .needsCueDetection:
             CueDetectionProgressView(viewModel: cueDetectionViewModel)
         case .readyForReview:
-            CueDetectionReviewView(viewModel: cueDetectionReviewViewModel, undoManager: undoManager)
+            CueDetectionReviewView(
+                viewModel: cueDetectionReviewViewModel,
+                directoryViewModel: rightHolderDirectoryViewModel,
+                undoManager: undoManager
+            )
         }
     }
 }

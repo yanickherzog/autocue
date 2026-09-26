@@ -41,7 +41,8 @@ extension CueDetectionReviewViewModel {
                 title: cue.title,
                 tcIn: tcIn,
                 tcOut: tcOut,
-                length: Self.formattedLength(cue.duration)
+                length: Self.formattedLength(cue.duration),
+                hasValidationIssue: !ValidateCueRightHolderSharesUseCase.validate(cue).isEmpty
             )
         }
     }

@@ -22,14 +22,30 @@ public struct CueTableRow: Identifiable, Equatable, Sendable {
     public let tcIn: String
     public let tcOut: String
     public let length: String
+    /// `true` when `ValidateCueRightHolderSharesUseCase` (`ACCore`) reports
+    /// any issue for this cue (`ROADMAP.md` D10/T10.3) — a non-blocking
+    /// warning indicator only, per SPEC.md §4.6: a cue's shares can be left
+    /// non-100% at edit time, surfaced here, only export-blocking at D11.
+    /// Computed by the `ACFeatures`-layer mapper, never here — this view has
+    /// no knowledge of `Cue`/`CueRightHolder` to compute it itself.
+    public let hasValidationIssue: Bool
 
-    public init(id: Int, number: Int, title: String, tcIn: String, tcOut: String, length: String) {
+    public init(
+        id: Int,
+        number: Int,
+        title: String,
+        tcIn: String,
+        tcOut: String,
+        length: String,
+        hasValidationIssue: Bool = false
+    ) {
         self.id = id
         self.number = number
         self.title = title
         self.tcIn = tcIn
         self.tcOut = tcOut
         self.length = length
+        self.hasValidationIssue = hasValidationIssue
     }
 }
 
@@ -67,25 +83,53 @@ public struct CueTableRow: Identifiable, Equatable, Sendable {
 /// toggleRowPlayback`) to decide start vs. stop from its own already-known
 /// `playingCueID`; this view only ever renders whichever icon
 /// `playingRowID` implies, never decides play/stop itself.
+///
+/// **No reorder UI** — a real ↑/↓ button pair was built and then removed
+/// again at the same Deliverable's request: every real cue goes through
+/// AutoCue's own detection process (there's no disconnected, position-less
+/// manually-added cue to reorder in the first place, per the removal of
+/// "+ Add Cue" in the same pass). The underlying `UpdateCueUseCase.reorder`
+/// and its ViewModel-level wiring are deliberately left in place, unused,
+/// in case a future revision needs them again — see `docs/DECISIONS.md`.
 public struct CueTableView: View {
     private let rows: [CueTableRow]
     private let playingRowID: Int?
     private let onRowSelected: (Int) -> Void
     private let onPlayToggle: (Int) -> Void
+    private let onTitleChanged: (Int, String) -> Void
+    private let onOpenDetail: (Int) -> Void
     private let onDelete: (Int) -> Void
+    /// **Found during real manual testing, not anticipated at design time:**
+    /// `CueDetectionReviewView`'s existing `.onKeyPress(.space)` (D9,
+    /// play/pause) intercepts a space keystroke *before* a focused `TextField`
+    /// in this component gets to insert it — confirmed live: typing
+    /// "Test Theme" into a newly-added cue's title produced "TestTheme,"
+    /// every space silently eaten. Tracking which row's title field (if any)
+    /// currently has focus, and reporting that up via this closure, is what
+    /// lets the host screen disable that spacebar shortcut while a title is
+    /// actually being edited — the fix has to live at this level, since only
+    /// this component's own `TextField`s know when they have focus.
+    private let onTitleFieldFocusChanged: (Bool) -> Void
+    @FocusState private var focusedTitleRowID: Int?
 
     public init(
         rows: [CueTableRow],
         playingRowID: Int? = nil,
         onRowSelected: @escaping (Int) -> Void = { _ in },
         onPlayToggle: @escaping (Int) -> Void = { _ in },
-        onDelete: @escaping (Int) -> Void = { _ in }
+        onTitleChanged: @escaping (Int, String) -> Void = { _, _ in },
+        onOpenDetail: @escaping (Int) -> Void = { _ in },
+        onDelete: @escaping (Int) -> Void = { _ in },
+        onTitleFieldFocusChanged: @escaping (Bool) -> Void = { _ in }
     ) {
         self.rows = rows
         self.playingRowID = playingRowID
         self.onRowSelected = onRowSelected
         self.onPlayToggle = onPlayToggle
+        self.onTitleChanged = onTitleChanged
+        self.onOpenDetail = onOpenDetail
         self.onDelete = onDelete
+        self.onTitleFieldFocusChanged = onTitleFieldFocusChanged
     }
 
     public var body: some View {
@@ -104,17 +148,13 @@ public struct CueTableView: View {
             }
             .width(32)
 
+            // Editable (`ROADMAP.md` D10/T10.2) — a real `TextField`, not the
+            // read-only `Text` this column used through D9's pull-forward.
+            // TC In/TC Out/Length below are unaffected: they keep the
+            // existing click-plays-span behavior, so typing a title never
+            // competes with auditioning a cue's boundaries.
             TableColumn("Title") { row in
-                Text(row.title.isEmpty ? "Untitled" : row.title)
-                    .font(Theme.Typography.font(.regular, size: 12))
-                    .foregroundStyle(
-                        row.title.isEmpty
-                            ? Theme.Colors.ghostTextPrimary
-                            : Theme.Surface.primary.foreground
-                    )
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .contentShape(Rectangle())
-                    .onTapGesture { onRowSelected(row.id) }
+                EditableTitleCell(row: row, focusedTitleRowID: $focusedTitleRowID, onTitleChanged: onTitleChanged)
             }
 
             TableColumn("TC In") { row in
@@ -147,6 +187,27 @@ public struct CueTableView: View {
             }
             .width(60)
 
+            // Opens the row's detail sheet (`ROADMAP.md` D10/T10.2:
+            // `CueRowDetailView` — direct timecode edit, right-holder
+            // editing) — a dedicated column rather than repurposing the
+            // row's existing click-to-play gesture, which stays reachable on
+            // TC In/TC Out/Length exactly as it was before this pass. Header
+            // reads "Royalty Split" (not blank) since that's what this
+            // column's sheet is mostly used for; icon is a gear, not the
+            // three-dot "more" glyph originally used here.
+            TableColumn("Royalty Split") { row in
+                Button {
+                    onOpenDetail(row.id)
+                } label: {
+                    Image(systemName: "gearshape")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(Theme.Colors.white)
+                }
+                .buttonStyle(SharpButtonStyle(emphasis: .secondary, surface: .primary))
+                .accessibilityLabel(Text("Edit details for cue \(row.number)"))
+            }
+            .width(96)
+
             TableColumn("") { row in
                 Button {
                     onDelete(row.id)
@@ -164,6 +225,90 @@ public struct CueTableView: View {
             .width(36)
         }
         .font(Theme.Typography.font(.regular, size: 12))
+        .onChange(of: focusedTitleRowID) { _, newValue in
+            onTitleFieldFocusChanged(newValue != nil)
+        }
+    }
+}
+
+/// The Title column's cell — a real `TextField`, backed by local `@State`
+/// seeded from `row.title` so keystrokes render immediately without waiting
+/// on a round-trip through the caller's debounced save (`ROADMAP.md`
+/// D10/T10.2, SPEC.md §4.18). A dedicated child view, not an inline closure,
+/// specifically so this `@State` survives `Table`'s own re-diffing of the
+/// row closure across re-renders — SwiftUI keys per-row identity by
+/// `CueTableRow.id`, so this cell's local text stays put across unrelated
+/// state changes (e.g. another row's edit, playback ticking) as long as this
+/// row's `id` doesn't change.
+///
+/// Also renders the small validation-warning glyph (`row.hasValidationIssue`)
+/// leading the field — a non-blocking indicator only (SPEC.md §4.6): a cue's
+/// shares can be left non-100% at edit time, this just makes that visible
+/// per-row without stopping anything.
+private struct EditableTitleCell: View {
+    let row: CueTableRow
+    var focusedTitleRowID: FocusState<Int?>.Binding
+    let onTitleChanged: (Int, String) -> Void
+
+    @State private var text: String
+
+    init(
+        row: CueTableRow,
+        focusedTitleRowID: FocusState<Int?>.Binding,
+        onTitleChanged: @escaping (Int, String) -> Void
+    ) {
+        self.row = row
+        self.focusedTitleRowID = focusedTitleRowID
+        self.onTitleChanged = onTitleChanged
+        _text = State(initialValue: row.title)
+    }
+
+    var body: some View {
+        HStack(spacing: 4) {
+            if row.hasValidationIssue {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 10))
+                    .foregroundStyle(Theme.Colors.accent)
+                    .accessibilityLabel(Text("Right-holder shares don't sum to 100% for cue \(row.number)"))
+            }
+            TextField(
+                "",
+                text: $text,
+                prompt: Text("Untitled").foregroundStyle(Theme.Colors.ghostTextPrimary)
+            )
+            .textFieldStyle(.plain)
+            .font(Theme.Typography.font(.regular, size: 12))
+            // White, not `Theme.Surface.primary.foreground` (Carbon Black) —
+            // found during real manual testing: this `Table`'s row
+            // background renders dark (a native `NSTableView` appearance
+            // leak that follows the system's actual Light/Dark Mode setting,
+            // independent of this screen's own hardcoded white
+            // `Theme.Surface.primary` background elsewhere), so Carbon Black
+            // text here was nearly unreadable rather than merely
+            // low-contrast. White stays legible against that real row
+            // background regardless of the system appearance; fixing the
+            // underlying leak so `Table` itself always renders light,
+            // matching `CLAUDE.md`'s "AutoCue does not adapt to system
+            // Light/Dark Mode," is a separate, broader follow-up (`Table` is
+            // this project's one real AppKit-interop gap, `CLAUDE.md`'s
+            // Technology Stack table), not scoped to this fix.
+            .foregroundStyle(Theme.Colors.white)
+            .tint(Theme.Colors.white.opacity(0.3))
+            .focused(focusedTitleRowID, equals: row.id)
+            // An external update (a fresh live-stream emission after this
+            // row's own debounced save lands, or an unrelated edit from
+            // another window) may hand this cell a new `row` value with a
+            // different `title` — resync local state only when it actually
+            // differs, so this never clobbers a keystroke the user is
+            // mid-typing when the two happen to coincide.
+            .onChange(of: row.title) { _, newValue in
+                if newValue != text {
+                    text = newValue
+                }
+            }
+            .onChange(of: text) { _, newValue in onTitleChanged(row.id, newValue) }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
@@ -177,9 +322,24 @@ public struct CueTableView: View {
             tcOut: "00:00:30:00",
             length: "00:20"
         ),
-        CueTableRow(id: 1, number: 2, title: "", tcIn: "—", tcOut: "—", length: "00:00"),
-        CueTableRow(id: 2, number: 3, title: "End Credits", tcIn: "00:05:00:00", tcOut: "00:05:45:12", length: "00:45"),
+        CueTableRow(
+            id: 1,
+            number: 2,
+            title: "",
+            tcIn: "—",
+            tcOut: "—",
+            length: "00:00",
+            hasValidationIssue: true
+        ),
+        CueTableRow(
+            id: 2,
+            number: 3,
+            title: "End Credits",
+            tcIn: "00:05:00:00",
+            tcOut: "00:05:45:12",
+            length: "00:45"
+        ),
     ], playingRowID: 1) // row 2 shows the stop icon; the rest show play
-        .frame(width: 500, height: 200)
+        .frame(width: 620, height: 200)
         .padding()
 }

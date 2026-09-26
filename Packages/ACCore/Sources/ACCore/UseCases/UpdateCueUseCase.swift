@@ -124,11 +124,19 @@ public struct UpdateCueUseCase: Sendable {
                 startTimecode: start,
                 notes: original.notes
             )
+            // Title/right-holders auto-populated the same way a freshly
+            // detected cue is (`ROADMAP.md` D10, `CueAutoPopulation`) — the
+            // later half is a genuinely new work, not a copy of the
+            // original's (SPEC.md §4.19: copying the original's title/
+            // rights onto both halves would be a real SUISA-accuracy risk,
+            // since split's whole premise is usually two *different* works).
+            // `index + 2`: the later half's own 1-indexed position after
+            // insertion at `index + 1` (zero-indexed).
             let later = Cue(
                 id: secondCueID,
-                title: "",
+                title: CueAutoPopulation.defaultTitle(projectTitle: project.setup.title, cueNumber: index + 2),
                 duration: MediaDuration(seconds: originalEnd - atOffsetSeconds),
-                rightHolders: [],
+                rightHolders: CueAutoPopulation.defaultRightHolders(people: project.people),
                 isArrangementOfProtectedOriginal: false,
                 source: .manual,
                 startTimecode: Timecode(offsetSeconds: atOffsetSeconds),

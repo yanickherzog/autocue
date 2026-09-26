@@ -12,9 +12,8 @@ import Foundation
 /// waveform overview** — never a separately-mutated cache. A boundary
 /// drag/split/merge writes through `UpdateCueUseCase`, and the resulting
 /// live-stream re-emission is what updates `cues` here, not a locally
-/// applied optimistic mutation. `visibleRangeSeconds` is separate,
-/// ViewModel-owned UI state, untouched by that re-emission, so a structural
-/// edit never resets the user's current zoom/pan position.
+/// applied optimistic mutation. `visibleRangeSeconds` is separate, untouched
+/// UI state, so a structural edit never resets the user's zoom/pan position.
 @Observable
 @MainActor
 public final class CueDetectionReviewViewModel {
@@ -92,7 +91,7 @@ public final class CueDetectionReviewViewModel {
     var overviewPeaks: WaveformPeaks?
     var hasLoadedInitialRange = false
     var hasPreparedPlayback = false
-    /// Unlike the latches above, never reset across cycles — see `startObservingPlayback()`.
+    /// Unlike the latches above, never reset — see `startObservingPlayback()`.
     private var hasStartedObservingPlayback = false
     private var pixelWidth: Double = 800
     /// `@ObservationIgnored` + `nonisolated(unsafe)`: `deinit` is never
@@ -102,10 +101,17 @@ public final class CueDetectionReviewViewModel {
     private nonisolated(unsafe) var detailFetchTask: Task<Void, Never>?
     @ObservationIgnored
     private nonisolated(unsafe) var playbackObservationTask: Task<Void, Never>?
+    /// Per-`Cue.ID` debounce tasks for `+RowDetail.swift`'s title field edit.
+    /// `startTimecodeEditDebounceTasks` backs that file's direct-timecode
+    /// edit — UI-unreachable since D10's Start Timecode field was dropped,
+    /// kept unused like `UpdateCueUseCase.add`/`.reorder` (`docs/DECISIONS.md`).
+    @ObservationIgnored nonisolated(unsafe) var titleEditDebounceTasks: [Cue.ID: Task<Void, Never>] = [:]
+    @ObservationIgnored nonisolated(unsafe) var startTimecodeEditDebounceTasks: [Cue.ID: Task<Void, Never>] = [:]
 
     private static let reimportErrorMessage =
         "This file's audio could no longer be located. Re-import it to restore waveform and playback access."
     private static let detailFetchDebounceNanoseconds: UInt64 = 150_000_000
+    static let fieldEditDebounceNanoseconds: UInt64 = 500_000_000
 
     public init(
         projectID: Project.ID,

@@ -114,7 +114,7 @@ final class UpdateCueUseCaseTests: XCTestCase {
 
     // MARK: - Split
 
-    func test_split_earlierHalfKeepsIDAndNonPositionFields_laterHalfIsFreshWithAddCueDefaults() async throws {
+    func test_split_earlierHalfKeepsIDAndNonPositionFields_laterHalfIsFreshWithAutoPopulatedDefaults() async throws {
         let rightHolder = CueRightHolder(
             party: .person(UUID()),
             role: .composer,
@@ -147,9 +147,16 @@ final class UpdateCueUseCaseTests: XCTestCase {
         XCTAssertEqual(first.source, .manual)
 
         XCTAssertNotEqual(second.id, cue.id)
-        XCTAssertEqual(second.title, "")
+        // "ProjectTitle_Score_Cue-N" (ROADMAP.md D10) -- a real, persisted
+        // default (not an empty title), using the later half's own final
+        // 1-indexed position (2nd of 2 cues after the split).
+        XCTAssertEqual(second.title, "A Swiss Story_Score_Cue-2")
         XCTAssertNil(second.workNumber)
         XCTAssertNil(second.notes)
+        // Empty here because `Self.makeProject`'s fixture has no `people` at
+        // all -- CueAutoPopulation.defaultRightHolders(people:) correctly
+        // yields [] when there's no composer/arranger roster to draw from,
+        // not because right-holder auto-population doesn't apply to split.
         XCTAssertTrue(second.rightHolders.isEmpty)
         XCTAssertFalse(second.isArrangementOfProtectedOriginal)
         XCTAssertEqual(second.startTimecode, Timecode(offsetSeconds: 130))

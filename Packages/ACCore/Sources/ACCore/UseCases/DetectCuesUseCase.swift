@@ -74,9 +74,27 @@ public struct DetectCuesUseCase: Sendable {
                 timecodeStart: project.setup.timecodeStart
             )
             let preserved = project.cues.filter { $0.source != .detectedFromAudio }
-            let combined = (preserved + ffoaFiltered).sorted { lhs, rhs in
-                (lhs.startTimecode?.offsetSeconds ?? .infinity) < (rhs.startTimecode?.offsetSeconds ?? .infinity)
-            }
+            // Freshly (re-)detected/embedded-marker cues from *this* run only
+            // — `preserved` cues (including any `.embeddedMarker` ones from a
+            // previous run) already have their own real title/right-holders
+            // and must never be touched. Title/right-holder auto-population
+            // (`ROADMAP.md` D10) numbers by each fresh cue's final display
+            // position in the combined, sorted list, matching what
+            // `CueTableView`/the waveform's "CUE N" label actually show.
+            let freshIDs = Set(ffoaFiltered.map(\.id))
+            let combined = (preserved + ffoaFiltered)
+                .sorted { lhs, rhs in
+                    (lhs.startTimecode?.offsetSeconds ?? .infinity) < (rhs.startTimecode?.offsetSeconds ?? .infinity)
+                }
+                .enumerated()
+                .map { index, cue -> Cue in
+                    guard freshIDs.contains(cue.id) else { return cue }
+                    return cue.autoPopulated(
+                        cueNumber: index + 1,
+                        projectTitle: project.setup.title,
+                        people: project.people
+                    )
+                }
             return Project(
                 id: project.id,
                 name: project.name,

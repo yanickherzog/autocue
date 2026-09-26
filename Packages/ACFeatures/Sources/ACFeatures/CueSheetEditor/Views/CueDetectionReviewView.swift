@@ -10,8 +10,26 @@ import SwiftUI
 /// waveform-visualizer convention independent of the surrounding screen.
 public struct CueDetectionReviewView: View {
     @Bindable private var viewModel: CueDetectionReviewViewModel
+    /// `ProjectWindowView`'s already-existing, per-window instance — the
+    /// same one `SetupView` uses (`ROADMAP.md` D10/T10.3) — so
+    /// `CueRowDetailView`'s embedded `CueRightHolderEditorView` reuses the
+    /// existing `PartyPickerView`/directory rather than a second, redundant
+    /// one.
+    private let directoryViewModel: RightHolderDirectoryViewModel
     @FocusState private var isFocused: Bool
     @State private var isConfirmingClearAudio = false
+    @State private var rowDetailTarget: RowDetailTarget?
+    /// **Real bug found during manual testing, not anticipated at design
+    /// time:** without this, typing a space into `CueTableView`'s new
+    /// editable Title field was silently swallowed by this screen's own
+    /// `.onKeyPress(.space)` handler below (D9's play/pause spacebar
+    /// shortcut) before the `TextField` ever saw it — confirmed live:
+    /// typing "Test Theme" produced "TestTheme," every space eaten by
+    /// `togglePlayback()` firing instead. `CueTableView` reports whether any
+    /// of its title fields currently has focus via `onTitleFieldFocusChanged`;
+    /// this screen uses that to disable the spacebar shortcut for exactly as
+    /// long as a title is actually being edited.
+    @State private var isEditingCueTitle = false
     /// `ProjectWindowView` constructs this window's own `UndoManager` and
     /// passes it here directly — a plain `init` parameter, not SwiftUI's
     /// environment (`ProjectUndoManagerFocusedValue.swift`, App target,
@@ -36,8 +54,13 @@ public struct CueDetectionReviewView: View {
     /// difference entirely, rather than tuning a font size per icon.
     private static let headerIconSize: CGFloat = 16
 
-    public init(viewModel: CueDetectionReviewViewModel, undoManager: UndoManager?) {
+    public init(
+        viewModel: CueDetectionReviewViewModel,
+        directoryViewModel: RightHolderDirectoryViewModel,
+        undoManager: UndoManager?
+    ) {
         self.viewModel = viewModel
+        self.directoryViewModel = directoryViewModel
         self.undoManager = undoManager
     }
 
@@ -143,10 +166,21 @@ public struct CueDetectionReviewView: View {
                     rows: viewModel.tableRows,
                     playingRowID: viewModel.playingCueID,
                     onRowSelected: viewModel.playMarkerSpan,
-                    onPlayToggle: viewModel.toggleRowPlayback
-                ) { index in
-                    viewModel.deleteCue(at: index, undoManager: undoManager)
-                }
+                    onPlayToggle: viewModel.toggleRowPlayback,
+                    onTitleChanged: { index, newTitle in
+                        guard viewModel.cues.indices.contains(index) else { return }
+                        viewModel.titleChanged(cueID: viewModel.cues[index].id, newTitle: newTitle)
+                    },
+                    onOpenDetail: { index in
+                        rowDetailTarget = RowDetailTarget(id: index)
+                    },
+                    onDelete: { index in
+                        viewModel.deleteCue(at: index, undoManager: undoManager)
+                    },
+                    onTitleFieldFocusChanged: { isEditing in
+                        isEditingCueTitle = isEditing
+                    }
+                )
             }
             .padding(Theme.Spacing.lg)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -156,11 +190,36 @@ public struct CueDetectionReviewView: View {
         .focusable()
         .focused($isFocused)
         .onKeyPress(.space) {
+            guard !isEditingCueTitle else { return .ignored }
             viewModel.togglePlayback()
             return .handled
         }
         .task { await viewModel.load() }
         .task { viewModel.startObservingPlayback() }
         .task { isFocused = true }
+        // `SetupView` already loads this same, per-window
+        // `directoryViewModel` instance — but a user who switches straight
+        // to the Cues tab without ever visiting Setup first would otherwise
+        // see an empty right-holder directory here. Safe to call again:
+        // `loadDirectory()`'s own doc comment states it's idempotent/safe to
+        // call repeatedly.
+        .task { await directoryViewModel.loadDirectory() }
+        .sheet(item: $rowDetailTarget) { target in
+            CueRowDetailView(
+                cueIndex: target.id,
+                viewModel: viewModel,
+                directoryViewModel: directoryViewModel,
+                undoManager: undoManager,
+                onDismiss: { rowDetailTarget = nil }
+            )
+        }
     }
+}
+
+/// Wraps a row index as `Identifiable` for `.sheet(item:)` — `Int` itself
+/// isn't `Identifiable`, and a plain `Bool`/index pair would need to be kept
+/// in sync manually the way `PartyPickerView`'s own `personBeingEdited`/
+/// `labelBeingEdited` avoid by using `.sheet(item:)` in the first place.
+private struct RowDetailTarget: Identifiable {
+    let id: Int
 }
