@@ -26,6 +26,8 @@ identifier_name:
   min_length: 2
   excluded:
     - id
+    - x # LayoutRect.x — a geometry primitive; CGRect-style coordinate naming (SPEC.md §4.16)
+    - y # LayoutRect.y — see x, above
   allowed_symbols:
     - "_" # e.g. TimecodeFrameRate.fps29_97Drop — deliberate, matches the real frame-rate number
 

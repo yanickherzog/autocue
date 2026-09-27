@@ -69,6 +69,10 @@ public extension Timecode {
 
     /// `HH:MM:SS:FF`, zero-padded. Drop-frame timecode conventionally uses a
     /// `;` separator before the frame field instead of `:` — applied here.
+    /// Already public (via this `public extension`) — now genuinely used
+    /// cross-package by `ACExport`'s cue sheet layout computation
+    /// (`ROADMAP.md` D11/T11.2, SPEC.md §4.3's TC In/TC Out rule) as of this
+    /// Task, not just within `ACCore` itself.
     func formatted(at frameRate: TimecodeFrameRate) -> String {
         let parts = components(at: frameRate)
         let frameSeparator = frameRate.isDropFrame ? ";" : ":"

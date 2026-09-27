@@ -9,6 +9,7 @@ let package = Package(
     ],
     dependencies: [
         .package(path: "../ACCore"),
+        .package(path: "../ACTestSupport"),
         // Pinned via SPM's normal semver range, resolved at build/resolve time by
         // Xcode/the developer's machine — this is a build-time dependency fetch,
         // not a runtime network call, so it doesn't conflict with CLAUDE.md's
@@ -27,7 +28,7 @@ let package = Package(
         ),
         .testTarget(
             name: "ACExportTests",
-            dependencies: ["ACExport"],
+            dependencies: ["ACExport", "ACTestSupport"],
             path: "Tests/ACExportTests"
         ),
     ]

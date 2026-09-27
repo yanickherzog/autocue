@@ -5,13 +5,21 @@ import Foundation
 /// once somewhere in the graph (a `Person` with an address, a `Label`, an
 /// `AudioAsset` with embedded markers and broadcast-wave metadata,
 /// `WaveformPeaks`, more than one `Cue` each with more than one
-/// `CueRightHolder`) — so the round-trip test in `ProjectRoundTripTests`
-/// actually exercises every mapper, not just the required-fields path.
+/// `CueRightHolder`) — so a round-trip/rendering test actually exercises
+/// every field, not just the required-fields path.
 ///
-/// Kept local to `ACPersistenceTests` for now, per `CLAUDE.md` rule 7 — this
-/// is the first package that needs a fixture like this; promote to
-/// `ACTestSupport` only once a second package genuinely needs the same one.
-enum ProjectFixture {
+/// **Promoted here from `ACPersistenceTests` (`ROADMAP.md` D4), per
+/// `CLAUDE.md` rule 7's own stated criterion** — that package's original
+/// copy was "kept local... this is the first package that needs a fixture
+/// like this; promote to `ACTestSupport` only once a second package
+/// genuinely needs the same one." `ACExportTests` (`ROADMAP.md` D11/T11.2)
+/// is that second package — needing the same fully-populated graph (real
+/// right-holders across every role, `recordingLabel`/`.recordingLabelNumber`/
+/// `.recordingISRC` set, `broadcastDetails`, `exploitationTypes`, …) to
+/// exercise the cue sheet layout computer/PDF renderer against real data,
+/// not a hand-rolled second copy. `ACPersistenceTests` now imports this one
+/// instead of its own former local copy.
+public enum ProjectFixture {
     private struct Identities {
         let composerID = UUID()
         let publisherLabelID = UUID()
@@ -21,7 +29,7 @@ enum ProjectFixture {
         let performerID = UUID()
     }
 
-    static func make() -> Project {
+    public static func make() -> Project {
         let ids = Identities()
         let audioAsset = makeAudioAsset()
 
@@ -40,7 +48,7 @@ enum ProjectFixture {
 
     /// A minimal-but-valid fixture — every required field, every optional
     /// field left `nil`/empty — for tests that don't need the full graph.
-    static func makeMinimal(id: UUID = UUID(), name: String = "minimal-project") -> Project {
+    public static func makeMinimal(id: UUID = UUID(), name: String = "minimal-project") -> Project {
         let producerID = UUID()
         return Project(
             id: id,

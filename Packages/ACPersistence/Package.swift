@@ -9,6 +9,7 @@ let package = Package(
     ],
     dependencies: [
         .package(path: "../ACCore"),
+        .package(path: "../ACTestSupport"),
     ],
     targets: [
         .target(
@@ -18,7 +19,7 @@ let package = Package(
         ),
         .testTarget(
             name: "ACPersistenceTests",
-            dependencies: ["ACPersistence"],
+            dependencies: ["ACPersistence", "ACTestSupport"],
             path: "Tests/ACPersistenceTests"
         ),
     ]

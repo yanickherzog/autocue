@@ -7,9 +7,14 @@ import Foundation
 /// generated PDF/XLSX output files (`ROADMAP.md` D11).
 public struct InMemoryExportRepository: ExportRepository, Sendable {
     public let exportedURL: URL
+    public let layoutToReturn: [CueSheetPageLayout]
 
-    public init(exportedURL: URL = URL(fileURLWithPath: "/tmp/fixture-export")) {
+    public init(
+        exportedURL: URL = URL(fileURLWithPath: "/tmp/fixture-export"),
+        layoutToReturn: [CueSheetPageLayout] = []
+    ) {
         self.exportedURL = exportedURL
+        self.layoutToReturn = layoutToReturn
     }
 
     public func export(
@@ -22,5 +27,9 @@ public struct InMemoryExportRepository: ExportRepository, Sendable {
             continuation.yield(.completed(exportedURL))
             continuation.finish()
         }
+    }
+
+    public func computeLayout(for _: Project) -> [CueSheetPageLayout] {
+        layoutToReturn
     }
 }
