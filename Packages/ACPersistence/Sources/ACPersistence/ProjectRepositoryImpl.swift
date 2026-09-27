@@ -68,7 +68,7 @@ public actor ProjectRepositoryImpl: ProjectRepository {
     /// (`ROADMAP.md` D6/T6.1) constructs the real, on-disk `ModelContainer`
     /// from. Deciding the real store's on-disk location/App Sandbox container
     /// path is deliberately out of scope for this Deliverable — no App
-    /// target/entitlements exist yet (`ROADMAP.md` D6, D15) — so this type
+    /// target/entitlements exist yet (`ROADMAP.md` D6, D16) — so this type
     /// only ever receives an already-constructed `ModelContainer`.
     ///
     /// A function, not a `static let`: `Schema` is a class, and a single

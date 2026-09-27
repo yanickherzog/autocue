@@ -31,7 +31,10 @@ enum CueMapper {
             isArrangementOfProtectedOriginal: cue.isArrangementOfProtectedOriginal,
             source: rawValue(for: cue.source),
             startTimecodeOffsetSeconds: cue.startTimecode?.offsetSeconds,
-            notes: cue.notes
+            notes: cue.notes,
+            recordingLabel: cue.recordingLabel,
+            recordingLabelNumber: cue.recordingLabelNumber,
+            recordingISRC: cue.recordingISRC
         )
         let rightHolderEntities = cue.rightHolders.enumerated().map { index, rightHolder in
             CueRightHolderMapper.toEntity(rightHolder, order: index)
@@ -56,7 +59,10 @@ enum CueMapper {
             isArrangementOfProtectedOriginal: entity.isArrangementOfProtectedOriginal,
             source: cueSource(from: entity.source),
             startTimecode: entity.startTimecodeOffsetSeconds.map(Timecode.init(offsetSeconds:)),
-            notes: entity.notes
+            notes: entity.notes,
+            recordingLabel: entity.recordingLabel,
+            recordingLabelNumber: entity.recordingLabelNumber,
+            recordingISRC: entity.recordingISRC
         )
     }
 

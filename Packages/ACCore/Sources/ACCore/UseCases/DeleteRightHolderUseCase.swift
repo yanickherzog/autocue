@@ -19,7 +19,7 @@ import Foundation
 /// `Project` the deletion applies to, by design, not as an oversight.
 ///
 /// **`settings` is a plain parameter, not fetched.** No `SettingsRepository`
-/// exists yet (`ROADMAP.md` D14/T14.1) — the caller (a future ViewModel) is
+/// exists yet (`ROADMAP.md` D15/T15.1) — the caller (a future ViewModel) is
 /// responsible for supplying the current `Settings` value alongside the
 /// `Project.ID` it's editing. Do not add a `SettingsRepository` dependency
 /// here ahead of that Deliverable.

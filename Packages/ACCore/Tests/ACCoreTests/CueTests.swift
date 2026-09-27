@@ -62,6 +62,9 @@ final class CueTests: XCTestCase {
         XCTAssertNil(cue.workNumber)
         XCTAssertNil(cue.startTimecode)
         XCTAssertNil(cue.notes)
+        XCTAssertNil(cue.recordingLabel)
+        XCTAssertNil(cue.recordingLabelNumber)
+        XCTAssertNil(cue.recordingISRC)
     }
 
     func test_fieldsArePreservedExactlyAsInitialized() {
@@ -78,7 +81,10 @@ final class CueTests: XCTestCase {
             isArrangementOfProtectedOriginal: true,
             source: .detectedFromAudio,
             startTimecode: startTimecode,
-            notes: "Loud entrance"
+            notes: "Loud entrance",
+            recordingLabel: "Needle Drop Records",
+            recordingLabelNumber: "NDR-4471",
+            recordingISRC: "CH-A12-26-00001"
         )
 
         XCTAssertEqual(cue.id, id)
@@ -90,6 +96,9 @@ final class CueTests: XCTestCase {
         XCTAssertEqual(cue.source, .detectedFromAudio)
         XCTAssertEqual(cue.startTimecode, startTimecode)
         XCTAssertEqual(cue.notes, "Loud entrance")
+        XCTAssertEqual(cue.recordingLabel, "Needle Drop Records")
+        XCTAssertEqual(cue.recordingLabelNumber, "NDR-4471")
+        XCTAssertEqual(cue.recordingISRC, "CH-A12-26-00001")
     }
 }
 

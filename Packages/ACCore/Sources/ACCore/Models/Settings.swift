@@ -4,7 +4,7 @@ import Foundation
 /// (SPEC.md §4.7). No `id` field: `Settings` is a single app-wide value, not
 /// an entity with independent identity (`CLAUDE.md`, "Domain Model
 /// Value-Type Conformances"). No `SettingsRepository` exists yet — that's
-/// `ROADMAP.md` D14/T14.1's job; nothing in this Deliverable fetches or
+/// `ROADMAP.md` D15/T15.1's job; nothing in this Deliverable fetches or
 /// persists a `Settings` value, only composes the type itself.
 public struct Settings: Equatable, Sendable {
     public let defaultDeclarant: Party?

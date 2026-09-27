@@ -20,6 +20,9 @@ final class CueEntity {
     var source: String
     var startTimecodeOffsetSeconds: Double?
     var notes: String?
+    var recordingLabel: String?
+    var recordingLabelNumber: String?
+    var recordingISRC: String?
 
     var project: ProjectEntity?
     @Relationship(deleteRule: .cascade, inverse: \CueRightHolderEntity.cue) var rightHolders: [CueRightHolderEntity]
@@ -33,7 +36,10 @@ final class CueEntity {
         isArrangementOfProtectedOriginal: Bool,
         source: String,
         startTimecodeOffsetSeconds: Double?,
-        notes: String?
+        notes: String?,
+        recordingLabel: String?,
+        recordingLabelNumber: String?,
+        recordingISRC: String?
     ) {
         self.id = id
         self.order = order
@@ -44,6 +50,9 @@ final class CueEntity {
         self.source = source
         self.startTimecodeOffsetSeconds = startTimecodeOffsetSeconds
         self.notes = notes
+        self.recordingLabel = recordingLabel
+        self.recordingLabelNumber = recordingLabelNumber
+        self.recordingISRC = recordingISRC
         project = nil
         rightHolders = []
     }

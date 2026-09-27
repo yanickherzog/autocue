@@ -151,7 +151,10 @@ enum ProjectFixture {
             isArrangementOfProtectedOriginal: false,
             source: .embeddedMarker,
             startTimecode: Timecode(offsetSeconds: 12.0),
-            notes: "Cold open"
+            notes: "Cold open",
+            recordingLabel: "Needle Drop Records",
+            recordingLabelNumber: "NDR-4471",
+            recordingISRC: "CH-A12-26-00001"
         )
     }
 
