@@ -97,7 +97,7 @@ Unit tests (§5) remain the primary testing layer and cover the overwhelming maj
 
 **Resolution: a small, deliberately limited set of end-to-end flows get real automated coverage, via `XCUITest`, on top of (never instead of) the unit-test layer above.** This is not "start UI-testing everything" — most individual Views still have no automated test of their own, verified manually per their Deliverable's acceptance criteria, same as before. The difference is that the *critical path through the whole app* — the sequence a real user actually depends on working — gets automated, so it can't silently regress across 17 Deliverables' worth of future changes without a green CI run catching it.
 
-**At minimum, the following flow is automated:** Setup → Cue creation (via detection or manual add) → Review & Export. This is the golden path named directly in `ROADMAP.md`'s own Deliverable D13 ("UI/Integration Test Automation") — build it there, not opportunistically bolted onto an unrelated Deliverable. Concretely, that means:
+**At minimum, the following flow is automated:** Setup → Cue creation (via detection or manual add) → Review & Export. This is the golden path named directly in `ROADMAP.md`'s own Deliverable D14 ("UI/Integration Test Automation") — build it there, not opportunistically bolted onto an unrelated Deliverable. Concretely, that means:
 1. Create a project, fill in every required `Setup` field, confirm it persists.
 2. Import a fixture WAV, run cue detection, confirm `Cue`s populate.
 3. Navigate to the Review & Export tab, confirm a fully-valid project shows "ready to export," trigger a PDF export, confirm the file is produced.

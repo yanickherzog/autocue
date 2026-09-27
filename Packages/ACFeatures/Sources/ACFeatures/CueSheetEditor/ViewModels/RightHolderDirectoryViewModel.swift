@@ -23,14 +23,14 @@ import Foundation
 ///
 /// **`Settings()` (all defaults) is passed to `DeleteRightHolderUseCase`,
 /// not a real fetched value.** No `SettingsRepository` exists yet
-/// (`ROADMAP.md` D14/T14.1) — `DeleteRightHolderUseCase`'s own doc comment
+/// (`ROADMAP.md` D15/T15.1) — `DeleteRightHolderUseCase`'s own doc comment
 /// already anticipates this ("`settings` is a plain parameter, not fetched
 /// ... the caller is responsible for supplying the current `Settings` value
 /// ... do not add a `SettingsRepository` dependency here ahead of that
 /// Deliverable"). Consequence, stated plainly rather than silently
 /// swallowed: `Settings().defaultDeclarant` is always `nil` here, so the
 /// delete guard's `settingsDefaultDeclarant` reference check is effectively
-/// inert until D14 ships a real `Settings` value — every other reference
+/// inert until D15 ships a real `Settings` value — every other reference
 /// site (`Setup.producer`/`.directorOrPrincipal`/`.declarant`,
 /// `Cue.rightHolders[].party`) is checked correctly regardless, since those
 /// come from the real `Project`, not `Settings`.

@@ -67,7 +67,7 @@ public final class CueDetectionViewModel {
                     return
                 }
                 // SPEC.md §4.11's "Known gap": no Settings repository exists
-                // yet (D14) to source a real AnalysisSettings value from —
+                // yet (D15) to source a real AnalysisSettings value from —
                 // the type's own documented defaults are used directly at
                 // this call site, exactly as that section already sanctions.
                 for try await event in detectCuesUseCase.detectCues(

@@ -32,13 +32,13 @@ import Foundation
 /// action with the environment `UndoManager` itself.
 ///
 /// **`Setup.totalMusicRuntime` recompute, per SPEC.md §4.14 — provisional
-/// until `Settings` has a real repository (D14).** §4.14's rule gates this
+/// until `Settings` has a real repository (D15).** §4.14's rule gates this
 /// recompute on `Settings.autoComputeTotalMusicRuntime == true`; no
 /// mechanism exists yet to fetch a real, possibly-`false` `Settings` value
 /// (same "no repository yet" gap `AnalysisSettings`'s own D9 call site
 /// already has, per SPEC.md §4.11's own documented "Known gap"). This
 /// recomputes unconditionally, matching `Settings.autoComputeTotalMusicRuntime`'s
-/// documented default (`true`) — revisit once D14 adds a real `Settings`
+/// documented default (`true`) — revisit once D15 adds a real `Settings`
 /// repository this Use Case can actually consult.
 public struct UpdateCueUseCase: Sendable {
     /// Not `private`: `UpdateCueUseCase+MoveBoundary.swift`'s extension
