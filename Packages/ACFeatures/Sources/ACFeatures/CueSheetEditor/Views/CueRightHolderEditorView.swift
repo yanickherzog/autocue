@@ -266,11 +266,20 @@ extension CueRightHolderRole {
         return name
     }
 
-    /// **UI-only filter, `ROADMAP.md` D10 — `.author`/`.performer` hidden
-    /// from the role picker, not removed from `CueRightHolderRole` itself
-    /// (no schema change).** Neither role ever gets automatic default
-    /// assignment (`CueAutoPopulation` only ever creates `.composer`/
-    /// `.arranger` rows) — `.publisher` stays selectable and unaffected
-    /// (it's already fully manual, same as before this change).
-    static let selectableInEditor: [CueRightHolderRole] = [.composer, .arranger, .publisher]
+    /// **UI-only filter, `ROADMAP.md` D10 — `.author` hidden from the role
+    /// picker, not removed from `CueRightHolderRole` itself (no schema
+    /// change).** `.author` never gets automatic default assignment
+    /// (`CueAutoPopulation` only ever creates `.composer`/`.arranger` rows)
+    /// — `.publisher` stays selectable and unaffected (it's already fully
+    /// manual, same as before this change).
+    ///
+    /// **`.performer` was hidden alongside `.author` at D10, then
+    /// re-enabled during D11 planning** — a real, SUISA-accepted cue sheet
+    /// showed a populated Interpret*in column for a licensed third-party
+    /// track, directly contradicting the original hide. Re-enabled
+    /// unconditionally (every cue, not gated on some "not my own
+    /// composition" flag — no such field exists in `SPEC.md`, and adding
+    /// one to gate this would be exactly the premature schema change
+    /// `CLAUDE.md` rule 7 warns against). See `docs/DECISIONS.md`.
+    static let selectableInEditor: [CueRightHolderRole] = [.composer, .arranger, .publisher, .performer]
 }
