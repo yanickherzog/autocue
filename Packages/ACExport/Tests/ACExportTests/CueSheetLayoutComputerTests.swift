@@ -147,23 +147,28 @@ final class CueSheetLayoutComputerTests: XCTestCase {
     /// a dedicated multi-composer fixture is built here, not reused from
     /// `ProjectFixture`, per the project owner's own explicit request to
     /// verify against more than the single-composer case.
+    ///
+    /// Format updated (layout-redesign pass, `docs/DECISIONS.md`) from
+    /// `"Name: IPI Nr. <raw>"` to `"Name, IPI-Nr. <grouped>"` — an 11-digit
+    /// stored number's leading 2-digit padding is dropped and the remaining
+    /// 9 digits grouped 3-2-2-2 (`CueSheetLayoutComputer.formattedIPI`).
     func test_headerBlock_komponistIPI_perComposerNameAndIPI_dedupedAcrossCues_missingIPIShowsNameOnly() {
         let pages = CueSheetLayoutComputer.computeLayout(for: multiComposerFixtureProject())
         let headerText = allText(in: pages).joined(separator: "\n")
 
         XCTAssertTrue(
-            headerText.contains("Alice WithIPI: IPI Nr. 11111111111"),
-            "A composer's name and IPI number must both appear, in \"Name: IPI Nr. X\" format"
+            headerText.contains("Alice WithIPI, IPI-Nr. 111 11 11 11"),
+            "A composer's name and IPI number must both appear, in \"Name, IPI-Nr. X\" format"
         )
         XCTAssertTrue(
             headerText.contains("Bob NoIPI"),
             "A composer with no IPI number on file must still be listed, by name"
         )
         XCTAssertFalse(
-            headerText.contains("Bob NoIPI: IPI Nr."),
+            headerText.contains("Bob NoIPI, IPI-Nr."),
             "A composer with no IPI number must show their bare name, never a blank/placeholder number"
         )
-        let occurrences = headerText.components(separatedBy: "Alice WithIPI: IPI Nr. 11111111111").count - 1
+        let occurrences = headerText.components(separatedBy: "Alice WithIPI, IPI-Nr. 111 11 11 11").count - 1
         XCTAssertEqual(
             occurrences, 1,
             "The same composer appearing on multiple cues must be listed once in the header, not once per cue"
@@ -224,7 +229,11 @@ final class CueSheetLayoutComputerTests: XCTestCase {
         )
     }
 
-    private func allText(in pages: [CueSheetPageLayout]) -> [String] {
+    /// Not `private` — the layout-redesign pass's tests
+    /// (`CueSheetLayoutComputerTests+Redesign.swift`) are an `extension` of
+    /// this class in a separate file, split per `CONTRIBUTING.md` §8's
+    /// `SwiftLint` `type_body_length` limit, and need this too.
+    func allText(in pages: [CueSheetPageLayout]) -> [String] {
         pages.flatMap(\.elements).compactMap { element in
             if case let .text(string, _) = element.content {
                 string

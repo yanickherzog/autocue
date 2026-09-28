@@ -101,13 +101,14 @@ public struct CueSheetPreviewView: View {
     private func drawText(_ string: String, font: LayoutFontSpec, in frame: CGRect, context: CGContext) {
         guard !string.isEmpty else { return }
         let ctFont = CTFontCreateWithName(fontName(for: font.weight) as CFString, font.size, nil)
-        let attributedString = NSAttributedString(
-            string: string,
-            attributes: [
-                kCTFontAttributeName as NSAttributedString.Key: ctFont,
-                kCTForegroundColorAttributeName as NSAttributedString.Key: CGColor(gray: 0, alpha: 1),
-            ]
-        )
+        var attributes: [NSAttributedString.Key: Any] = [
+            kCTFontAttributeName as NSAttributedString.Key: ctFont,
+            kCTForegroundColorAttributeName as NSAttributedString.Key: CGColor(gray: 0, alpha: 1),
+        ]
+        if font.tracking != 0 {
+            attributes[kCTKernAttributeName as NSAttributedString.Key] = font.tracking
+        }
+        let attributedString = NSAttributedString(string: string, attributes: attributes)
         let framesetter = CTFramesetterCreateWithAttributedString(attributedString)
         let path = CGPath(rect: frame, transform: nil)
         let ctFrame = CTFramesetterCreateFrame(framesetter, CFRange(location: 0, length: 0), path, nil)

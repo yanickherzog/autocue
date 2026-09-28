@@ -67,15 +67,37 @@ extension CueSheetLayoutComputer {
         return elements
     }
 
-    static func footerElement(project: Project, originY: Double, width: Double) -> CueSheetLayoutElement {
+    /// Right-aligned to the **Dur. column's own right edge specifically**
+    /// (index 6 of `columns`) — not loosely centered across Dur.+Label, a
+    /// real, self-caught fix from the project owner's second visual pass
+    /// (2026-09-28, `docs/DECISIONS.md`): the prior version's right edge was
+    /// the *end of Label*, and also clamped the drawn frame's width down to
+    /// the Dur.+Label span even when the text's own natural width was
+    /// wider — since `CTFrameDraw` wraps text that doesn't fit its frame,
+    /// that clamp could have silently wrapped "TOTAL MUSIK: HH:MM:SS" onto
+    /// a second line the moment that span got narrow enough. Always using
+    /// the text's real natural (unwrapped) width for the frame, and letting
+    /// it extend *leftward* from Dur.'s right edge into the blank space
+    /// below the table, avoids both problems at once. Positioned directly
+    /// at `originY` — immediately below the last table row (plus
+    /// `tableToFooterGap`), not pinned to the page's bottom margin the way
+    /// this element used to be. Right-alignment is computed here, as a
+    /// frame position, rather than via a `LayoutElementContent` alignment
+    /// case — every existing `.text` call site/pattern match would need
+    /// updating for a case that only this one element ever uses
+    /// (`CueSheetLayoutComputer+Measurement.swift`'s `measuredWidth` doc
+    /// comment has the full reasoning).
+    static func footerElement(
+        project: Project,
+        columnWidths: [Double],
+        originY: Double,
+        height: Double
+    ) -> CueSheetLayoutElement {
         let text = "TOTAL MUSIK: \(project.setup.totalMusicRuntime.formatted)"
+        let durColumnEnd = margin + columnWidths[0 ..< 7].reduce(0, +)
+        let textWidth = measuredWidth(text: text, fontSize: footerFontSize, weight: .bold)
         return CueSheetLayoutElement(
-            frame: LayoutRect(
-                x: margin,
-                y: originY,
-                width: width,
-                height: lineHeight(fontSize: footerFontSize, weight: .bold) + cellVerticalPadding * 2
-            ),
+            frame: LayoutRect(x: durColumnEnd - textWidth, y: originY, width: textWidth, height: height),
             content: .text(text, font: LayoutFontSpec(weight: .bold, size: footerFontSize))
         )
     }

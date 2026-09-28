@@ -22,20 +22,28 @@ public enum LayoutElementContent: Equatable, Hashable, Sendable {
     case rule(LayoutRuleSpec)
 }
 
-/// An abstract font description — weight + size only, no font *name*.
-/// `ACCore` stays Foundation-only (`CLAUDE.md` rule 1), so it can't name a
-/// concrete PostScript font; each rendering backend (Core Graphics for the
-/// real PDF, SwiftUI for the on-screen preview) maps `weight` to this app's
-/// one registered typeface (Space Grotesk, `CLAUDE.md`'s Visual Language) at
-/// the point of drawing — the same adapter-at-the-edge pattern `LayoutRect`
-/// establishes for geometry.
+/// An abstract font description — weight + size (+ optional letter-spacing),
+/// no font *name*. `ACCore` stays Foundation-only (`CLAUDE.md` rule 1), so it
+/// can't name a concrete PostScript font; each rendering backend (Core
+/// Graphics for the real PDF, SwiftUI for the on-screen preview) maps
+/// `weight` to this app's one registered typeface (Space Grotesk,
+/// `CLAUDE.md`'s Visual Language) at the point of drawing — the same
+/// adapter-at-the-edge pattern `LayoutRect` establishes for geometry.
 public struct LayoutFontSpec: Equatable, Hashable, Sendable {
     public let weight: LayoutFontWeight
     public let size: Double
+    /// Extra space added between characters, in points (Core Text kerning) —
+    /// `0` (the default) draws with the font's normal spacing. Added for the
+    /// cue sheet PDF's eyebrow line (SPEC.md §4.16, `ROADMAP.md` D11/T11.2
+    /// layout-redesign pass), which is deliberately letter-spaced small caps;
+    /// every other existing call site keeps its two-argument form and is
+    /// unaffected.
+    public let tracking: Double
 
-    public init(weight: LayoutFontWeight, size: Double) {
+    public init(weight: LayoutFontWeight, size: Double, tracking: Double = 0) {
         self.weight = weight
         self.size = size
+        self.tracking = tracking
     }
 }
 

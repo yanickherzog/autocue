@@ -27,12 +27,23 @@ extension CueSheetLayoutComputer {
     /// measurement "wrap, never truncate" pagination is built on (this
     /// type's own doc comment). Never mocked/estimated: uses the same
     /// `CTFramesetter` machinery `PDFCueSheetRenderer` uses to actually draw.
-    static func measuredHeight(text: String, width: Double, fontSize: Double, weight: LayoutFontWeight) -> Double {
+    /// `tracking` defaults to `0`, matching `LayoutFontSpec`'s own default —
+    /// only the title block's eyebrow line (layout-redesign pass) passes a
+    /// non-zero value, so wrapping measurement never silently disagrees with
+    /// what's actually drawn with letter-spacing applied.
+    static func measuredHeight(
+        text: String,
+        width: Double,
+        fontSize: Double,
+        weight: LayoutFontWeight,
+        tracking: Double = 0
+    ) -> Double {
         guard !text.isEmpty else { return lineHeight(fontSize: fontSize, weight: weight) }
-        let font = CTFontCreateWithName(PDFFontMapping.fontName(for: weight) as CFString, fontSize, nil)
-        let attributedString = NSAttributedString(
-            string: text,
-            attributes: [kCTFontAttributeName as NSAttributedString.Key: font]
+        let attributedString = attributedStringForMeasurement(
+            text: text,
+            fontSize: fontSize,
+            weight: weight,
+            tracking: tracking
         )
         let framesetter = CTFramesetterCreateWithAttributedString(attributedString)
         let constraints = CGSize(width: max(width, 1), height: .greatestFiniteMagnitude)
@@ -44,5 +55,50 @@ extension CueSheetLayoutComputer {
             nil
         )
         return Double(suggestedSize.height)
+    }
+
+    /// The natural (unwrapped) width of a single line of `text` — used to
+    /// right-align the relocated "TOTAL MUSIK" line under the Dur./Label
+    /// columns (layout-redesign pass) by computing its frame's `x` directly,
+    /// rather than adding a text-alignment case to `LayoutElementContent`
+    /// that every existing `.text` call site/pattern match would need to
+    /// account for.
+    static func measuredWidth(
+        text: String,
+        fontSize: Double,
+        weight: LayoutFontWeight,
+        tracking: Double = 0
+    ) -> Double {
+        guard !text.isEmpty else { return 0 }
+        let attributedString = attributedStringForMeasurement(
+            text: text,
+            fontSize: fontSize,
+            weight: weight,
+            tracking: tracking
+        )
+        let framesetter = CTFramesetterCreateWithAttributedString(attributedString)
+        let constraints = CGSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
+        let suggestedSize = CTFramesetterSuggestFrameSizeWithConstraints(
+            framesetter,
+            CFRange(location: 0, length: 0),
+            nil,
+            constraints,
+            nil
+        )
+        return Double(suggestedSize.width)
+    }
+
+    private static func attributedStringForMeasurement(
+        text: String,
+        fontSize: Double,
+        weight: LayoutFontWeight,
+        tracking: Double
+    ) -> NSAttributedString {
+        let font = CTFontCreateWithName(PDFFontMapping.fontName(for: weight) as CFString, fontSize, nil)
+        var attributes: [NSAttributedString.Key: Any] = [kCTFontAttributeName as NSAttributedString.Key: font]
+        if tracking != 0 {
+            attributes[kCTKernAttributeName as NSAttributedString.Key] = tracking
+        }
+        return NSAttributedString(string: text, attributes: attributes)
     }
 }

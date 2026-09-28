@@ -61,6 +61,53 @@ enum CueSheetLayoutComputer {
     /// straight into the table.
     static let headerToTableGap: Double = 22
 
+    // MARK: - Title block
+
+    // Layout-redesign pass, built from the project owner's real InDesign
+    // mockup — see `docs/DECISIONS.md`.
+    static let eyebrowText = "SUISA/SWISSPERFORM-ANGABEN ZUR FOLGENDEN SENDUNG:"
+    static let eyebrowFontSize: Double = 7.5
+    /// Extra points of space between characters (`LayoutFontSpec.tracking`)
+    /// — the eyebrow line's deliberately letter-spaced small-caps look, per
+    /// the mockup.
+    static let eyebrowTracking: Double = 1.5
+    static let titleFontSize: Double = 24
+    static let titleBlockInternalGap: Double = 6
+    static let titleToHeaderGap: Double = 18
+
+    /// Horizontal gap between a header field's bold label (e.g.
+    /// `"Regie:"`) and its regular-weight value, drawn as two adjacent
+    /// elements on the same line rather than one mixed-weight string —
+    /// `LayoutElementContent.text` carries a single `LayoutFontSpec` for its
+    /// whole string, so two weights on one line means two elements.
+    static let headerLabelValueGap: Double = 4
+
+    /// Vertical gap between the table's own bottom rule and the relocated
+    /// "TOTAL MUSIK" line — bumped from `0` (flush against the rule) to a
+    /// real, visible separation per the project owner's second visual
+    /// pass (2026-09-28, `docs/DECISIONS.md`): "attached, not flush."
+    static let tableToFooterGap: Double = 25
+    /// Vertical gap between the relocated "TOTAL MUSIK" line and the new
+    /// "Interpret*innen:" summary block below it.
+    static let totalMusikToInterpretGap: Double = 16
+    static let interpretLabelToListGap: Double = 3
+
+    /// Header field row spacing — deliberately its own constant, distinct
+    /// from `cellVerticalPadding` (used by the table/column-header/footer),
+    /// so tightening the header block's line rhythm (2026-09-28 visual pass,
+    /// `docs/DECISIONS.md`) doesn't also compress the table.
+    static let headerFieldVerticalPadding: Double = 2
+
+    /// The page's shared left text margin for content that isn't a table
+    /// cell — the title block and the Interpret*innen block both align
+    /// here, matching where a header field's own *text* starts (`margin +
+    /// cellHorizontalPadding`, `headerFieldElements` in `+Header.swift`),
+    /// not the raw page `margin` the table's rule lines are drawn at.
+    /// Named explicitly (2026-09-28 visual pass) after the Interpret*innen
+    /// block was found sitting flush with the table's rule lines instead —
+    /// see `docs/DECISIONS.md`.
+    static let contentTextMargin: Double = margin + cellHorizontalPadding
+
     struct Column {
         let title: String
         let widthWeight: Double
@@ -71,7 +118,7 @@ enum CueSheetLayoutComputer {
     /// change doesn't require re-deriving every column's width by hand.
     static let columns: [Column] = [
         Column(title: "Komponist*innen", widthWeight: 1.0),
-        Column(title: "Arrangement", widthWeight: 0.9),
+        Column(title: "Arrangeur*in", widthWeight: 0.9),
         Column(title: "Interpret*innen", widthWeight: 1.0),
         Column(title: "Songtitel", widthWeight: 1.1),
         Column(title: "TC In", widthWeight: 0.65),
@@ -89,8 +136,16 @@ enum CueSheetLayoutComputer {
         let totalWeight = columns.reduce(0) { $0 + $1.widthWeight }
         let columnWidths = columns.map { usableWidth * ($0.widthWeight / totalWeight) }
 
+        let titleText = titleHeadingText(for: project.setup)
+        let titleBlockH = titleBlockHeight(title: titleText, usableWidth: usableWidth)
+
         let headerLines = headerBlockLines(for: project)
-        let headerHeight = headerBlockHeight(lines: headerLines, columnWidth: usableWidth / 2) + headerToTableGap
+        let headerBlockH = headerBlockHeight(
+            left: headerLines.left,
+            right: headerLines.right,
+            columnWidth: usableWidth / 2
+        )
+        let headerHeight = titleBlockH + titleToHeaderGap + headerBlockH + headerToTableGap
 
         let columnHeaderHeight = lineHeight(fontSize: columnHeaderFontSize, weight: .bold) + cellVerticalPadding * 2
         let footerHeight = lineHeight(fontSize: footerFontSize, weight: .bold) + cellVerticalPadding * 2
@@ -100,9 +155,14 @@ enum CueSheetLayoutComputer {
         }
         let rowHeights = measuredRowHeights(rows: rows, columnWidths: columnWidths)
 
+        let interpretLines = performerIPILines(cues: project.cues, people: project.people, labels: project.labels)
+        let interpretBlockH = interpretBlockHeight(lines: interpretLines, usableWidth: usableWidth)
+        let bottomReservedHeight = tableToFooterGap + footerHeight
+            + (interpretLines.isEmpty ? 0 : totalMusikToInterpretGap + interpretBlockH)
+
         let contentTop = margin + headerHeight
         let contentBottom = pageHeight - margin
-        let availableHeight = contentBottom - contentTop - footerHeight
+        let availableHeight = contentBottom - contentTop - bottomReservedHeight
 
         let pagesOfRows = paginate(
             rowHeights: rowHeights,
@@ -114,11 +174,13 @@ enum CueSheetLayoutComputer {
             project: project,
             rows: rows,
             rowHeights: rowHeights,
+            titleText: titleText,
+            titleBlockHeight: titleBlockH,
             headerLines: headerLines,
+            interpretLines: interpretLines,
             columnWidths: columnWidths,
             columnHeaderHeight: columnHeaderHeight,
             contentTop: contentTop,
-            contentBottom: contentBottom,
             footerHeight: footerHeight,
             usableWidth: usableWidth,
             pageCount: max(pagesOfRows.count, 1)
@@ -137,11 +199,13 @@ enum CueSheetLayoutComputer {
         let project: Project
         let rows: [[String]]
         let rowHeights: [Double]
-        let headerLines: [HeaderLine]
+        let titleText: String
+        let titleBlockHeight: Double
+        let headerLines: (left: [HeaderLine], right: [HeaderLine])
+        let interpretLines: [String]
         let columnWidths: [Double]
         let columnHeaderHeight: Double
         let contentTop: Double
-        let contentBottom: Double
         let footerHeight: Double
         let usableWidth: Double
         let pageCount: Int
@@ -174,7 +238,13 @@ enum CueSheetLayoutComputer {
 
     private static func pageLayout(ctx: PageContext, index: Int, indices: [Int], isLast: Bool) -> CueSheetPageLayout {
         var elements: [CueSheetLayoutElement] = []
-        elements.append(contentsOf: headerBlockElements(lines: ctx.headerLines, usableWidth: ctx.usableWidth))
+        elements.append(contentsOf: titleBlockElements(title: ctx.titleText, usableWidth: ctx.usableWidth))
+        elements.append(contentsOf: headerBlockElements(
+            left: ctx.headerLines.left,
+            right: ctx.headerLines.right,
+            top: margin + ctx.titleBlockHeight + titleToHeaderGap,
+            usableWidth: ctx.usableWidth
+        ))
 
         var rowOriginY = ctx.contentTop
         elements.append(contentsOf: columnHeaderElements(
@@ -196,11 +266,22 @@ enum CueSheetLayoutComputer {
         }
 
         if isLast {
+            rowOriginY += tableToFooterGap
             elements.append(footerElement(
                 project: ctx.project,
-                originY: ctx.contentBottom - ctx.footerHeight,
-                width: ctx.usableWidth
+                columnWidths: ctx.columnWidths,
+                originY: rowOriginY,
+                height: ctx.footerHeight
             ))
+            rowOriginY += ctx.footerHeight
+
+            if !ctx.interpretLines.isEmpty {
+                elements.append(contentsOf: interpretBlockElements(
+                    lines: ctx.interpretLines,
+                    top: rowOriginY + totalMusikToInterpretGap,
+                    usableWidth: ctx.usableWidth
+                ))
+            }
         }
 
         return CueSheetPageLayout(pageIndex: index, pageCount: ctx.pageCount, elements: elements)
