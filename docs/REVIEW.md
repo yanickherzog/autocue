@@ -632,3 +632,73 @@ Separately: a formal, citation-based re-audit of `ROADMAP.md`'s D9 Status note �
 **Refactoring suggestions:** None new this round — all three fixes are narrowly scoped to the exact files/constants the third round already established for this purpose.
 
 **Follow-ups filed:** `docs/DECISIONS.md` gained one entry covering all three corrections, with their own "Alternatives Considered" including the rejected "leave the title alone" option and the rejected "keep the clamp, just widen the region" option. One existing test rewritten for the new Dur.-only, natural-width footer behavior. All verified green (`ACExport` 33 tests, same count), a real `xcodebuild build`, `swiftlint --strict`/`swiftformat --lint` both clean repo-wide, and two real rendered PDFs visually inspected: the original two-cue fixture (confirming all three fixes directly) and a new 30-cue/3-page stress case built specifically for this round's request — confirming correct pagination, the footer/Interpret\*innen block appearing exactly once on the final page with all 5 performers correctly deduplicated across all 30 cues, and the title/header block repeating identically across all three pages. Both PDFs delivered to the project owner. **Open item for the project owner's own next session:** their own visual check of this round's three fixes and the 30-cue stress render — not yet done as of this entry.
+
+---
+
+## 2026-09-29 — Deliverable D11, T11.2, fifth round — Arrangeur*innen block, a real pagination bug (and a self-caught second bug in the first fix), font-size tradeoff evaluated but not decided
+
+**Architecture observations:** The pagination fix is a real example of why this document's "verify UI with real tooling" standard matters even for logic that already has passing unit tests: the first fix attempt (forward-fill every page, then trim whatever lands on the resulting last page) passed every test written for it — because none of those tests exercised a scenario where the naive last page's remainder was too big for the tight budget while a smaller font was in play. It was the actual rendered 7.5pt stress PDF, not the test suite, that surfaced the second bug (a should-no-longer-be-last page wrongly shrunk by the trim). The corrected approach — compute the true last page's rows first as the maximal trailing run fitting the tight budget, then forward-fill everything before it — removes the whole class of "correction applied to a wrong initial assumption" bug rather than patching the symptom again.
+
+**Code quality observations:** `CueSheetLayoutComputer+InterpretBlock.swift`'s generalization (`summaryBlockHeight`/`summaryBlockElements` as the one implementation behind both Interpret*innen and Arrangeur*innen) is a clean instance of `CLAUDE.md` rule 7 applied at the right moment — the two blocks were already near-identical before this round; a second real caller is exactly when that similarity should become one shared implementation rather than staying two parallel ones. Splitting `CueSheetLayoutComputer+Pagination.swift` out of the main file (to stay under the `file_length` limit once the fix and the new block's wiring were added) keeps `computeLayout` itself short and readable — it now reads as a sequence of named steps (`computeSummaryBlocks`, `paginate`, `pageLayout`) rather than one long function doing all three.
+
+**Technical debt:** None newly introduced. The deterministic direct test against `paginate` (25 uniform rows, budgets fitting 9/5, asserting the exact `[9, 9, 2, 5]` split) is a stronger regression guard than the geometry-based tests alone — it reproduces the second bug's exact failure mode without depending on real Core Text measurement, so it can't silently stop testing the right thing if font metrics change later.
+
+**Refactoring suggestions:** None new this round.
+
+**Follow-ups filed:** `docs/DECISIONS.md` gained one entry covering the new block, both pagination bugs (the original reservation bug and the self-caught trim bug), and the font-size comparison with its own "Alternatives Considered." `ROADMAP.md` D11's Status note gained a dated addendum; T11.2 remains complete, not reopened. Seven new tests added (`ACExport` now 40, was 33) — Arrangeur*innen presence/dedup/omitted/renders-alone/ordering, a geometry-based non-last-page-capacity regression test, and the deterministic `paginate` regression test for the second bug. All verified green, a real `xcodebuild build`, `swiftlint --strict`/`swiftformat --lint` both clean repo-wide. Two real PDFs rendered and visually inspected page-by-page: a 25-cue dense fixture (multiple composers/arrangers/performers per cue, `ProjectTitle_Score_Cue-N` titles) at the current 8.5pt/5pt settings — delivered to the project owner as `AutoCue-CueSheet-DenseStress.pdf` — and a 7.5pt/4pt comparison render used only to measure the font-size tradeoff, not kept. **Open item for the project owner's own next session:** decide whether to adopt the smaller cell font/padding (~12% more cues per page, measured) — a legibility call left to them per this document's established pattern — and their own visual check of the new Arrangeur*innen block and corrected pagination against the delivered dense-stress PDF.
+
+---
+
+## 2026-09-29 — Deliverable D11, T11.2, sixth round — Label/Label-Nr./ISRC-Nr. rebalanced, a second self-caught measurement bug, Songtitel's font-vs-width question answered plainly
+
+**Architecture observations:** The header-title-clipping bug found mid-round is a genuinely new failure mode for this document, distinct from every prior "row height didn't account for wrapped content" bug this codebase has already fixed (the original row-height regression, the multi-line Komponist*in header cell) — those were all about a *cell's* content being taller than its allocated row. This one is about the *column header's own label* being wider than its column, a dimension none of those prior fixes touch, because `columnHeaderHeight` has always assumed a single-line title. The new generic test (`test_everyColumnHeaderTitle_fitsWithinItsOwnColumnsContentWidth`) is the right level to guard this at — it checks the invariant directly ("does every header title fit its own column") rather than re-deriving it per rebalance, so any future width change to any column is covered by construction, not by remembering to re-check by hand.
+
+**Code quality observations:** Keeping the combined Label/Label-Nr./ISRC-Nr. weight fixed at 2.25 while redistributing within it is a clean, minimal-blast-radius way to make this change — the other seven columns' widths are provably unchanged (same arithmetic, same denominator), so nothing needed re-verifying beyond the three columns actually touched and the one new generic header-fit test.
+
+**Technical debt:** None newly introduced. The Songtitel finding (font size alone doesn't close the single-line gap) is recorded with the actual measured numbers in `docs/DECISIONS.md` rather than as a vague "needs more work" note, so whoever picks this up next doesn't have to re-measure from scratch to know where the remaining ~10pt gap comes from.
+
+**Refactoring suggestions:** None new this round.
+
+**Follow-ups filed:** `docs/DECISIONS.md` gained one entry covering the rebalance, the self-caught header-title bug, and the Songtitel measurement with its own "Alternatives Considered." One new permanent test added (`ACExport` now 41, was 40). All verified green, a real `xcodebuild build`, `swiftlint --strict`/`swiftformat --lint` both clean repo-wide. The dense-stress PDF re-rendered and visually inspected across all four pages — ISRC-Nr. single-line throughout, Label-Nr.'s header rendering correctly, no new breakage — delivered to the project owner at the same path. **Open item for the project owner's own next session:** an explicit decision on Songtitel (confirmed to need a real width increase, not just the smaller font, to reliably go single-line) and the still-outstanding font-size decision from the fifth round.
+
+---
+
+## 2026-09-29 — Deliverable D11, T11.2, seventh round — Songtitel widened to single-line per the project owner's explicit decision; no open items remain
+
+**Architecture observations:** This round is a clean example of the sixth round's "measure, don't decide" approach paying off directly: because the sixth round reported real numbers (118.1pt needed vs. 93.9pt available, font alone insufficient) rather than a vague "still wrapping" note, the project owner could make an informed, specific decision (reject the font change, fund Songtitel from the three genuinely fixed-width columns) without another back-and-forth to establish the facts. The fixed-width insight itself — TC/Dur values measuring *identically* regardless of actual value, since Helvetica's digits are tabular-width — was confirmed by measurement, not assumed correct just because it sounded right; it happened to be exactly right, but checking it (rather than trusting the framing) is what caught that TC/Dur alone weren't quite enough and a small Label contribution was needed too.
+
+**Code quality observations:** No new abstractions needed — this is the same weight-rebalancing mechanism the fifth and sixth rounds already established (move weight among a named subset of columns, verify the combined total is unchanged, verify real content-width buffers on every touched column). The existing generic header-title-fit test from the sixth round already covered this round's changes without modification, which is exactly the payoff of writing that test generically rather than for the two specific columns that motivated it.
+
+**Technical debt:** None. No open items remain from this round or the two preceding it — both outstanding project-owner decisions (font size, Songtitel funding source) are now resolved and implemented.
+
+**Refactoring suggestions:** None.
+
+**Follow-ups filed:** `docs/DECISIONS.md` gained one entry covering the final weights, the real measurements behind them (including the ~2.9pt shortfall found when checking TC/Dur alone before adding the small Label contribution), and its own "Alternatives Considered." No new tests required. All verified green (`ACExport` 41 tests, unchanged count), a real `xcodebuild build`, `swiftlint --strict`/`swiftformat --lint` both clean repo-wide. The dense-stress PDF re-rendered and visually inspected across all four pages — Songtitel single-line throughout including the worst-case final cue, no new overflow anywhere — delivered to the project owner at the same path. **No open items.**
+
+---
+
+## 2026-09-29 — Deliverable D11, T11.2, eighth round — Komponist*innen/Interpret*innen renamed to singular; a stray stale comment fixed as a flagged drive-by
+
+**Architecture observations:** This round is small but worth noting for how it was scoped: the project owner named exactly two labels to rename, and a third, closely-related one (the Arrangeur*innen *summary block*, as opposed to the already-singular Arrangeur*in *column*) was deliberately left untouched and surfaced as an open question rather than "helpfully" made consistent on the assumption that's what was meant. Guessing at unstated scope on a "deliberate, final decision" instruction would have been the wrong instinct even if the guess turned out right.
+
+**Code quality observations:** Finding every real render site required grepping the actual strings rather than trusting file/function names — `interpretBlockElements`'s function name never changed, only its string literal argument, so a name-based search would have missed nothing here, but the header block's already-singular "Komponist*in" field could easily have been mistaken for a third site needing changes if verified only against the function/variable names rather than the literal rendered text.
+
+**Technical debt:** None introduced; one paid down. `+Table.swift`'s `rowValues` doc comment had said "Arrangement" (not "Arrangeur*in") since the second round's column rename two rounds' worth of work ago — never caught until this round's adjacent edit surfaced it. Fixed and flagged explicitly, not silently folded in.
+
+**Refactoring suggestions:** None.
+
+**Follow-ups filed:** `docs/DECISIONS.md` gained one entry covering both renamed labels, every location found and updated, the stale-comment drive-by fix, and the deliberately-unaddressed Arrangeur*innen-block question. Five test-assertion strings updated; no new tests needed since the prior round's generic header-title-fit test already re-validates the (shorter) new titles automatically. All verified green (`ACExport` 41 tests, unchanged count), a real `xcodebuild build`, `swiftlint --strict`/`swiftformat --lint` both clean repo-wide. The dense-stress PDF re-rendered and visually inspected — both renames confirmed correct on the table header and the summary block, no regressions anywhere else — delivered to the project owner at the same path. **Open item for the project owner's own next session:** whether "Arrangeur*innen:" (the summary block specifically) should also go singular, for consistency with the now-singular Komponist*in/Interpret*in, or stays as intentionally plural.
+
+---
+
+## 2026-09-29 — Deliverable D11, T11.2, ninth round — Arrangeur*in block renamed to singular; the layout follow-up thread closes with no open items
+
+**Architecture observations:** This round closes out a nine-round thread cleanly by answering the exact question the previous round posed rather than a broader one — no scope drift, no re-opening of already-settled decisions (font size, Songtitel width, the Label/ISRC/TC rebalances all stand unchanged).
+
+**Code quality observations:** N/A — a single string-literal rename plus its doc comments, no structural change.
+
+**Technical debt:** None. The full source tree now has zero remaining "Arrangeur*innen"/"Komponist*innen"/"Interpret*innen" occurrences — verified by direct grep, not assumed from having changed the two functions that seemed responsible.
+
+**Refactoring suggestions:** None.
+
+**Follow-ups filed:** `docs/DECISIONS.md` gained a short closing entry. Six test-assertion/doc-comment occurrences updated in one file. All verified green (`ACExport` 41 tests, unchanged count), a real `xcodebuild build`, `swiftlint --strict`/`swiftformat --lint` both clean repo-wide. The dense-stress PDF re-rendered and visually inspected: all three labels read consistently singular everywhere they render. Delivered to the project owner as the true final review. **No open items remain from the fifth-through-ninth-round layout follow-up thread.**

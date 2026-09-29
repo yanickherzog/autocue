@@ -51,7 +51,7 @@ final class CueSheetLayoutComputerTests: XCTestCase {
         XCTAssertTrue(texts.contains { $0.contains("Ada Lovelace") })
         XCTAssertTrue(
             texts.contains { $0.contains("Nina Simone") },
-            "Performer must appear in Interpret*innen, not be excluded"
+            "Performer must appear in Interpret*in, not be excluded"
         )
     }
 

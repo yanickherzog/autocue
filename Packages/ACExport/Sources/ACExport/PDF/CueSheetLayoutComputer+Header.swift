@@ -92,7 +92,7 @@ extension CueSheetLayoutComputer {
     /// One line per unique right-holder of `role` across every `Cue` on the
     /// project, each `"Name, IPI-Nr. <grouped number>"` — the shared
     /// aggregation behind both the Komponist*in header field
-    /// (`composerIPILines`, below) and the Interpret*innen summary block
+    /// (`composerIPILines`, below) and the Interpret*in summary block
     /// (`performerIPILines`, `+InterpretBlock.swift`), now nearly identical
     /// in shape (layout-redesign pass) so pulled into one generic helper
     /// rather than duplicated per role. Deduplicated by the right-holder's
@@ -126,6 +126,13 @@ extension CueSheetLayoutComputer {
 
     static func performerIPILines(cues: [Cue], people: [Person], labels: [Label]) -> [String] {
         aggregatedPartyIPILines(cues: cues, role: .performer, people: people, labels: labels)
+    }
+
+    /// Same aggregation as `performerIPILines`, for the "Arrangeur*in:"
+    /// summary block (`+InterpretBlock.swift`) — every `.arranger`
+    /// right-holder across the whole project, deduplicated by identity.
+    static func arrangeurIPILines(cues: [Cue], people: [Person], labels: [Label]) -> [String] {
+        aggregatedPartyIPILines(cues: cues, role: .arranger, people: people, labels: labels)
     }
 
     private static func formattedNameWithIPI(_ resolved: ResolvedParty) -> String {

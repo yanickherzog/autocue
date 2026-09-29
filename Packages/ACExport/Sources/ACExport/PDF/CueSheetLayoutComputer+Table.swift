@@ -25,10 +25,10 @@ extension CueSheetLayoutComputer {
         return elements
     }
 
-    /// One value per column, in `columns`' order — Komponist*innen /
-    /// Arrangement / Interpret*innen / Songtitel / TC In / TC Out / Dur. /
+    /// One value per column, in `columns`' order — Komponist*in /
+    /// Arrangeur*in / Interpret*in / Songtitel / TC In / TC Out / Dur. /
     /// Label / Label-Nr. / ISRC-Nr. **Performer right-holders resolve into
-    /// Interpret*innen, not excluded** — confirmed against the real cue
+    /// Interpret*in, not excluded** — confirmed against the real cue
     /// sheet example (SPEC.md §4.16, `docs/DECISIONS.md`, 2026-09-27),
     /// unlike D12's WA-form exclusion. No percentage shares render here at
     /// all — names only.

@@ -87,9 +87,15 @@ enum CueSheetLayoutComputer {
     /// real, visible separation per the project owner's second visual
     /// pass (2026-09-28, `docs/DECISIONS.md`): "attached, not flush."
     static let tableToFooterGap: Double = 25
-    /// Vertical gap between the relocated "TOTAL MUSIK" line and the new
-    /// "Interpret*innen:" summary block below it.
+    /// Vertical gap between the relocated "TOTAL MUSIK" line and the first
+    /// summary block below it (Interpret*in, or Arrangeur*in if the
+    /// project has no performers) — also reused as the gap before
+    /// Arrangeur*in when it's the *only* summary block present, so a
+    /// block's gap to whatever's directly above it is always this value.
     static let totalMusikToInterpretGap: Double = 16
+    /// Vertical gap between the Interpret*in block and the Arrangeur*in
+    /// block immediately below it, when both are present.
+    static let interpretToArrangeurGap: Double = 16
     static let interpretLabelToListGap: Double = 3
 
     /// Header field row spacing — deliberately its own constant, distinct
@@ -99,11 +105,11 @@ enum CueSheetLayoutComputer {
     static let headerFieldVerticalPadding: Double = 2
 
     /// The page's shared left text margin for content that isn't a table
-    /// cell — the title block and the Interpret*innen block both align
+    /// cell — the title block and the Interpret*in block both align
     /// here, matching where a header field's own *text* starts (`margin +
     /// cellHorizontalPadding`, `headerFieldElements` in `+Header.swift`),
     /// not the raw page `margin` the table's rule lines are drawn at.
-    /// Named explicitly (2026-09-28 visual pass) after the Interpret*innen
+    /// Named explicitly (2026-09-28 visual pass) after the Interpret*in
     /// block was found sitting flush with the table's rule lines instead —
     /// see `docs/DECISIONS.md`.
     static let contentTextMargin: Double = margin + cellHorizontalPadding
@@ -116,17 +122,54 @@ enum CueSheetLayoutComputer {
     /// Relative widths, not absolute points — normalized against the page's
     /// actual usable width at compute time, so a future margin/page-size
     /// change doesn't require re-deriving every column's width by hand.
+    ///
+    /// **Label/Label-Nr./ISRC-Nr. rebalanced 2026-09-29** (layout follow-up
+    /// pass) so ISRC-Nr. — a fixed-format code (`CC-XXX-YY-NNNNN`, always 16
+    /// characters) whose required width is therefore known and predictable,
+    /// unlike free-text columns — renders on one line instead of wrapping.
+    /// Label-Nr. gave up the width: real Core Text measurement showed it had
+    /// several points of slack for a typical short catalog number, while
+    /// Label/Interpret*in/Komponist*in etc. already wrap to multiple
+    /// lines for realistic multi-word/multi-name values regardless of their
+    /// exact width, so narrowing Label a little costs nothing already-fitting.
+    /// The other seven columns' weights are unchanged — this only
+    /// redistributes the combined 2.25 these three columns already had.
+    ///
+    /// **Songtitel/TC In/TC Out/Dur./Label rebalanced again, 2026-09-29**
+    /// (same pass, project-owner decision): Songtitel widened enough for the
+    /// longest realistic title (`"ProjectTitle_Score_Cue-NN"`, real Core Text
+    /// measurement, ~118pt at this font) to render on one line, per an
+    /// explicit instruction *not* to shrink the font to help it — funded by
+    /// TC In/TC Out/Dur., which are genuinely, structurally fixed-width (a
+    /// timecode is always the same character count; so is `MM:SS`), so
+    /// narrowing them to their real measured need plus a small buffer carries
+    /// none of the content-variance risk a free-text column's width would,
+    /// plus a small additional amount from Label (already wraps to multiple
+    /// lines for a realistic multi-word name regardless of exact width, the
+    /// same reasoning the first rebalance above already used for it). These
+    /// five columns' combined weight (3.65) is unchanged; Komponist*in/
+    /// Arrangeur*in/Interpret*in/Label-Nr./ISRC-Nr. are untouched by this
+    /// second rebalance.
+    ///
+    /// **Komponist*innen/Interpret*innen renamed to singular Komponist*in/
+    /// Interpret*in, 2026-09-29** (project-owner decision, final): applies
+    /// even though each column/block can list more than one person — matches
+    /// "Arrangeur*in," already singular since the second round's mockup
+    /// rename, and the header block's own "Komponist*in" field, which was
+    /// singular from the very first redesign pass. The "Interpret*in:"
+    /// summary block below the table (`+InterpretBlock.swift`) is renamed in
+    /// the same change for consistency.
     static let columns: [Column] = [
-        Column(title: "Komponist*innen", widthWeight: 1.0),
+        Column(title: "Komponist*in", widthWeight: 1.0),
         Column(title: "Arrangeur*in", widthWeight: 0.9),
-        Column(title: "Interpret*innen", widthWeight: 1.0),
-        Column(title: "Songtitel", widthWeight: 1.1),
-        Column(title: "TC In", widthWeight: 0.65),
-        Column(title: "TC Out", widthWeight: 0.65),
-        Column(title: "Dur.", widthWeight: 0.45),
-        Column(title: "Label", widthWeight: 0.9),
-        Column(title: "Label-Nr.", widthWeight: 0.6),
-        Column(title: "ISRC-Nr.", widthWeight: 0.75),
+        Column(title: "Interpret*in", widthWeight: 1.0),
+        Column(title: "Songtitel", widthWeight: 1.37),
+        Column(title: "TC In", widthWeight: 0.6),
+        Column(title: "TC Out", widthWeight: 0.6),
+        Column(title: "Dur.", widthWeight: 0.35),
+        Column(title: "Label", widthWeight: 0.73),
+        Column(title: "Label-Nr.", widthWeight: 0.55),
+        Column(title: "ISRC-Nr.", widthWeight: 0.9),
     ]
 
     // MARK: - Entry point
@@ -155,19 +198,26 @@ enum CueSheetLayoutComputer {
         }
         let rowHeights = measuredRowHeights(rows: rows, columnWidths: columnWidths)
 
-        let interpretLines = performerIPILines(cues: project.cues, people: project.people, labels: project.labels)
-        let interpretBlockH = interpretBlockHeight(lines: interpretLines, usableWidth: usableWidth)
-        let bottomReservedHeight = tableToFooterGap + footerHeight
-            + (interpretLines.isEmpty ? 0 : totalMusikToInterpretGap + interpretBlockH)
+        let summaryBlocks = computeSummaryBlocks(for: project, usableWidth: usableWidth)
+        let bottomReservedHeight = tableToFooterGap + footerHeight + summaryBlocks.reservedHeight
 
         let contentTop = margin + headerHeight
         let contentBottom = pageHeight - margin
-        let availableHeight = contentBottom - contentTop - bottomReservedHeight
+
+        // Non-last pages don't draw the footer/summary blocks at all, so
+        // they can use the page's full remaining height — only the actual
+        // last page needs `bottomReservedHeight` held back. Reserving it on
+        // every page (as this used to) under-filled every page before the
+        // last one, leaving real, unnecessary blank space and pushing rows
+        // onto more pages than the content actually needs.
+        let fullPageAvailableHeight = contentBottom - contentTop
+        let lastPageAvailableHeight = fullPageAvailableHeight - bottomReservedHeight
 
         let pagesOfRows = paginate(
             rowHeights: rowHeights,
             columnHeaderHeight: columnHeaderHeight,
-            availableHeight: availableHeight
+            availableHeight: fullPageAvailableHeight,
+            lastPageAvailableHeight: lastPageAvailableHeight
         )
 
         let ctx = PageContext(
@@ -177,7 +227,9 @@ enum CueSheetLayoutComputer {
             titleText: titleText,
             titleBlockHeight: titleBlockH,
             headerLines: headerLines,
-            interpretLines: interpretLines,
+            interpretLines: summaryBlocks.interpretLines,
+            interpretBlockHeight: summaryBlocks.interpretBlockHeight,
+            arrangeurLines: summaryBlocks.arrangeurLines,
             columnWidths: columnWidths,
             columnHeaderHeight: columnHeaderHeight,
             contentTop: contentTop,
@@ -189,122 +241,5 @@ enum CueSheetLayoutComputer {
         return pagesOfRows.enumerated().map { index, indices in
             pageLayout(ctx: ctx, index: index, indices: indices, isLast: index == pagesOfRows.count - 1)
         }
-    }
-
-    /// Bundles everything a single page's layout needs beyond its own
-    /// `index`/`indices` — keeps `pageLayout` under `CONTRIBUTING.md` §8's
-    /// `SwiftLint` `function_parameter_count` limit rather than passing each
-    /// of these ten values individually.
-    private struct PageContext {
-        let project: Project
-        let rows: [[String]]
-        let rowHeights: [Double]
-        let titleText: String
-        let titleBlockHeight: Double
-        let headerLines: (left: [HeaderLine], right: [HeaderLine])
-        let interpretLines: [String]
-        let columnWidths: [Double]
-        let columnHeaderHeight: Double
-        let contentTop: Double
-        let footerHeight: Double
-        let usableWidth: Double
-        let pageCount: Int
-    }
-
-    /// Each row's allocated height, content height **plus** vertical padding
-    /// — matching `columnHeaderHeight`/`footerHeight`'s own `+ cellVerticalPadding * 2`
-    /// in `computeLayout`. Omitting this was a real, self-caught bug: `rowElements`
-    /// (`+Table.swift`) always subtracts `cellVerticalPadding * 2` back out when
-    /// building each cell's drawn text box, so a row height that was pure content
-    /// height (no padding) got that box under-allocated by exactly that amount —
-    /// invisible for a tall multi-line row, but enough to make a short single-line
-    /// row's box shorter than one line, silently dropping the entire row from the
-    /// rendered PDF.
-    private static func measuredRowHeights(rows: [[String]], columnWidths: [Double]) -> [Double] {
-        rows.map { row in
-            let contentHeight = zip(row, columnWidths)
-                .map { text, width in
-                    measuredHeight(
-                        text: text,
-                        width: width - cellHorizontalPadding * 2,
-                        fontSize: cellFontSize,
-                        weight: .regular
-                    )
-                }
-                .max() ?? lineHeight(fontSize: cellFontSize, weight: .regular)
-            return contentHeight + cellVerticalPadding * 2
-        }
-    }
-
-    private static func pageLayout(ctx: PageContext, index: Int, indices: [Int], isLast: Bool) -> CueSheetPageLayout {
-        var elements: [CueSheetLayoutElement] = []
-        elements.append(contentsOf: titleBlockElements(title: ctx.titleText, usableWidth: ctx.usableWidth))
-        elements.append(contentsOf: headerBlockElements(
-            left: ctx.headerLines.left,
-            right: ctx.headerLines.right,
-            top: margin + ctx.titleBlockHeight + titleToHeaderGap,
-            usableWidth: ctx.usableWidth
-        ))
-
-        var rowOriginY = ctx.contentTop
-        elements.append(contentsOf: columnHeaderElements(
-            widths: ctx.columnWidths,
-            top: rowOriginY,
-            height: ctx.columnHeaderHeight
-        ))
-        rowOriginY += ctx.columnHeaderHeight
-
-        for rowIndex in indices {
-            let height = ctx.rowHeights[rowIndex]
-            elements.append(contentsOf: rowElements(
-                cells: ctx.rows[rowIndex],
-                widths: ctx.columnWidths,
-                top: rowOriginY,
-                height: height
-            ))
-            rowOriginY += height
-        }
-
-        if isLast {
-            rowOriginY += tableToFooterGap
-            elements.append(footerElement(
-                project: ctx.project,
-                columnWidths: ctx.columnWidths,
-                originY: rowOriginY,
-                height: ctx.footerHeight
-            ))
-            rowOriginY += ctx.footerHeight
-
-            if !ctx.interpretLines.isEmpty {
-                elements.append(contentsOf: interpretBlockElements(
-                    lines: ctx.interpretLines,
-                    top: rowOriginY + totalMusikToInterpretGap,
-                    usableWidth: ctx.usableWidth
-                ))
-            }
-        }
-
-        return CueSheetPageLayout(pageIndex: index, pageCount: ctx.pageCount, elements: elements)
-    }
-
-    /// Groups row indices into pages, each page holding as many rows as fit
-    /// within `availableHeight` — "however many rows fit at a legible font
-    /// size," per this type's own doc comment.
-    private static func paginate(rowHeights: [Double], columnHeaderHeight: Double, availableHeight: Double) -> [[Int]] {
-        var pages: [[Int]] = [[]]
-        var currentHeight = columnHeaderHeight
-        for (index, rowHeight) in rowHeights.enumerated() {
-            let currentPageIsNonEmpty = !pages[pages.count - 1].isEmpty
-            if currentHeight + rowHeight > availableHeight, currentPageIsNonEmpty {
-                pages.append([])
-                currentHeight = columnHeaderHeight
-            }
-            pages[pages.count - 1].append(index)
-            currentHeight += rowHeight
-        }
-        if pages.count > 1, pages.last?.isEmpty == true {
-            pages.removeLast()
-        }
-        return pages
     }
 }

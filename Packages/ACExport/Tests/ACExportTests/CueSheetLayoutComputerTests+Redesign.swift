@@ -95,10 +95,10 @@ extension CueSheetLayoutComputerTests {
 
         let pages = CueSheetLayoutComputer.computeLayout(for: project)
         let texts = allText(in: pages)
-        XCTAssertTrue(texts.contains("Interpret*innen:"))
+        XCTAssertTrue(texts.contains("Interpret*in:"))
         XCTAssertTrue(texts.contains { $0.contains("Mario Hänni, IPI-Nr. 765 43 21 01") })
 
-        // The table's own Interpret*innen *column* legitimately repeats the
+        // The table's own Interpret*in *column* legitimately repeats the
         // performer's name once per cue — only the aggregated summary block
         // (asserted directly here, not via the rendered page text above,
         // which also contains those per-row occurrences) must dedup.
@@ -114,7 +114,7 @@ extension CueSheetLayoutComputerTests {
         // `ProjectFixture.makeMinimal()` has no cues at all, so no performers.
         let pages = CueSheetLayoutComputer.computeLayout(for: ProjectFixture.makeMinimal())
         let texts = allText(in: pages)
-        XCTAssertFalse(texts.contains("Interpret*innen:"))
+        XCTAssertFalse(texts.contains("Interpret*in:"))
     }
 
     /// Right edge anchored to the **Dur. column's own right edge**
@@ -166,5 +166,33 @@ extension CueSheetLayoutComputerTests {
 
     func test_formattedIPI_shorterNumber_groupsWhateverIsThere() {
         XCTAssertEqual(CueSheetLayoutComputer.formattedIPI("00123"), "001 23")
+    }
+
+    /// Real, self-caught bug (2026-09-29, layout follow-up pass): rebalancing
+    /// Label/Label-Nr./ISRC-Nr.'s column widths (to let ISRC-Nr.'s
+    /// fixed-format code render on one line) narrowed Label-Nr. enough that
+    /// its own bold column-header title, "Label-Nr.", no longer fit within
+    /// the column's own content width — the column header row's height is
+    /// sized for exactly one line (`computeLayout`), so an overflowing title
+    /// risks being silently clipped rather than wrapping safely the way a
+    /// table cell does. Guards every column, not just the two touched this
+    /// round, so a future width rebalance can't reintroduce this for any
+    /// column without a test failure.
+    func test_everyColumnHeaderTitle_fitsWithinItsOwnColumnsContentWidth() {
+        let usableWidth = CueSheetLayoutComputer.pageWidth - CueSheetLayoutComputer.margin * 2
+        let totalWeight = CueSheetLayoutComputer.columns.reduce(0) { $0 + $1.widthWeight }
+        for column in CueSheetLayoutComputer.columns {
+            let width = usableWidth * (column.widthWeight / totalWeight)
+            let contentWidth = width - CueSheetLayoutComputer.cellHorizontalPadding * 2
+            let titleWidth = CueSheetLayoutComputer.measuredWidth(
+                text: column.title,
+                fontSize: CueSheetLayoutComputer.columnHeaderFontSize,
+                weight: .bold
+            )
+            XCTAssertLessThanOrEqual(
+                titleWidth, contentWidth,
+                "'\(column.title)' column header title is wider than its own column's content width"
+            )
+        }
     }
 }
