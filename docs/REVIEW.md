@@ -691,6 +691,20 @@ Separately: a formal, citation-based re-audit of `ROADMAP.md`'s D9 Status note �
 
 ---
 
+## 2026-09-29 — Deliverable D11, T11.4 — XLSX export
+
+**Architecture observations:** The real architectural question this Task posed — can `CueSheetPageLayout` drive a second renderer, or does XLSX need its own model — got a precise answer rather than a reflexive "reuse everything" or "build fresh": reuse the *content* layer (`CueSheetLayoutComputer`'s string/value functions), not the *layout* layer (`CueSheetPageLayout`'s pixel/page model), because only the former is actually medium-agnostic. This is a useful precedent for D12's WA Film form, which `SPEC.md` §4.16 already flags as an open question about whether it reuses `CueSheetPageLayout` — the answer there may be the same kind of split (share the field-value computation, not necessarily the physical layout model) rather than an all-or-nothing reuse decision.
+
+**Code quality observations:** `totalMusikText(for:)`'s extraction is a small, high-leverage refactor — one line pulled out of `footerElement` into its own named function, but it's the difference between "the PDF and XLSX happen to agree today" and "the PDF and XLSX cannot silently drift apart on a future edit." Worth naming as a pattern: whenever a second real renderer needs a string the first renderer already builds inline, extracting that string-building step (not the whole rendering call) is usually the right-sized shared unit — small enough to not be a premature abstraction, precise enough to actually prevent drift.
+
+**Technical debt:** None introduced; some paid down. The `XLSXFeasibilitySpike` scaffold — dead weight once the real writer existed to supersede it — is deleted outright rather than left alongside the real code "just in case," per `ROADMAP.md`'s own stated intent for it.
+
+**Refactoring suggestions:** None beyond what's already done this Task.
+
+**Follow-ups filed:** `docs/DECISIONS.md` gained one entry covering the exact-PDF-match decision, the `CueSheetPageLayout`-vs-content-layer reasoning, the Dur./TOTAL MUSIK adaptation (confirmed by the project owner before implementation), and the spike's removal, with its own "Alternatives Considered." `SPEC.md` §3 and `ROADMAP.md` D11's AC line both corrected in the same change to describe what was actually built, with the correction stated explicitly rather than the stale wording silently overwritten. Nine new tests added (`ACExport` now 46, was 41 after removing four retired spike tests) — every content assertion calls the same `CueSheetLayoutComputer` function the PDF renderer calls and checks the XLSX cell against that same computed value, so the two renderers are tested against each other, not independently. All verified green, a real `xcodebuild build`, `swiftlint --strict`/`swiftformat --lint` both clean repo-wide. **Manually verified beyond the automated test, per the project owner's explicit request:** a real fixture `.xlsx` was opened in Numbers and the `=SUM()` TOTAL MUSIK formula was confirmed, visually, to genuinely compute the correct total — not just assumed correct from the formula string's presence in the file's XML. **No open items from this Task.**
+
+---
+
 ## 2026-09-29 — Deliverable D11, T11.2, ninth round — Arrangeur*in block renamed to singular; the layout follow-up thread closes with no open items
 
 **Architecture observations:** This round closes out a nine-round thread cleanly by answering the exact question the previous round posed rather than a broader one — no scope drift, no re-opening of already-settled decisions (font size, Songtitel width, the Label/ISRC/TC rebalances all stand unchanged).

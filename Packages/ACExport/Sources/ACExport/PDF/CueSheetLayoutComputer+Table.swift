@@ -93,13 +93,26 @@ extension CueSheetLayoutComputer {
         originY: Double,
         height: Double
     ) -> CueSheetLayoutElement {
-        let text = "TOTAL MUSIK: \(project.setup.totalMusicRuntime.formatted)"
+        let text = totalMusikText(for: project)
         let durColumnEnd = margin + columnWidths[0 ..< 7].reduce(0, +)
         let textWidth = measuredWidth(text: text, fontSize: footerFontSize, weight: .bold)
         return CueSheetLayoutElement(
             frame: LayoutRect(x: durColumnEnd - textWidth, y: originY, width: textWidth, height: height),
             content: .text(text, font: LayoutFontSpec(weight: .bold, size: footerFontSize))
         )
+    }
+
+    /// The "TOTAL MUSIK: HH:MM:SS" text, shared verbatim with the XLSX
+    /// writer (`XLSXCueSheetWriter`, `ROADMAP.md` D11/T11.4) — pulled out of
+    /// `footerElement` so the two renderers can never silently drift apart
+    /// on this string, rather than each hand-writing the same interpolation.
+    /// The XLSX writer uses this as a row *label* only — its own "TOTAL
+    /// MUSIK" cell is a live `=SUM()` formula over real numeric Dur. cells,
+    /// not this precomputed text, per the project owner's explicit decision
+    /// that this one value should be a genuinely usable spreadsheet total,
+    /// not a static copy of the PDF's rendered string.
+    static func totalMusikText(for project: Project) -> String {
+        "TOTAL MUSIK: \(project.setup.totalMusicRuntime.formatted)"
     }
 
     private static func names(for role: CueRightHolderRole, cue: Cue, people: [Person], labels: [Label]) -> String {
