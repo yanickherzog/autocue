@@ -5,12 +5,23 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 /// The export-controls half of the combined Review & Export screen
-/// (`ROADMAP.md` D11/T11.5) — format picker, Export button, progress, and
-/// the real save destination picker. Receives its ViewModel and the current
-/// `issues` (from the sibling `ReviewViewModel` — see `ExportViewModel`'s own
-/// doc comment for why this View isn't given a second, independent
-/// subscription) as plain initializer parameters, per `CLAUDE.md`'s
-/// Dependency Injection Pattern.
+/// (`ROADMAP.md` D11/T11.5) — Export button, progress, and the real save
+/// destination picker. Receives its ViewModel and the current `issues` (from
+/// the sibling `ReviewViewModel` — see `ExportViewModel`'s own doc comment
+/// for why this View isn't given a second, independent subscription) as
+/// plain initializer parameters, per `CLAUDE.md`'s Dependency Injection
+/// Pattern.
+///
+/// **PDF-only, deliberately (`docs/DECISIONS.md`, 2026-10-02).** This View
+/// no longer offers a format picker — `ExportViewModel.selectedFormat`
+/// defaults to, and is never changed from, `.pdf` by anything in this View.
+/// `.xlsx`/`.both` are fully implemented and tested one layer down
+/// (`ExportCueSheetUseCase`, `ExportRepositoryImpl`, `XLSXCueSheetWriter`)
+/// and remain directly reachable by setting `selectedFormat`/calling
+/// `exportBoth` outside this View (as the ViewModel-level tests do) — only
+/// this screen's own UI surface was narrowed, not the underlying export
+/// pipeline. `contentTypes`/`defaultFilenameExtension`/`presentSavePanel`'s
+/// `.xlsx`/`.both` branches are kept for exactly that reason, not dead code.
 ///
 /// **A real `NSSavePanel`, not `.fileExporter` — a genuine, confirmed
 /// SwiftUI gap, not an assumption.** The T11.5 plan originally assumed
@@ -74,16 +85,6 @@ public struct ExportPanelView: View {
             Divider().overlay(Theme.Surface.reversed.foreground.opacity(0.2))
 
             HStack(spacing: Theme.Spacing.md) {
-                Picker("Format", selection: $viewModel.selectedFormat) {
-                    Text("PDF").tag(ExportFormat.pdf)
-                    Text("XLSX").tag(ExportFormat.xlsx)
-                    Text("Both").tag(ExportFormat.both)
-                }
-                .pickerStyle(.segmented)
-                .frame(width: 220)
-                .disabled(viewModel.isExporting)
-                .labelsHidden()
-
                 Spacer(minLength: Theme.Spacing.sm)
 
                 trailingControl

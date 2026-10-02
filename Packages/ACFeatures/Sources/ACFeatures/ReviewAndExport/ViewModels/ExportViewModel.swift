@@ -21,7 +21,12 @@ import Foundation
 @MainActor
 public final class ExportViewModel {
     public let projectID: Project.ID
-    public var selectedFormat: ExportFormat = .both
+    /// Defaults to `.pdf` — the only format `ExportPanelView` currently
+    /// offers a control for (`docs/DECISIONS.md`, 2026-10-02). `.xlsx`/
+    /// `.both` are still fully real, correct, and directly testable by
+    /// setting this property or calling `exportBoth` directly; nothing in
+    /// this type enforces `.pdf`-only, only the UI above it currently does.
+    public var selectedFormat: ExportFormat = .pdf
     public private(set) var isExporting = false
     public private(set) var progressMessage: String?
     public private(set) var progressFraction: Double?
