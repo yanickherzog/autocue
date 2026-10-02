@@ -31,3 +31,12 @@ Packages/*/.build/
 # potentially client-confidential status, same "never committed" treatment.
 # Exported .wav fixtures go in /Audio_Analysis_Test/ directly, not here.
 /Audio_Test_Material Project/
+
+# D11/T11.2 cue sheet PDF layout work — the real InDesign mockup the project
+# owner prepared (ROADMAP.md D11/T11.2, third round) plus rendered PDF
+# outputs used for visual-polish verification along the way. Local reference
+# material, not source; kept on disk, never committed. See docs/DECISIONS.md,
+# 2026-10-02.
+/AutoCue-CueSheet-*.pdf
+/Autocue_PDF-Template.indd
+/Autocue_PDF-Template.pdf
