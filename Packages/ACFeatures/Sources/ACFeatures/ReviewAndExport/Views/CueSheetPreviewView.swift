@@ -78,9 +78,11 @@ public struct CueSheetPreviewView: View {
     private func draw(_ page: CueSheetPageLayout, in context: GraphicsContext) {
         context.withCGContext { cgContext in
             // `Canvas`'s own coordinate space already matches `LayoutRect`'s
-            // convention (top-left origin, y increasing downward) — unlike
-            // `PDFCueSheetRenderer`'s Core Graphics `PDFContext`, no flip is
-            // needed here.
+            // convention (top-left origin, y increasing downward) for plain
+            // rect/line geometry — unlike `PDFCueSheetRenderer`'s Core
+            // Graphics `PDFContext`, no *frame-position* flip is needed
+            // here. `CTFrameDraw` itself still needs a local correction
+            // regardless — see `drawText`'s own doc comment.
             for element in page.elements {
                 let frame = CGRect(
                     x: element.frame.x,
@@ -98,6 +100,23 @@ public struct CueSheetPreviewView: View {
         }
     }
 
+    /// **Real, confirmed fix (`ROADMAP.md` D11/T11.5 manual verification) —
+    /// not the original assumption.** This screen's own doc comment above
+    /// used to claim `Canvas`'s coordinate space needs "no flip" the way
+    /// `PDFCueSheetRenderer` does — true for plain rects/lines, but wrong for
+    /// `CTFrameDraw` specifically: Core Text always lays out and draws a
+    /// `CTFrame` assuming a bottom-left-origin, y-*up* coordinate system —
+    /// the same one `PDFCueSheetRenderer`'s raw (unflipped) `PDFContext` IS
+    /// natively, which is exactly why that renderer needs no per-text-draw
+    /// correction. `Canvas`'s own raw `CGContext` (via `withCGContext`) is
+    /// the opposite: already flipped to top-left-origin, y-*down*, to match
+    /// SwiftUI's own view-hosted drawing convention. Left uncorrected, every
+    /// glyph draws upside-down — confirmed by a real screenshot of this
+    /// exact screen, composed live for the first time at T11.5 (this View
+    /// existed since T11.2 but was never wired into real navigation until
+    /// now, so this divergence had no way to surface earlier). The fix:
+    /// build the `CTFrame`'s path in *local* frame-relative coordinates,
+    /// then flip only around this one element's own origin before drawing.
     private func drawText(_ string: String, font: LayoutFontSpec, in frame: CGRect, context: CGContext) {
         guard !string.isEmpty else { return }
         let ctFont = CTFontCreateWithName(fontName(for: font.weight) as CFString, font.size, nil)
@@ -110,9 +129,14 @@ public struct CueSheetPreviewView: View {
         }
         let attributedString = NSAttributedString(string: string, attributes: attributes)
         let framesetter = CTFramesetterCreateWithAttributedString(attributedString)
-        let path = CGPath(rect: frame, transform: nil)
-        let ctFrame = CTFramesetterCreateFrame(framesetter, CFRange(location: 0, length: 0), path, nil)
+        let localPath = CGPath(rect: CGRect(origin: .zero, size: frame.size), transform: nil)
+        let ctFrame = CTFramesetterCreateFrame(framesetter, CFRange(location: 0, length: 0), localPath, nil)
+
+        context.saveGState()
+        context.translateBy(x: frame.minX, y: frame.minY + frame.height)
+        context.scaleBy(x: 1, y: -1)
         CTFrameDraw(ctFrame, context)
+        context.restoreGState()
     }
 
     private func drawRule(_ spec: LayoutRuleSpec, in frame: CGRect, context: CGContext) {

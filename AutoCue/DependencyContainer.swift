@@ -1,5 +1,6 @@
 import ACAudioKit
 import ACCore
+import ACExport
 import ACFeatures
 import ACPersistence
 import Foundation
@@ -18,11 +19,13 @@ import SwiftData
 final class DependencyContainer {
     private let projectRepository: ProjectRepository
     private let audioAnalysisRepository: AudioAnalysisRepository
+    private let exportRepository: ExportRepository
 
     init() {
         let modelContainer = Self.makeModelContainer()
         projectRepository = ProjectRepositoryImpl(modelContainer: modelContainer)
         audioAnalysisRepository = AudioAnalysisRepositoryImpl()
+        exportRepository = ExportRepositoryImpl()
     }
 
     func makeProjectLibraryViewModel() -> ProjectLibraryViewModel {
@@ -97,6 +100,38 @@ final class DependencyContainer {
             updateCueUseCase: UpdateCueUseCase(projectRepository: projectRepository),
             clearImportedAudioUseCase: ClearImportedAudioUseCase(projectRepository: projectRepository),
             audioPlaybackController: AudioPlaybackControllerImpl()
+        )
+    }
+
+    /// The three child ViewModels behind the one combined Review & Export
+    /// destination (`CLAUDE.md`'s Navigation Model) — `ReviewViewModel`
+    /// (T11.1), `CueSheetPreviewViewModel` (T11.2), and `ExportViewModel`
+    /// (T11.5), composed by `ReviewAndExportViewModel` itself.
+    ///
+    /// **`shareValidationStrictness` is a hardcoded `Settings()` default
+    /// (`.warnOnly`), not a real persisted read** — deliberate, temporary,
+    /// pending `ROADMAP.md` D15/T15.1's `SettingsRepository`; see
+    /// `docs/DECISIONS.md`.
+    func makeReviewAndExportViewModel(for projectID: Project.ID) -> ReviewAndExportViewModel {
+        let shareValidationStrictness = Settings().shareValidationStrictness
+        return ReviewAndExportViewModel(
+            reviewViewModel: ReviewViewModel(
+                projectID: projectID,
+                observeProjectsUseCase: ObserveProjectsUseCase(projectRepository: projectRepository)
+            ),
+            cueSheetPreviewViewModel: CueSheetPreviewViewModel(
+                projectID: projectID,
+                observeProjectsUseCase: ObserveProjectsUseCase(projectRepository: projectRepository),
+                computeCueSheetLayoutUseCase: ComputeCueSheetLayoutUseCase(exportRepository: exportRepository)
+            ),
+            exportViewModel: ExportViewModel(
+                projectID: projectID,
+                exportCueSheetUseCase: ExportCueSheetUseCase(
+                    projectRepository: projectRepository,
+                    exportRepository: exportRepository
+                ),
+                shareValidationStrictness: shareValidationStrictness
+            )
         )
     }
 

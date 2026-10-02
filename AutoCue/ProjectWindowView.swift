@@ -12,8 +12,8 @@ import SwiftUI
 /// as of D9/T9.5 (SPEC.md §4.21) — never unconditionally the import prompt,
 /// so reopening an already-processed (or mid-pipeline) Project resumes at
 /// the right screen instead of re-showing D8's import prompt.
-/// `ReviewAndExportView` still shows a placeholder `EmptyStateView` until
-/// D11.
+/// `.reviewAndExport` renders the real `ReviewAndExportView` as of
+/// `ROADMAP.md` D11/T11.5.
 ///
 /// Owns this window's `AppState` (`ACFeatures`) — constructed once per
 /// window via `@State`, never a single app-wide instance (`CLAUDE.md`,
@@ -116,6 +116,7 @@ struct ProjectWindowView: View {
     @State private var cueSheetSectionViewModel: CueSheetSectionViewModel
     @State private var cueDetectionViewModel: CueDetectionViewModel
     @State private var cueDetectionReviewViewModel: CueDetectionReviewViewModel
+    @State private var reviewAndExportViewModel: ReviewAndExportViewModel
     /// Set when a tab switch to `.cueSheet`/`.reviewAndExport` is blocked
     /// because `setupViewModel.missingRequiredFields` isn't empty at the
     /// moment the user clicks that tab — see `sidebarButton`'s doc comment
@@ -135,6 +136,7 @@ struct ProjectWindowView: View {
         _cueSheetSectionViewModel = State(initialValue: container.makeCueSheetSectionViewModel(for: projectID))
         _cueDetectionViewModel = State(initialValue: container.makeCueDetectionViewModel(for: projectID))
         _cueDetectionReviewViewModel = State(initialValue: container.makeCueDetectionReviewViewModel(for: projectID))
+        _reviewAndExportViewModel = State(initialValue: container.makeReviewAndExportViewModel(for: projectID))
         let freshUndoManager = UndoManager()
         _undoManager = State(initialValue: freshUndoManager)
         _undoManagerObserver = State(initialValue: ProjectUndoManagerObserver(undoManager: freshUndoManager))
@@ -258,12 +260,7 @@ struct ProjectWindowView: View {
             case .cueSheet:
                 cueSheetDetail
             case .reviewAndExport:
-                EmptyStateView(
-                    systemImage: "checkmark.seal",
-                    title: "Review & Export",
-                    message: "Coming in ROADMAP.md D11.",
-                    surface: .reversed
-                )
+                ReviewAndExportView(viewModel: reviewAndExportViewModel)
             }
         }
     }

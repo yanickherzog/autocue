@@ -13,11 +13,15 @@ import XCTest
 /// XLSX cell equals that same computed value — proving the two renderers
 /// can't silently drift apart, not just that the XLSX file "looks about
 /// right" in isolation.
+///
+/// **The XLSX-usability-fix tests (`docs/DECISIONS.md`, 2026-09-29 — real
+/// column widths, borders, gridlines, merges, row heights, name-wrapping)
+/// live in `XLSXCueSheetWriterTests+UsabilityFixes.swift`** — split into its
+/// own file per `CONTRIBUTING.md` §8's `SwiftLint` `type_body_length` limit,
+/// the same pattern `CueSheetLayoutComputerTests+Redesign.swift` already
+/// establishes. Every helper below is `internal` (no `private`), since
+/// Swift's `private` is file-scoped and that extension needs them too.
 final class XLSXCueSheetWriterTests: XCTestCase {
-    private func temporaryURL() -> URL {
-        FileManager.default.temporaryDirectory.appendingPathComponent("\(UUID().uuidString).xlsx")
-    }
-
     func test_write_producesAValidZipContainer_xlsxIsAZipFormat() throws {
         let url = temporaryURL()
         defer { try? FileManager.default.removeItem(at: url) }
@@ -198,11 +202,15 @@ final class XLSXCueSheetWriterTests: XCTestCase {
 
     // MARK: - Helpers
 
-    private func simpleRightHolder(party: Party, role: CueRightHolderRole) -> CueRightHolder {
+    func temporaryURL() -> URL {
+        FileManager.default.temporaryDirectory.appendingPathComponent("\(UUID().uuidString).xlsx")
+    }
+
+    func simpleRightHolder(party: Party, role: CueRightHolderRole) -> CueRightHolder {
         CueRightHolder(party: party, role: role, performanceBroadcastShare: 100, mechanicalRightsShare: 100)
     }
 
-    private func simpleComposerCue(title: String, seconds: Double) -> Cue {
+    func simpleComposerCue(title: String, seconds: Double) -> Cue {
         Cue(
             title: title,
             duration: MediaDuration(seconds: seconds),
@@ -211,7 +219,7 @@ final class XLSXCueSheetWriterTests: XCTestCase {
         )
     }
 
-    private func singleComposerProject(cues: [Cue]) -> Project {
+    func singleComposerProject(cues: [Cue]) -> Project {
         let base = ProjectFixture.makeMinimal()
         return Project(
             id: base.id, name: base.name, createdAt: base.createdAt, updatedAt: base.updatedAt,
@@ -222,7 +230,7 @@ final class XLSXCueSheetWriterTests: XCTestCase {
     /// The full set of shared strings the workbook wrote — sufficient for
     /// content-presence assertions without caring about exact cell
     /// addresses, the same level most of these tests need.
-    private func sharedStrings(from url: URL) throws -> Set<String> {
+    func sharedStrings(from url: URL) throws -> Set<String> {
         let xml = try readZipEntry("xl/sharedStrings.xml", from: url)
         var results: Set<String> = []
         var remainder = xml[...]
@@ -237,7 +245,7 @@ final class XLSXCueSheetWriterTests: XCTestCase {
         return results
     }
 
-    private func decodeXMLEntities(_ string: String) -> String {
+    func decodeXMLEntities(_ string: String) -> String {
         string
             .replacingOccurrences(of: "&amp;", with: "&")
             .replacingOccurrences(of: "&lt;", with: "<")
@@ -248,7 +256,7 @@ final class XLSXCueSheetWriterTests: XCTestCase {
 
     /// Number of matches of a zero-capture-group pattern — a pure
     /// presence/absence or count check.
-    private func matchCount(_ pattern: String, in text: String) -> Int {
+    func matchCount(_ pattern: String, in text: String) -> Int {
         guard let regex = try? NSRegularExpression(pattern: pattern) else { return 0 }
         let range = NSRange(text.startIndex..., in: text)
         return regex.numberOfMatches(in: text, range: range)
@@ -256,7 +264,7 @@ final class XLSXCueSheetWriterTests: XCTestCase {
 
     /// Every match's `groupCount` capture groups, in order — for a pattern
     /// with `groupCount` capturing parentheses.
-    private func captureGroups(_ pattern: String, in text: String, groupCount: Int) -> [[String]] {
+    func captureGroups(_ pattern: String, in text: String, groupCount: Int) -> [[String]] {
         guard let regex = try? NSRegularExpression(pattern: pattern) else { return [] }
         let range = NSRange(text.startIndex..., in: text)
         return regex.matches(in: text, range: range).compactMap { match in
@@ -271,7 +279,7 @@ final class XLSXCueSheetWriterTests: XCTestCase {
     /// Extracts one entry from a ZIP (.xlsx) file using the `unzip` CLI, so
     /// this test doesn't need a zip-reading library — the same approach the
     /// retired `XLSXFeasibilitySpikeTests` already established.
-    private func readZipEntry(_ entryName: String, from url: URL) throws -> String {
+    func readZipEntry(_ entryName: String, from url: URL) throws -> String {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/unzip")
         process.arguments = ["-p", url.path, entryName]

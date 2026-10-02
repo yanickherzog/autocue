@@ -229,6 +229,61 @@ final class CueSheetLayoutComputerTests: XCTestCase {
         )
     }
 
+    /// Real, reported bug (`docs/DECISIONS.md`, 2026-09-29): joining
+    /// multiple right-holders with `", "` let Core Text's ordinary word-wrap
+    /// split an individual name in half under a narrow column. Fixed by
+    /// hard-`"\n"`-joining instead — this test locks that in directly, at
+    /// the string level, independent of any particular column width.
+    func test_namesForARole_multipleRightHolders_joinedByNewline_notComma() {
+        let composerA = Person(firstName: "Johann", lastName: "Johannsson")
+        let composerB = Person(firstName: "Hildur", lastName: "Guðnadóttir")
+        let cue = Cue(
+            title: "Opening Theme",
+            duration: MediaDuration(seconds: 60),
+            rightHolders: [
+                CueRightHolder(
+                    party: .person(composerA.id), role: .composer,
+                    performanceBroadcastShare: 50, mechanicalRightsShare: 50
+                ),
+                CueRightHolder(
+                    party: .person(composerB.id), role: .composer,
+                    performanceBroadcastShare: 50, mechanicalRightsShare: 50
+                ),
+            ],
+            source: .manual
+        )
+        let values = CueSheetLayoutComputer.rowValues(
+            for: cue, setup: ProjectFixture.make().setup, people: [composerA, composerB], labels: []
+        )
+        let komponistValue = values[0]
+        XCTAssertEqual(komponistValue, "Johann Johannsson\nHildur Guðnadóttir")
+        XCTAssertFalse(komponistValue.contains(", "), "Must never comma-join multiple right-holders on one line")
+    }
+
+    /// Real Core Text measurement (`docs/DECISIONS.md`, 2026-09-29
+    /// name-wrapping fix) — confirms Arrangeur*in's real column width
+    /// (after the 0.9→0.95 rebalance) comfortably fits the longest
+    /// *reported real* single name ("Johann Johannsson") on one line,
+    /// with a real margin, not an exact-fit gamble. Komponist*in/
+    /// Interpret*in (unchanged, weight 1.0) are wider still and are
+    /// asserted too, closing the "confirm those aren't also marginal"
+    /// question directly rather than assuming from Arrangeur*in alone.
+    func test_nameColumns_fitTheLongestReportedRealName_onOneLine() {
+        let widths = CueSheetLayoutComputer.columnWidths()
+        let longestRealName = "Johann Johannsson"
+        let nameColumnIndices = [0, 1, 2] // Komponist*in, Arrangeur*in, Interpret*in
+        for index in nameColumnIndices {
+            let contentWidth = widths[index] - CueSheetLayoutComputer.cellHorizontalPadding * 2
+            let neededWidth = CueSheetLayoutComputer.measuredWidth(
+                text: longestRealName, fontSize: CueSheetLayoutComputer.cellFontSize, weight: .regular
+            )
+            XCTAssertGreaterThan(
+                contentWidth, neededWidth,
+                "\(CueSheetLayoutComputer.columns[index].title) must fit \"\(longestRealName)\" on one line"
+            )
+        }
+    }
+
     /// Not `private` — the layout-redesign pass's tests
     /// (`CueSheetLayoutComputerTests+Redesign.swift`) are an `extension` of
     /// this class in a separate file, split per `CONTRIBUTING.md` §8's

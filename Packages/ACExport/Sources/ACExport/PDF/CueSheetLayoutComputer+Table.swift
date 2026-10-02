@@ -115,11 +115,28 @@ extension CueSheetLayoutComputer {
         "TOTAL MUSIK: \(project.setup.totalMusicRuntime.formatted)"
     }
 
+    /// **`"\n"`-joined — one full name per line, never `", "`-joined on one
+    /// line.** Real, reported bug (`docs/DECISIONS.md`, 2026-09-29): joining
+    /// with `", "` and letting Core Text's ordinary word-wrap break the
+    /// combined string wherever it didn't fit a narrow column split an
+    /// individual right-holder's own name in half ("Johann" / "Johannsson,
+    /// Hildur" / "Guðnadóttir") — Core Text treats every space as an equally
+    /// valid wrap point, with no way to know "Johann Johannsson" is one
+    /// person's indivisible name rather than two separate list items. A hard
+    /// line break between people (never inside a name) is the only way to
+    /// guarantee that; this matches the header block's own
+    /// `aggregatedPartyIPILines` convention exactly (`+Header.swift`,
+    /// already `"\n"`-joined there since the second round), which is why
+    /// that field never exhibited this bug. If a column still can't fit even
+    /// a single full name on its own line at the current font size, Core
+    /// Text has no choice but to wrap within that one name — a real,
+    /// separate width/font problem to surface, not something this separator
+    /// choice can paper over.
     private static func names(for role: CueRightHolderRole, cue: Cue, people: [Person], labels: [Label]) -> String {
         cue.rightHolders
             .filter { $0.role == role }
             .compactMap { PartyResolver.resolve($0.party, people: people, labels: labels)?.displayName }
-            .joined(separator: ", ")
+            .joined(separator: "\n")
     }
 
     /// SPEC.md §4.3: TC In = `Setup.timecodeStart + Cue.startTimecode`;

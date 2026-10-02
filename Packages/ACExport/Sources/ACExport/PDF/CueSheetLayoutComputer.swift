@@ -159,25 +159,63 @@ enum CueSheetLayoutComputer {
     /// singular from the very first redesign pass. The "Interpret*in:"
     /// summary block below the table (`+InterpretBlock.swift`) is renamed in
     /// the same change for consistency.
+    ///
+    /// **Arrangeur*in widened, Label narrowed, 2026-09-29** (name-wrapping
+    /// bug fix, real evidence in `docs/DECISIONS.md`): a real, reported
+    /// right-holder list ("Johann Johannsson, Hildur Guðnadóttir") rendered
+    /// with **a single name split across two lines** ("Johann" / "Johannsson,
+    /// Hildur" / "Guðnadóttir") under Arrangeur*in's old 0.9 weight — its
+    /// content width (74.6pt) was narrower than "Johann Johannsson" itself
+    /// (76.5pt, real Core Text measurement at this column's 8.5pt font), so
+    /// even a single full name on its own line couldn't fit. Real measurement
+    /// of both reported names plus several other real film-composer names
+    /// found the *widest* need is ~76.5pt; Arrangeur*in raised to 0.95 gives
+    /// it 79.4pt of content width — a ~2.9pt margin over that real worst
+    /// case, consistent with every other buffer in this column-width work
+    /// (never an exact-fit gamble). Komponist*in/Interpret*in (weight 1.0,
+    /// 84.2pt content) were already comfortably clear (7.7pt margin) and are
+    /// untouched. The 0.05 needed came from **Label**, not TC In/TC Out/Dur.
+    /// — those three were already re-measured this same investigation and
+    /// found to have only ~0.4–0.8pt of real slack left (the seventh round
+    /// already took them to their practical floor for Songtitel); taking more
+    /// from them risked reintroducing exactly this bug on a real timecode/
+    /// duration value instead. Label, unlike Komponist*in/Arrangeur*in/
+    /// Interpret*in, has no "must render as a single name" requirement —
+    /// it's already established (fifth/sixth/seventh rounds) as tolerant of
+    /// wrapping to multiple lines for a realistic multi-word label name, so
+    /// narrowing it a third time costs nothing new; a short label name like
+    /// "Sony Classical" that fit on one line before may now wrap to two,
+    /// which is exactly the kind of change this column already absorbs.
+    /// Total weight (8.0) is unchanged.
     static let columns: [Column] = [
         Column(title: "Komponist*in", widthWeight: 1.0),
-        Column(title: "Arrangeur*in", widthWeight: 0.9),
+        Column(title: "Arrangeur*in", widthWeight: 0.95),
         Column(title: "Interpret*in", widthWeight: 1.0),
         Column(title: "Songtitel", widthWeight: 1.37),
         Column(title: "TC In", widthWeight: 0.6),
         Column(title: "TC Out", widthWeight: 0.6),
         Column(title: "Dur.", widthWeight: 0.35),
-        Column(title: "Label", widthWeight: 0.73),
+        Column(title: "Label", widthWeight: 0.68),
         Column(title: "Label-Nr.", widthWeight: 0.55),
         Column(title: "ISRC-Nr.", widthWeight: 0.9),
     ]
 
     // MARK: - Entry point
 
+    /// Real, gross (pre-padding) per-column point widths — `columns`'
+    /// `widthWeight`s normalized against the page's actual usable width.
+    /// Extracted out of `computeLayout` (2026-09-29, name-wrapping follow-up
+    /// pass) so `XLSXCueSheetWriter` can size its own columns from the exact
+    /// same real widths this renderer uses, rather than an unrelated,
+    /// unmeasured scale — see that type's own doc comment.
+    static func columnWidths(usableWidth: Double = pageWidth - margin * 2) -> [Double] {
+        let totalWeight = columns.reduce(0) { $0 + $1.widthWeight }
+        return columns.map { usableWidth * ($0.widthWeight / totalWeight) }
+    }
+
     static func computeLayout(for project: Project) -> [CueSheetPageLayout] {
         let usableWidth = pageWidth - margin * 2
-        let totalWeight = columns.reduce(0) { $0 + $1.widthWeight }
-        let columnWidths = columns.map { usableWidth * ($0.widthWeight / totalWeight) }
+        let columnWidths = columnWidths(usableWidth: usableWidth)
 
         let titleText = titleHeadingText(for: project.setup)
         let titleBlockH = titleBlockHeight(title: titleText, usableWidth: usableWidth)
