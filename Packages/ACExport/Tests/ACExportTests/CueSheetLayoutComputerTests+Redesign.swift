@@ -96,7 +96,7 @@ extension CueSheetLayoutComputerTests {
         let pages = CueSheetLayoutComputer.computeLayout(for: project)
         let texts = allText(in: pages)
         XCTAssertTrue(texts.contains("Interpret*in:"))
-        XCTAssertTrue(texts.contains { $0.contains("Mario Hänni, IPI-Nr. 765 43 21 01") })
+        XCTAssertTrue(texts.contains { $0.contains("Mario Hänni, IPI-Nr. 98765 43 21 01") })
 
         // The table's own Interpret*in *column* legitimately repeats the
         // performer's name once per cue — only the aggregated summary block
@@ -107,7 +107,7 @@ extension CueSheetLayoutComputerTests {
             people: project.people,
             labels: project.labels
         )
-        XCTAssertEqual(aggregated, ["Mario Hänni, IPI-Nr. 765 43 21 01"])
+        XCTAssertEqual(aggregated, ["Mario Hänni, IPI-Nr. 98765 43 21 01"])
     }
 
     func test_interpretBlock_omittedEntirely_whenTheProjectHasNoPerformers() {
@@ -155,17 +155,31 @@ extension CueSheetLayoutComputerTests {
         )
     }
 
-    func test_formattedIPI_elevenDigitStoredNumber_dropsThePaddingAndGroupsTheRemainingNineDigits() {
-        XCTAssertEqual(CueSheetLayoutComputer.formattedIPI("00123456789"), "123 45 67 89")
-        XCTAssertEqual(CueSheetLayoutComputer.formattedIPI("11111111111"), "111 11 11 11")
+    /// Corrected 2026-10-03, twice the same day (`docs/DECISIONS.md`). The
+    /// original `3-2-2-2`-of-the-trailing-9 convention this test once
+    /// named and asserted was a real, confirmed bug (dropped 2 real
+    /// digits). A same-day interim fix (`3-3-3` base + hyphenated check
+    /// digits) was itself superseded the same day by real evidence: the
+    /// project owner's own actual, SUISA-accepted cue sheet displays its
+    /// IPI number as `"00386 75 75 00"` — the full, unmodified 11 digits,
+    /// grouped `5-2-2-2`, no hyphen, no base/check split in the displayed
+    /// string at all (`isValid`'s internal 9+2 structure is unrelated to
+    /// this display). `"00123456789"` under that real grouping is exactly
+    /// `"00123 45 67 89"`.
+    func test_formattedIPI_elevenDigitStoredNumber_groupsFiveTwoTwoTwo() {
+        XCTAssertEqual(CueSheetLayoutComputer.formattedIPI("00123456789"), "00123 45 67 89")
+        XCTAssertEqual(CueSheetLayoutComputer.formattedIPI("11111111111"), "11111 11 11 11")
     }
 
-    func test_formattedIPI_nineDigitNumber_groupsDirectly() {
-        XCTAssertEqual(CueSheetLayoutComputer.formattedIPI("123456789"), "123 45 67 89")
+    /// A 9-digit (not 11-digit) number still groups `5-2-2-2` from the
+    /// left — the convention isn't specific to exactly 11 digits, it's
+    /// "group the whole real number this way regardless of length."
+    func test_formattedIPI_nineDigitNumber_groupsFiveTwoTwoFromTheLeft() {
+        XCTAssertEqual(CueSheetLayoutComputer.formattedIPI("123456789"), "12345 67 89")
     }
 
-    func test_formattedIPI_shorterNumber_groupsWhateverIsThere() {
-        XCTAssertEqual(CueSheetLayoutComputer.formattedIPI("00123"), "001 23")
+    func test_formattedIPI_fiveDigitsOrFewer_oneUngroupedBlock() {
+        XCTAssertEqual(CueSheetLayoutComputer.formattedIPI("00123"), "00123")
     }
 
     /// Real, self-caught bug (2026-09-29, layout follow-up pass): rebalancing

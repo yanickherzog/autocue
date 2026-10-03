@@ -45,21 +45,42 @@ public final class RightHolderDirectoryViewModel {
     /// the View reads this to tell the user precisely what to edit first
     /// (SPEC.md §4.12), rather than a generic "can't delete" message.
     public private(set) var blockedDeleteLocations: [PartyReferenceLocation]?
+    /// The app owner's own stored identity, or `nil` if never saved —
+    /// `PartyPickerView`'s "That's Me" button reads this (every
+    /// `PartyPickerView` instance is already handed this same ViewModel, so
+    /// this is the natural channel — see `ComposerProfileUseCase`'s own doc
+    /// comment for why this is *not* the `SettingsRepository`-shaped
+    /// dependency this type's own doc comment above warns against adding
+    /// ahead of D15: it's a narrow, single-purpose, unrelated store, not a
+    /// piece of the general `Settings` model). Read once, at `init` — not
+    /// live-observed. If the profile is edited in the `Settings` scene while
+    /// a Project window (and this ViewModel) is already open, that window
+    /// picks up the change the next time it's opened, not immediately. A
+    /// real limitation, not an oversight: nothing else on this screen is
+    /// live-synced across windows either (`people`/`labels` are refreshed by
+    /// `loadDirectory()`'s own one-shot call, not a standing subscription),
+    /// and a second, standing `AsyncStream` subscription just for this one
+    /// rarely-changed value isn't justified yet (`CLAUDE.md` rule 7).
+    public private(set) var composerProfile: ComposerProfile?
 
     private let observeProjectsUseCase: ObserveProjectsUseCase
     private let updateRightHolderDirectoryUseCase: UpdateRightHolderDirectoryUseCase
     private let deleteRightHolderUseCase: DeleteRightHolderUseCase
+    private let composerProfileUseCase: ComposerProfileUseCase
 
     public init(
         projectID: Project.ID,
         observeProjectsUseCase: ObserveProjectsUseCase,
         updateRightHolderDirectoryUseCase: UpdateRightHolderDirectoryUseCase,
-        deleteRightHolderUseCase: DeleteRightHolderUseCase
+        deleteRightHolderUseCase: DeleteRightHolderUseCase,
+        composerProfileUseCase: ComposerProfileUseCase
     ) {
         self.projectID = projectID
         self.observeProjectsUseCase = observeProjectsUseCase
         self.updateRightHolderDirectoryUseCase = updateRightHolderDirectoryUseCase
         self.deleteRightHolderUseCase = deleteRightHolderUseCase
+        self.composerProfileUseCase = composerProfileUseCase
+        composerProfile = composerProfileUseCase.currentProfile()
     }
 
     /// One-shot load/refresh from the live stream's next emission. Safe to

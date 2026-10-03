@@ -39,8 +39,48 @@ final class RightHolderDirectoryViewModelTests: XCTestCase {
             projectID: project.id,
             observeProjectsUseCase: ObserveProjectsUseCase(projectRepository: repository),
             updateRightHolderDirectoryUseCase: UpdateRightHolderDirectoryUseCase(projectRepository: repository),
-            deleteRightHolderUseCase: DeleteRightHolderUseCase(projectRepository: repository)
+            deleteRightHolderUseCase: DeleteRightHolderUseCase(projectRepository: repository),
+            composerProfileUseCase: ComposerProfileUseCase(
+                composerProfileRepository: InMemoryComposerProfileRepository()
+            )
         )
+    }
+
+    // MARK: - composerProfile ("That's Me")
+
+    func test_init_noStoredProfile_composerProfileIsNil() {
+        let project = makeProject()
+        let viewModel = RightHolderDirectoryViewModel(
+            projectID: project.id,
+            observeProjectsUseCase: ObserveProjectsUseCase(projectRepository: InMemoryProjectRepository()),
+            updateRightHolderDirectoryUseCase: UpdateRightHolderDirectoryUseCase(
+                projectRepository: InMemoryProjectRepository()
+            ),
+            deleteRightHolderUseCase: DeleteRightHolderUseCase(projectRepository: InMemoryProjectRepository()),
+            composerProfileUseCase: ComposerProfileUseCase(
+                composerProfileRepository: InMemoryComposerProfileRepository()
+            )
+        )
+
+        XCTAssertNil(viewModel.composerProfile)
+    }
+
+    func test_init_storedProfileExists_composerProfileReflectsIt() {
+        let project = makeProject()
+        let profile = ComposerProfile(firstName: "Ada", lastName: "Lovelace", ipiNumber: "01234567846")
+        let viewModel = RightHolderDirectoryViewModel(
+            projectID: project.id,
+            observeProjectsUseCase: ObserveProjectsUseCase(projectRepository: InMemoryProjectRepository()),
+            updateRightHolderDirectoryUseCase: UpdateRightHolderDirectoryUseCase(
+                projectRepository: InMemoryProjectRepository()
+            ),
+            deleteRightHolderUseCase: DeleteRightHolderUseCase(projectRepository: InMemoryProjectRepository()),
+            composerProfileUseCase: ComposerProfileUseCase(
+                composerProfileRepository: InMemoryComposerProfileRepository(storedProfile: profile)
+            )
+        )
+
+        XCTAssertEqual(viewModel.composerProfile, profile)
     }
 
     func test_loadDirectory_populatesPeopleAndLabels() async {
@@ -67,7 +107,10 @@ final class RightHolderDirectoryViewModelTests: XCTestCase {
             projectID: UUID(),
             observeProjectsUseCase: ObserveProjectsUseCase(projectRepository: repository),
             updateRightHolderDirectoryUseCase: UpdateRightHolderDirectoryUseCase(projectRepository: repository),
-            deleteRightHolderUseCase: DeleteRightHolderUseCase(projectRepository: repository)
+            deleteRightHolderUseCase: DeleteRightHolderUseCase(projectRepository: repository),
+            composerProfileUseCase: ComposerProfileUseCase(
+                composerProfileRepository: InMemoryComposerProfileRepository()
+            )
         )
 
         await viewModel.loadDirectory()

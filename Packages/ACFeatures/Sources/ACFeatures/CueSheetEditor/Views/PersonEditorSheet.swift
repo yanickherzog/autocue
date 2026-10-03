@@ -59,6 +59,15 @@ struct PersonEditorSheet: View {
     /// IPI-Nr correctly the moment their entry is opened for editing from
     /// anywhere. See `docs/DECISIONS.md`.
     let showsIPINumberField: Bool
+    /// Seeds every field below from the app owner's own stored
+    /// `ComposerProfile` instead of `existing` — set only by "That's Me"
+    /// (`PartyPickerView`), and only meaningful when `existing == nil`
+    /// (editing an existing `Person` always shows that `Person`'s own data,
+    /// never the profile's). Pre-fills as ordinary, visible, editable
+    /// `@State` text — the same fields the user would otherwise type by
+    /// hand — never a locked/read-only auto-insert; the user can freely
+    /// change anything before saving, same as any other new entry.
+    let prefillingFromProfile: ComposerProfile?
     /// `async`, returning the Use Case's `SavePersonResult` (post-D7
     /// click-through-fix round) rather than a fire-and-forget `Void` — this
     /// sheet needs to know whether the save actually succeeded so it can
@@ -95,20 +104,26 @@ struct PersonEditorSheet: View {
         existing: Person?,
         initialIntendedRole: PersonIntendedRole? = nil,
         showsIPINumberField: Bool = true,
+        prefillingFromProfile: ComposerProfile? = nil,
         onSave: @escaping (Person) async -> SavePersonResult?,
         onCancel: @escaping () -> Void
     ) {
         self.existing = existing
         self.initialIntendedRole = initialIntendedRole
         self.showsIPINumberField = showsIPINumberField
+        self.prefillingFromProfile = prefillingFromProfile
         self.onSave = onSave
         self.onCancel = onCancel
-        _firstName = State(initialValue: existing?.firstName ?? "")
-        _lastName = State(initialValue: existing?.lastName ?? "")
-        _ipiNumber = State(initialValue: existing?.ipiNumber ?? "")
-        _email = State(initialValue: existing?.email ?? "")
-        _swissPerformNumber = State(initialValue: existing?.swissPerformNumber ?? "")
-        let address = existing?.address
+        // `existing` always wins when both are somehow present — only
+        // "That's Me" ever sets `prefillingFromProfile`, and it only ever
+        // does so for a brand-new entry (`existing == nil`).
+        let profile = existing == nil ? prefillingFromProfile : nil
+        _firstName = State(initialValue: existing?.firstName ?? profile?.firstName ?? "")
+        _lastName = State(initialValue: existing?.lastName ?? profile?.lastName ?? "")
+        _ipiNumber = State(initialValue: existing?.ipiNumber ?? profile?.ipiNumber ?? "")
+        _email = State(initialValue: existing?.email ?? profile?.email ?? "")
+        _swissPerformNumber = State(initialValue: existing?.swissPerformNumber ?? profile?.swissPerformNumber ?? "")
+        let address = existing?.address ?? profile?.address
         _street = State(initialValue: address?.street ?? "")
         _postalCode = State(initialValue: address?.postalCode ?? "")
         _city = State(initialValue: address?.city ?? "")
@@ -138,7 +153,7 @@ struct PersonEditorSheet: View {
     /// capture for someone who *doesn't* have one yet happens via
     /// `PersonAddressPromptSheet`, triggered at selection time, never here.
     private var showsAddressSection: Bool {
-        existing?.address != nil
+        existing?.address != nil || (existing == nil && prefillingFromProfile?.address != nil)
     }
 
     private var canSave: Bool {

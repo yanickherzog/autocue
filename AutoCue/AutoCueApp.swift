@@ -1,5 +1,6 @@
 import ACCore
 import ACDesignSystem
+import ACFeatures
 import SwiftUI
 
 /// Thin composition root (`ROADMAP.md` D6/T6.1). Declares the three scenes
@@ -106,13 +107,13 @@ struct AutoCueApp: App {
         Settings {
             // App-level, project-unscoped (SPEC.md §4.7) — entirely outside
             // the Project-window navigation hierarchy (CLAUDE.md,
-            // "Navigation Model"). Real content is ROADMAP.md D14/T14.2.
-            EmptyStateView(
-                systemImage: "gearshape",
-                title: "Settings",
-                message: "Coming in ROADMAP.md D14."
-            )
-            .frame(width: 420, height: 240)
+            // "Navigation Model"). Shows the Composer Profile screen, built
+            // narrowly ahead of ROADMAP.md D15's own full Settings scope
+            // (editable `Settings` model) — see docs/DECISIONS.md. The
+            // placeholder this replaced referenced "D14" (UI test
+            // automation), which was never the right Deliverable for
+            // Settings — D15 is; fixed here alongside the real content.
+            ComposerProfileSettingsView(viewModel: container.makeComposerProfileSettingsViewModel())
         }
     }
 }

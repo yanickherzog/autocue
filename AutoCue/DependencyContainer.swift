@@ -20,12 +20,14 @@ final class DependencyContainer {
     private let projectRepository: ProjectRepository
     private let audioAnalysisRepository: AudioAnalysisRepository
     private let exportRepository: ExportRepository
+    private let composerProfileRepository: ComposerProfileRepository
 
     init() {
         let modelContainer = Self.makeModelContainer()
         projectRepository = ProjectRepositoryImpl(modelContainer: modelContainer)
         audioAnalysisRepository = AudioAnalysisRepositoryImpl()
         exportRepository = ExportRepositoryImpl()
+        composerProfileRepository = ComposerProfileRepositoryImpl()
     }
 
     func makeProjectLibraryViewModel() -> ProjectLibraryViewModel {
@@ -49,7 +51,20 @@ final class DependencyContainer {
             projectID: projectID,
             observeProjectsUseCase: ObserveProjectsUseCase(projectRepository: projectRepository),
             updateRightHolderDirectoryUseCase: UpdateRightHolderDirectoryUseCase(projectRepository: projectRepository),
-            deleteRightHolderUseCase: DeleteRightHolderUseCase(projectRepository: projectRepository)
+            deleteRightHolderUseCase: DeleteRightHolderUseCase(projectRepository: projectRepository),
+            composerProfileUseCase: ComposerProfileUseCase(composerProfileRepository: composerProfileRepository)
+        )
+    }
+
+    /// Standalone — the real content for the `Settings` scene declared in
+    /// `AutoCueApp.swift` (`ROADMAP.md` D6/T6.1's placeholder, replaced
+    /// here). Built narrowly ahead of D15's own full scope (the real
+    /// `SettingsRepository`/editable `Settings` model) — this view/
+    /// ViewModel edits only the independent `ComposerProfile` store, not
+    /// `Settings` itself; see `docs/DECISIONS.md`.
+    func makeComposerProfileSettingsViewModel() -> ComposerProfileSettingsViewModel {
+        ComposerProfileSettingsViewModel(
+            composerProfileUseCase: ComposerProfileUseCase(composerProfileRepository: composerProfileRepository)
         )
     }
 

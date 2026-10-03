@@ -142,34 +142,16 @@ extension CueSheetLayoutComputer {
         return "\(resolved.displayName), IPI-Nr. \(formattedIPI(ipiNumber))"
     }
 
-    /// Groups the trailing 9 digits of a stored IPI number as `3-2-2-2`
-    /// (`"123 45 67 89"`) — confirmed against the real cue sheet mockup
-    /// (`docs/DECISIONS.md`, layout-redesign pass): `ProjectFixture`'s
-    /// composer stores `"00123456789"` (11 digits — the standard 2-digit
-    /// zero-padding prefix + 9-digit base number), and the mockup renders
-    /// exactly `"123 45 67 89"` — the leading padding dropped, the
-    /// remaining 9 digits grouped 3-2-2-2. Degrades gracefully for a
-    /// shorter/malformed number (fewer/shorter trailing groups) rather than
-    /// crashing — this field is free text (`SPEC.md` §4.5/§4.12), never
-    /// validated against a fixed format on entry.
+    /// Thin forward to `IPINumber.grouped` (`ACCore`) — the real grouping
+    /// logic lives there now, promoted out of this file once a second real
+    /// consumer (the Composer Profile feature's own save-confirmation step,
+    /// `ACFeatures`) needed the exact same display convention (`CLAUDE.md`
+    /// rule 7). Kept as a same-named forwarding function, not inlined at
+    /// every call site in this file, so this file's own existing callers and
+    /// tests (confirmed against the real cue sheet mockup, `docs/
+    /// DECISIONS.md`, layout-redesign pass) are untouched.
     static func formattedIPI(_ raw: String) -> String {
-        var digits = raw.filter(\.isNumber)
-        if digits.count > 9 {
-            digits = String(digits.suffix(9))
-        }
-        guard !digits.isEmpty else { return raw }
-
-        var groups: [String] = []
-        var remaining = Substring(digits)
-        let firstCount = min(3, remaining.count)
-        groups.append(String(remaining.prefix(firstCount)))
-        remaining = remaining.dropFirst(firstCount)
-        while !remaining.isEmpty {
-            let count = min(2, remaining.count)
-            groups.append(String(remaining.prefix(count)))
-            remaining = remaining.dropFirst(count)
-        }
-        return groups.joined(separator: " ")
+        IPINumber.grouped(raw)
     }
 
     static func broadcastDetailsLine(_ details: [BroadcastDetails]) -> String {

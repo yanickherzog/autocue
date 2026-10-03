@@ -149,15 +149,20 @@ final class CueSheetLayoutComputerTests: XCTestCase {
     /// verify against more than the single-composer case.
     ///
     /// Format updated (layout-redesign pass, `docs/DECISIONS.md`) from
-    /// `"Name: IPI Nr. <raw>"` to `"Name, IPI-Nr. <grouped>"` — an 11-digit
-    /// stored number's leading 2-digit padding is dropped and the remaining
-    /// 9 digits grouped 3-2-2-2 (`CueSheetLayoutComputer.formattedIPI`).
+    /// `"Name: IPI Nr. <raw>"` to `"Name, IPI-Nr. <grouped>"` —
+    /// `CueSheetLayoutComputer.formattedIPI`, forwarding to
+    /// `ACCore.IPINumber.grouped`, which groups the full, unmodified
+    /// 11-digit number `5-2-2-2` (`"00123456789"` → `"00123 45 67 89"`),
+    /// confirmed 2026-10-03 against the project owner's own real,
+    /// SUISA-accepted cue sheet (`docs/DECISIONS.md`) — corrected there
+    /// twice the same day after two earlier, wrong conventions each
+    /// dropped or restructured real digits.
     func test_headerBlock_komponistIPI_perComposerNameAndIPI_dedupedAcrossCues_missingIPIShowsNameOnly() {
         let pages = CueSheetLayoutComputer.computeLayout(for: multiComposerFixtureProject())
         let headerText = allText(in: pages).joined(separator: "\n")
 
         XCTAssertTrue(
-            headerText.contains("Alice WithIPI, IPI-Nr. 111 11 11 11"),
+            headerText.contains("Alice WithIPI, IPI-Nr. 11111 11 11 11"),
             "A composer's name and IPI number must both appear, in \"Name, IPI-Nr. X\" format"
         )
         XCTAssertTrue(
@@ -168,7 +173,7 @@ final class CueSheetLayoutComputerTests: XCTestCase {
             headerText.contains("Bob NoIPI, IPI-Nr."),
             "A composer with no IPI number must show their bare name, never a blank/placeholder number"
         )
-        let occurrences = headerText.components(separatedBy: "Alice WithIPI, IPI-Nr. 111 11 11 11").count - 1
+        let occurrences = headerText.components(separatedBy: "Alice WithIPI, IPI-Nr. 11111 11 11 11").count - 1
         XCTAssertEqual(
             occurrences, 1,
             "The same composer appearing on multiple cues must be listed once in the header, not once per cue"

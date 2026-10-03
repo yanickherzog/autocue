@@ -149,15 +149,15 @@ AutoCue.xcworkspace
 │   │   │                           WaveformPeaks, WaveformPeakBucket,
 │   │   │                           CueSheetPageLayout, CueSheetLayoutElement, LayoutRect,
 │   │   │                           ProgressUpdate, OperationProgress, BookmarkAccessMode,
-│   │   │                           WAFormTemplateReference
+│   │   │                           WAFormTemplateReference, ComposerProfile, IPINumber
 │   │   ├── UseCases/                ImportAudioUseCase, DetectCuesUseCase, ExportCueSheetUseCase,
 │   │   │                           UpdateCueUseCase, RecalculateTotalMusicRuntimeUseCase,
 │   │   │                           DeleteRightHolderUseCase,
 │   │   │                           GenerateWaveformPeaksUseCase, GenerateWaveformDetailUseCase,
 │   │   │                           WAFormTemplateUseCase, ComputeWAFormLayoutUseCase,
-│   │   │                           ExportWAFormUseCase, ...
+│   │   │                           ExportWAFormUseCase, ComposerProfileUseCase, ...
 │   │   └── RepositoryProtocols/     ProjectRepository, AudioAnalysisRepository, ExportRepository,
-│   │                               WAFormTemplateRepository
+│   │                               WAFormTemplateRepository, ComposerProfileRepository
 │   │
 │   ├── ACAudioKit/                DATA — audio ingestion & analysis
 │   │   ├── WAVParsing/              RIFF/BWF chunk reader
@@ -182,7 +182,9 @@ AutoCue.xcworkspace
 │   ├── ACPersistence/             DATA — project storage
 │   │   ├── SwiftDataModels/         @Model schema (kept separate from ACCore domain structs)
 │   │   ├── Mappers/                 SwiftData ⇄ domain model conversion
-│   │   └── ProjectRepositoryImpl.swift
+│   │   ├── ProjectRepositoryImpl.swift
+│   │   └── ComposerProfileRepositoryImpl.swift   UserDefaults-backed, not SwiftData — same
+│   │                               lightweight precedent as WAFormTemplateRepositoryImpl (ACExport)
 │   │
 │   ├── ACDesignSystem/            PRESENTATION — reusable, feature-agnostic UI
 │   │   ├── Components/              WaveformView, CueTableView, ProgressBanner, EmptyStateView

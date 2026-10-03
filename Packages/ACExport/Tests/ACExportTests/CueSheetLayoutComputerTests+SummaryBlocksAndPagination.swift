@@ -36,14 +36,14 @@ extension CueSheetLayoutComputerTests {
         let pages = CueSheetLayoutComputer.computeLayout(for: project)
         let texts = allText(in: pages)
         XCTAssertTrue(texts.contains("Arrangeur*in:"))
-        XCTAssertTrue(texts.contains { $0.contains("Fritz Brun, IPI-Nr. 765 43 21 01") })
+        XCTAssertTrue(texts.contains { $0.contains("Fritz Brun, IPI-Nr. 98765 43 21 01") })
 
         let aggregated = CueSheetLayoutComputer.arrangeurIPILines(
             cues: project.cues,
             people: project.people,
             labels: project.labels
         )
-        XCTAssertEqual(aggregated, ["Fritz Brun, IPI-Nr. 765 43 21 01"])
+        XCTAssertEqual(aggregated, ["Fritz Brun, IPI-Nr. 98765 43 21 01"])
     }
 
     func test_arrangeurBlock_omittedEntirely_whenTheProjectHasNoArrangers() {

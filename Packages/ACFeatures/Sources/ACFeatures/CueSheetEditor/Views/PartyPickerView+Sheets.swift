@@ -35,6 +35,7 @@ extension PartyPickerView {
                     existing: nil,
                     initialIntendedRole: initialIntendedRole,
                     showsIPINumberField: showsIPINumberFieldOnCreate,
+                    prefillingFromProfile: newPersonPrefillProfile,
                     onSave: { person in
                         let result = await directoryViewModel.savePerson(person)
                         if case .saved = result {

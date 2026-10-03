@@ -142,6 +142,16 @@ struct PartyPickerView: View {
     /// their own, equivalent edit affordance.
     @State var personBeingEdited: Person?
     @State var labelBeingEdited: ACCore.Label?
+    /// Non-`nil` only for the one "+ New Artist" presentation immediately
+    /// following a "That's Me" tap that found no existing match
+    /// (`useComposerProfile()`, below) — forwarded to that sheet's own
+    /// `PersonEditorSheet(prefillingFromProfile:)` in
+    /// `PartyPickerView+Sheets.swift`. Explicitly cleared by the ordinary
+    /// "+ New Artist" button itself, so a cancelled "That's Me" attempt
+    /// can't silently prefill a later, unrelated "+ New Artist" use. Not
+    /// `private` for the same cross-file reason as the other `@State`
+    /// properties above.
+    @State var newPersonPrefillProfile: ComposerProfile?
 
     private var isDirectoryEmpty: Bool {
         switch scope {
@@ -233,13 +243,20 @@ struct PartyPickerView: View {
             HStack {
                 if allowsCreatingNewEntries {
                     if scope != .labelOnly {
-                        Button("+ New Artist") { isShowingNewPersonSheet = true }
-                            .buttonStyle(SharpButtonStyle(emphasis: .secondary, surface: .primary))
+                        Button("+ New Artist") {
+                            newPersonPrefillProfile = nil
+                            isShowingNewPersonSheet = true
+                        }
+                        .buttonStyle(SharpButtonStyle(emphasis: .secondary, surface: .primary))
                     }
                     if scope != .personOnly {
                         Button("+ New \(labelDisplayName)") { isShowingNewLabelSheet = true }
                             .buttonStyle(SharpButtonStyle(emphasis: .secondary, surface: .primary))
                     }
+                }
+                if showsThatsMeButton {
+                    Button("That's Me", action: useComposerProfile)
+                        .buttonStyle(SharpButtonStyle(emphasis: .secondary, surface: .primary))
                 }
                 Spacer()
                 Button("Cancel", action: onCancel)

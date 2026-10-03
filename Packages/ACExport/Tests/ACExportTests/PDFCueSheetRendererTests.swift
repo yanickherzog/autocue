@@ -161,7 +161,7 @@ final class PDFCueSheetRendererTests: XCTestCase {
 
         let document = try XCTUnwrap(PDFDocument(url: url))
         let extractedText = document.string ?? ""
-        XCTAssertTrue(extractedText.contains("Alice WithIPI, IPI-Nr. 111 11 11 11"))
+        XCTAssertTrue(extractedText.contains("Alice WithIPI, IPI-Nr. 11111 11 11 11"))
         XCTAssertTrue(extractedText.contains("Bob NoIPI"))
     }
 }
