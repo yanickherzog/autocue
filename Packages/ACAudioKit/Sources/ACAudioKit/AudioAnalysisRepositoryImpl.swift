@@ -212,7 +212,7 @@ public struct AudioAnalysisRepositoryImpl: AudioAnalysisRepository {
     /// `.securityScoped` here (SPEC.md §4.10 — that would require re-running
     /// the same creation attempt `importAudio` already made, which only a
     /// fresh, live, user-just-selected `URL` can attempt meaningfully).
-    public func refreshBookmarkIfStale(_ bookmark: Data, mode: AudioAsset.BookmarkAccessMode) throws -> Data? {
+    public func refreshBookmarkIfStale(_ bookmark: Data, mode: BookmarkAccessMode) throws -> Data? {
         var isStale = false
         let url = try URL(
             resolvingBookmarkData: bookmark,
@@ -251,7 +251,7 @@ public struct AudioAnalysisRepositoryImpl: AudioAnalysisRepository {
     private static func makeBookmark(
         for url: URL,
         accessGranted: Bool
-    ) throws -> (Data, AudioAsset.BookmarkAccessMode) {
+    ) throws -> (Data, BookmarkAccessMode) {
         do {
             let bookmark = try url.bookmarkData(
                 options: .withSecurityScope,
@@ -280,7 +280,7 @@ public struct AudioAnalysisRepositoryImpl: AudioAnalysisRepository {
     /// actually created under (`makeBookmark`, above, or `importAudio`'s
     /// resulting `AudioAsset`), or resolution can silently fail to restore
     /// sandboxed access.
-    private static func resolveURL(bookmark: Data, mode: AudioAsset.BookmarkAccessMode) throws -> URL {
+    private static func resolveURL(bookmark: Data, mode: BookmarkAccessMode) throws -> URL {
         var isStale = false
         return try URL(
             resolvingBookmarkData: bookmark,
@@ -308,14 +308,14 @@ public struct AudioAnalysisRepositoryImpl: AudioAnalysisRepository {
     private static let persistedOverviewResolution = 4096
 }
 
-/// Maps `AudioAsset.BookmarkAccessMode` to the actual `URL` bookmark options
+/// Maps `BookmarkAccessMode` to the actual `URL` bookmark options
 /// it corresponds to — kept local to this Data-layer package rather than on
 /// the `ACCore` enum itself, since `URL.Bookmark{Creation,Resolution}Options`
 /// are Foundation API surface this Repository implementation owns, not a
 /// concern the Domain type needs to know the shape of. Package-internal
 /// (not `private`) — `AudioPlaybackControllerImpl` (D9/T9.4) needs the same
 /// mapping to resolve a bookmark the same mode-aware way.
-extension AudioAsset.BookmarkAccessMode {
+extension BookmarkAccessMode {
     var creationOptions: URL.BookmarkCreationOptions {
         switch self {
         case .securityScoped: .withSecurityScope

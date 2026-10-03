@@ -7,7 +7,7 @@ final class AudioAssetEntity {
     var id: UUID
     var originalFileName: String
     var securityScopedBookmark: Data
-    /// `AudioAsset.BookmarkAccessMode.rawValue` — a plain `String` column
+    /// `BookmarkAccessMode.rawValue` — a plain `String` column
     /// (not a second mapping enum) since the raw value already round-trips
     /// exactly. Swift-level default (`"securityScoped"`, the pre-existing,
     /// only-ever-used mode before this field existed) lets SwiftData's

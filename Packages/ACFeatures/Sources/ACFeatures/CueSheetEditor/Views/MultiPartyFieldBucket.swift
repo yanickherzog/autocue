@@ -80,23 +80,14 @@ struct MultiPartyFieldBucket: View {
     /// this type, which genuinely differs between the two. See
     /// `PersonEditorSheet.showsIPINumberField`'s doc comment.
     var showsIPINumberFieldOnCreate = true
-    /// Forwarded to the picker's own `showsAddressFieldOnCreate` — `true`
-    /// only for Regisseur*in. See `PersonEditorSheet.showsAddressField`'s
-    /// doc comment for the full reasoning (SUISA's real form requires a
-    /// complete address for both Producer and Director; Producer*in already
-    /// gets this via `Label.address`, since a Producer is almost always a
-    /// company — Regisseur*in is `Person`-only, so it's the one genuine
-    /// gap).
-    var showsAddressFieldOnCreate = false
-    /// Forwarded to the picker's own `isCurrentDirector`, and used directly
-    /// for this bucket's own edit sheet (`PersonEditorSheet.showsAddressField`)
-    /// — keyed off actual `Setup.directorOrPrincipal` membership, not off
-    /// which bucket this happens to be. Producer*in passes this too, not
-    /// just Regisseur*in: a person who's a producer *and* currently a
-    /// director should still see their address field when edited from
-    /// either bucket. See `PersonEditorSheet.showsAddressField`'s doc
-    /// comment.
-    var isCurrentDirector: (Person.ID) -> Bool = { _ in false }
+    /// Forwarded straight to the picker's own
+    /// `promptsForMissingAddressRole` — see that property's doc comment.
+    /// `"Director"` for Regisseur*in's instance; `nil` (default,
+    /// unchanged) for Producer*in — a Producer is almost always a `Label`,
+    /// whose address is already always-required via "+ New Company", so the
+    /// one real gap this mechanism exists for is Regisseur*in's own,
+    /// `Person`-only picker.
+    var promptsForMissingAddressRole: String?
     let onAdd: (Party) -> Void
     let onRemove: (Party) -> Void
 
@@ -106,6 +97,16 @@ struct MultiPartyFieldBucket: View {
     /// `SetupView`'s own `Declarant`-specific edit state.
     @State private var personBeingEdited: Person?
     @State private var labelBeingEdited: ACCore.Label?
+    /// Set from `PartyPickerView.onPersonSelectedNeedingAddress` — presents
+    /// `PersonAddressPromptSheet`. **Lives here, not on the internal
+    /// `PartyPickerView` itself** — selecting a party dismisses that
+    /// picker's own sheet (`isShowingPicker = false`, below) in the same
+    /// call, so a sheet hosted on the picker's own body would be torn down
+    /// along with it before the user could use it, a real, confirmed bug
+    /// (`docs/DECISIONS.md`, 2026-10-03). This bucket itself is a
+    /// persistent row in the Setup screen, not something dismissed on
+    /// selection, so hosting it here is what actually keeps it on screen.
+    @State private var personNeedingAddressPrompt: Person?
 
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.xs) {
@@ -152,8 +153,8 @@ struct MultiPartyFieldBucket: View {
                 labelDisplayName: labelDisplayName,
                 newLabelDefaultKind: newLabelDefaultKind,
                 showsIPINumberFieldOnCreate: showsIPINumberFieldOnCreate,
-                showsAddressFieldOnCreate: showsAddressFieldOnCreate,
-                isCurrentDirector: isCurrentDirector,
+                promptsForMissingAddressRole: promptsForMissingAddressRole,
+                onPersonSelectedNeedingAddress: { person in personNeedingAddressPrompt = person },
                 onSelect: { party in
                     isShowingPicker = false
                     onAdd(party)
@@ -164,7 +165,6 @@ struct MultiPartyFieldBucket: View {
         .sheet(item: $personBeingEdited) { person in
             PersonEditorSheet(
                 existing: person,
-                showsAddressField: isCurrentDirector(person.id),
                 onSave: { edited in
                     let result = await directoryViewModel.savePerson(edited)
                     if case .saved = result {
@@ -173,6 +173,20 @@ struct MultiPartyFieldBucket: View {
                     return result
                 },
                 onCancel: { personBeingEdited = nil }
+            )
+        }
+        .sheet(item: $personNeedingAddressPrompt) { person in
+            PersonAddressPromptSheet(
+                person: person,
+                roleDescription: promptsForMissingAddressRole ?? "",
+                onSave: { edited in
+                    let result = await directoryViewModel.savePerson(edited)
+                    if case .saved = result {
+                        personNeedingAddressPrompt = nil
+                    }
+                    return result
+                },
+                onSkip: { personNeedingAddressPrompt = nil }
             )
         }
         .sheet(item: $labelBeingEdited) { label in

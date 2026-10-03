@@ -57,35 +57,10 @@ enum PDFCueSheetRenderer {
             )
             switch element.content {
             case let .text(string, font):
-                drawText(string, font: font, in: flippedFrame, context: context)
+                PDFElementDrawing.drawText(string, font: font, in: flippedFrame, context: context)
             case let .rule(spec):
-                drawRule(spec, in: flippedFrame, context: context)
+                PDFElementDrawing.drawRule(spec, in: flippedFrame, context: context)
             }
         }
-    }
-
-    private static func drawText(_ string: String, font: LayoutFontSpec, in frame: CGRect, context: CGContext) {
-        guard !string.isEmpty else { return }
-        let ctFont = CTFontCreateWithName(PDFFontMapping.fontName(for: font.weight) as CFString, font.size, nil)
-        var attributes: [NSAttributedString.Key: Any] = [
-            kCTFontAttributeName as NSAttributedString.Key: ctFont,
-            kCTForegroundColorAttributeName as NSAttributedString.Key: CGColor(gray: 0, alpha: 1),
-        ]
-        if font.tracking != 0 {
-            attributes[kCTKernAttributeName as NSAttributedString.Key] = font.tracking
-        }
-        let attributedString = NSAttributedString(string: string, attributes: attributes)
-        let framesetter = CTFramesetterCreateWithAttributedString(attributedString)
-        let path = CGPath(rect: frame, transform: nil)
-        let ctFrame = CTFramesetterCreateFrame(framesetter, CFRange(location: 0, length: 0), path, nil)
-        CTFrameDraw(ctFrame, context)
-    }
-
-    private static func drawRule(_ spec: LayoutRuleSpec, in frame: CGRect, context: CGContext) {
-        context.setLineWidth(spec.thickness)
-        context.setStrokeColor(CGColor(gray: 0, alpha: 1))
-        context.move(to: CGPoint(x: frame.minX, y: frame.midY))
-        context.addLine(to: CGPoint(x: frame.maxX, y: frame.midY))
-        context.strokePath()
     }
 }

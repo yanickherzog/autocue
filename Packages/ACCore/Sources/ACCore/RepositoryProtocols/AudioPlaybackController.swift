@@ -30,7 +30,7 @@ public protocol AudioPlaybackController: Sendable {
     /// `.generateWaveformDetail`/`.refreshBookmarkIfStale`) — a
     /// `.plainFallback`-mode bookmark was never created as security-scoped
     /// and must never be resolved as if it were (SPEC.md §4.10).
-    func prepare(securityScopedBookmark: Data, mode: AudioAsset.BookmarkAccessMode) async throws
+    func prepare(securityScopedBookmark: Data, mode: BookmarkAccessMode) async throws
 
     /// Plays from `startSeconds`. `until: nil` runs to the end of the file
     /// (or until stopped); a real value auto-stops there (a bounded

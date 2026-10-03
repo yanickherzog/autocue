@@ -49,22 +49,19 @@ extension SetupView {
                 title: "Komponist*in",
                 role: .composer,
                 emptyStateText: "No composers added yet.",
-                directoryViewModel: directoryViewModel,
-                isCurrentDirector: isDirector
+                directoryViewModel: directoryViewModel
             )
             CollaboratorPersonBucket(
                 title: "Arrangeur*in",
                 role: .arranger,
                 emptyStateText: "No arrangers added yet.",
-                directoryViewModel: directoryViewModel,
-                isCurrentDirector: isDirector
+                directoryViewModel: directoryViewModel
             )
             CollaboratorPersonBucket(
                 title: "Interpret*in",
                 role: .performer,
                 emptyStateText: "No performers added yet.",
-                directoryViewModel: directoryViewModel,
-                isCurrentDirector: isDirector
+                directoryViewModel: directoryViewModel
             )
             CollaboratorLabelBucket(directoryViewModel: directoryViewModel)
             MultiPartyFieldBucket(
@@ -76,7 +73,6 @@ extension SetupView {
                 labelDisplayName: "Company",
                 newLabelDefaultKind: .productionCompany,
                 showsIPINumberFieldOnCreate: false,
-                isCurrentDirector: isDirector,
                 onAdd: { party in addParty(party, to: .producer) },
                 onRemove: { party in removeParty(party, from: .producer) }
             )
@@ -87,8 +83,7 @@ extension SetupView {
                 directoryViewModel: directoryViewModel,
                 scope: .personOnly,
                 showsIPINumberFieldOnCreate: false,
-                showsAddressFieldOnCreate: true,
-                isCurrentDirector: isDirector,
+                promptsForMissingAddressRole: "Director",
                 onAdd: { party in addParty(party, to: .directorOrPrincipal) },
                 onRemove: { party in removeParty(party, from: .directorOrPrincipal) }
             )
@@ -165,15 +160,11 @@ private struct CollaboratorPersonBucket: View {
     /// visual hint the row was intentionally blank rather than broken.
     let emptyStateText: String
     let directoryViewModel: RightHolderDirectoryViewModel
-    /// Forwarded to this bucket's own edit sheet and its "Select" picker's
-    /// pencil-edit sheet, as `PersonEditorSheet.showsAddressField` —
-    /// `SetupView.isDirector(_:)`, keyed off actual `Setup.directorOrPrincipal`
-    /// membership. A composer who's *also* currently a director still gets
-    /// their address field shown when edited from this bucket, not just from
-    /// Regisseur*in's own — the whole point of checking real role membership
-    /// instead of "which bucket opened this sheet." See
-    /// `PersonEditorSheet.showsAddressField`'s doc comment.
-    let isCurrentDirector: (Person.ID) -> Bool
+    // No `promptsForMissingAddressRole`/address-visibility parameter of any
+    // kind — ordinary collaborators (composers, arrangers, performers)
+    // never need an address, and `PersonEditorSheet` now shows/corrects one
+    // automatically whenever `existing.address != nil`, with no per-bucket
+    // configuration required. See `docs/DECISIONS.md`, 2026-10-03.
 
     @State private var isShowingPicker = false
     /// Set to open that `Person` for editing — a roster row's name is
@@ -231,7 +222,6 @@ private struct CollaboratorPersonBucket: View {
                 directoryViewModel: directoryViewModel,
                 scope: .personOnly,
                 initialIntendedRole: role,
-                isCurrentDirector: isCurrentDirector,
                 onSelect: { party in
                     guard case let .person(personID) = party else { return }
                     isShowingPicker = false
@@ -243,7 +233,6 @@ private struct CollaboratorPersonBucket: View {
         .sheet(item: $personBeingEdited) { person in
             PersonEditorSheet(
                 existing: person,
-                showsAddressField: isCurrentDirector(person.id),
                 onSave: { edited in
                     let result = await directoryViewModel.savePerson(edited)
                     if case .saved = result {

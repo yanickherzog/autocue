@@ -67,7 +67,7 @@ public actor AudioPlaybackControllerImpl: AudioPlaybackController {
         accessScopedURL?.stopAccessingSecurityScopedResource()
     }
 
-    public func prepare(securityScopedBookmark: Data, mode: AudioAsset.BookmarkAccessMode) async throws {
+    public func prepare(securityScopedBookmark: Data, mode: BookmarkAccessMode) async throws {
         tearDownCurrentPlayer()
 
         var isStale = false

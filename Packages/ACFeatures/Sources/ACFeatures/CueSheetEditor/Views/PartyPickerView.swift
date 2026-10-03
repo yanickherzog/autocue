@@ -65,23 +65,42 @@ struct PartyPickerView: View {
     /// `true` (unchanged everywhere except Producer*in/Regisseur*in's own
     /// picker, via `MultiPartyFieldBucket`).
     var showsIPINumberFieldOnCreate = true
-    /// Forwarded only to the "+ New Artist" creation sheet's
-    /// `PersonEditorSheet`, as `showsAddressField` — never to the
-    /// pencil-icon edit sheet. `true` only for Regisseur*in's picker (via
-    /// `MultiPartyFieldBucket`) — see `PersonEditorSheet.showsAddressField`'s
-    /// doc comment for the full reasoning. Defaults to `false` (unchanged
-    /// everywhere else, including Producer*in and Declarant).
-    var showsAddressFieldOnCreate = false
-    /// Drives `showsAddressField` for the pencil-icon **edit** sheet — keyed
-    /// off the person's actual current `Setup.directorOrPrincipal`
-    /// membership (`SetupView.isDirector(_:)`), not off which picker context
-    /// this happens to be. Defaults to "never" for a call site that doesn't
-    /// pass the real check (every picker instance that isn't reachable from
-    /// `SetupView` itself would otherwise have no way to answer this). See
-    /// `PersonEditorSheet.showsAddressField`'s doc comment for the full
-    /// reasoning behind checking actual role membership instead of creation
-    /// context for the edit path.
-    var isCurrentDirector: (Person.ID) -> Bool = { _ in false }
+    /// Non-`nil` names the role (e.g. `"Declarant"`, `"Director"`) this
+    /// picker is filling — when set, selecting (or creating-then-selecting)
+    /// a `Person` whose `address` is `nil` calls `onPersonSelectedNeedingAddress`
+    /// instead of presenting anything itself. `nil` (default) everywhere a
+    /// role doesn't require an address — Producer*in (almost always a
+    /// `Label`, whose address is already always-required) and the four
+    /// roster buckets (ordinary collaborators never need one).
+    ///
+    /// **Real, confirmed bug fixed 2026-10-03 (`docs/DECISIONS.md`): this
+    /// picker does NOT present `PersonAddressPromptSheet` itself, even
+    /// though it owns the logic that decides whether to.** An earlier
+    /// version did — a `.sheet(item:)` hosted directly on this View's own
+    /// body — and it looked right in code review and passed every
+    /// reasoning pass. It was wrong: `select(_:)` calls `onSelect(party)`
+    /// *first*, and every real caller's `onSelect` closure dismisses this
+    /// very picker's own hosting sheet (`activePartyField = nil` in
+    /// `SetupView`, `isShowingPicker = false` in `MultiPartyFieldBucket`) —
+    /// so the address prompt was being presented from a View that was
+    /// *simultaneously being torn down*. Confirmed with real `NSLog`
+    /// instrumentation and a live `log stream` capture, not just re-reading
+    /// the code: the prompt's `onAppear` genuinely fired in every case
+    /// (contradicting an initial bug report that it "never appeared" for
+    /// one of the two selection paths — it did, briefly), followed by
+    /// `onDisappear` roughly 0.8–1.1 seconds later with no corresponding
+    /// Save/Skip in between — the exact duration of the parent picker's own
+    /// dismiss animation completing, which tore the nested sheet down with
+    /// it. The fix: the caller (the View that actually survives selection)
+    /// owns the prompt's state and `.sheet` modifier; this picker only ever
+    /// reports the need for one.
+    var promptsForMissingAddressRole: String?
+    /// Called from `select(_:)` instead of presenting anything here — see
+    /// `promptsForMissingAddressRole`'s own doc comment for why ownership
+    /// moved to the caller. `nil` (default) wherever
+    /// `promptsForMissingAddressRole` is also `nil`; every real caller that
+    /// sets the role also supplies this.
+    var onPersonSelectedNeedingAddress: ((Person) -> Void)?
     /// Forwarded only to the "+ New Label"/"+ New Company" creation sheet's
     /// `LabelEditorSheet`, as `initialIntendedForLabelRoster` — `true` only
     /// for the standalone Label roster bucket's own picker
@@ -89,11 +108,31 @@ struct PartyPickerView: View {
     /// everywhere else, including Producer*in's "+ New Company"). See
     /// `ACCore.Label.intendedForLabelRoster`'s own doc comment.
     var initialIntendedForLabelRoster = false
+    /// Hides "+ New Artist"/"+ New \(labelDisplayName)" entirely when
+    /// `false` — this picker then only ever lets the user choose from the
+    /// project's *existing* directory, never create a new, unconnected
+    /// entry inline. `true` (default, unchanged everywhere else). `false`
+    /// only for Declarant's own picker (`SetupView.swift`) — a deliberate,
+    /// reversible product scope decision (`docs/DECISIONS.md`, 2026-10-03,
+    /// same pattern as D10's hidden reorder/"+ Add Cue" features): AutoCue
+    /// targets a rights-holder declaring their own cue sheet, so Declarant
+    /// should always resolve to someone already entered elsewhere in the
+    /// project (typically a composer), never a brand-new, unconnected
+    /// entry created on the spot. Director, Producer, and every roster
+    /// bucket keep their creation buttons unchanged — this is Declarant-
+    /// specific only, not a general restriction on this picker.
+    var allowsCreatingNewEntries = true
     let onSelect: (Party) -> Void
     let onCancel: () -> Void
 
-    @State private var isShowingNewPersonSheet = false
-    @State private var isShowingNewLabelSheet = false
+    // Not `private` — `PartyPickerView+Sheets.swift`'s extension (the
+    // `.sheet` modifier chain, split out once this file exceeded
+    // `CONTRIBUTING.md` §8's `SwiftLint` file-length threshold) needs direct
+    // access, the same "drop `private` for cross-file same-type access"
+    // convention `SetupView`'s own split-out section files already
+    // establish for `draft`/`activePartyField`.
+    @State var isShowingNewPersonSheet = false
+    @State var isShowingNewLabelSheet = false
     /// Set to open that entry for editing — the pencil icon next to each
     /// list row, distinct from tapping the row itself (which selects).
     /// `.sheet(item:)`, not a `Bool` flag: both `Person`/`Label` are already
@@ -101,8 +140,8 @@ struct PartyPickerView: View {
     /// `isShowingEditSheet` kept in sync with a stored "which entry" value —
     /// same pattern `SetupView+CollaboratorsSection`'s roster rows use for
     /// their own, equivalent edit affordance.
-    @State private var personBeingEdited: Person?
-    @State private var labelBeingEdited: ACCore.Label?
+    @State var personBeingEdited: Person?
+    @State var labelBeingEdited: ACCore.Label?
 
     private var isDirectoryEmpty: Bool {
         switch scope {
@@ -120,7 +159,28 @@ struct PartyPickerView: View {
         }
     }
 
+    /// "Create a new ... to get started" only makes sense when creation is
+    /// actually offered — `allowsCreatingNewEntries == false` (Declarant's
+    /// picker) shows a plain "nothing here yet" message instead, since
+    /// there's no "+ New ..." button on screen for it to point at.
+    private var emptyStateMessage: String {
+        guard allowsCreatingNewEntries else {
+            return scope == .labelOnly ? "No \(labelDisplayName) entries in this project yet." :
+                "No Artist entries in this project yet."
+        }
+        return scope == .labelOnly ? "Create a new \(labelDisplayName) to get started." :
+            "Create a new Artist to get started."
+    }
+
+    /// `partyPickerSheets(_:)` (`PartyPickerView+Sheets.swift`) wraps
+    /// `mainContent` with every create/edit `.sheet` this picker presents —
+    /// split into its own file once this one exceeded `CONTRIBUTING.md`
+    /// §8's `SwiftLint` file-length threshold.
     var body: some View {
+        partyPickerSheets(mainContent)
+    }
+
+    private var mainContent: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.md) {
             Text(title)
                 .font(Theme.Typography.font(.medium, size: 17))
@@ -130,8 +190,7 @@ struct PartyPickerView: View {
                 EmptyStateView(
                     systemImage: "person.crop.circle.badge.questionmark",
                     title: "No Entries Yet",
-                    message: scope == .labelOnly ? "Create a new \(labelDisplayName) to get started." :
-                        "Create a new Artist to get started.",
+                    message: emptyStateMessage,
                     surface: .primary
                 )
             } else {
@@ -139,7 +198,7 @@ struct PartyPickerView: View {
                     if scope != .labelOnly {
                         ForEach(directoryViewModel.people) { person in
                             pickerRow(title: "\(person.firstName) \(person.lastName)") {
-                                onSelect(.person(person.id))
+                                select(person)
                             } onEdit: {
                                 personBeingEdited = person
                             } onDelete: {
@@ -172,13 +231,15 @@ struct PartyPickerView: View {
             }
 
             HStack {
-                if scope != .labelOnly {
-                    Button("+ New Artist") { isShowingNewPersonSheet = true }
-                        .buttonStyle(SharpButtonStyle(emphasis: .secondary, surface: .primary))
-                }
-                if scope != .personOnly {
-                    Button("+ New \(labelDisplayName)") { isShowingNewLabelSheet = true }
-                        .buttonStyle(SharpButtonStyle(emphasis: .secondary, surface: .primary))
+                if allowsCreatingNewEntries {
+                    if scope != .labelOnly {
+                        Button("+ New Artist") { isShowingNewPersonSheet = true }
+                            .buttonStyle(SharpButtonStyle(emphasis: .secondary, surface: .primary))
+                    }
+                    if scope != .personOnly {
+                        Button("+ New \(labelDisplayName)") { isShowingNewLabelSheet = true }
+                            .buttonStyle(SharpButtonStyle(emphasis: .secondary, surface: .primary))
+                    }
                 }
                 Spacer()
                 Button("Cancel", action: onCancel)
@@ -189,83 +250,24 @@ struct PartyPickerView: View {
         .frame(width: 380)
         .background(Theme.Surface.primary.background)
         .fixedAppearance(for: .primary)
-        // Deliberately does NOT call directoryViewModel.loadDirectory() on
-        // appear. SetupView already loads it once, and every RightHolder-
-        // DirectoryViewModel mutation (savePerson/saveLabel/deletePerson/
-        // deleteLabel) updates people/labels in place — a second, redundant
-        // subscription here raced against the "+ New Person" save flow: if
-        // this task's own `for await ... break` happened to capture the
-        // stream's pre-save snapshot (a real, confirmed ordering hazard,
-        // not hypothetical — see docs/DECISIONS.md), it would silently
-        // overwrite the optimistic post-save update, which is exactly what
-        // produced "selecting closes the sheet but shows the old/blank
-        // state until the picker is reopened."
-        .sheet(isPresented: $isShowingNewPersonSheet) {
-            PersonEditorSheet(
-                existing: nil,
-                initialIntendedRole: initialIntendedRole,
-                showsIPINumberField: showsIPINumberFieldOnCreate,
-                showsAddressField: showsAddressFieldOnCreate,
-                onSave: { person in
-                    let result = await directoryViewModel.savePerson(person)
-                    if case .saved = result {
-                        isShowingNewPersonSheet = false
-                        onSelect(.person(person.id))
-                    }
-                    return result
-                },
-                onCancel: { isShowingNewPersonSheet = false }
-            )
+    }
+
+    /// Completes selecting `person` (`onSelect`, same as selecting a
+    /// `Label` always does directly) and, if `promptsForMissingAddressRole`
+    /// is set and `person` has no address yet, reports that via
+    /// `onPersonSelectedNeedingAddress` — covering both real paths that
+    /// produce a selected `Person` here: picking one from the list, and
+    /// successfully creating a brand-new one (whose own `onSave` closure,
+    /// in `PartyPickerView+Sheets.swift`, calls this too). **Deliberately
+    /// does not present anything itself** — see
+    /// `promptsForMissingAddressRole`'s own doc comment for the real,
+    /// confirmed bug this fixes. Not `private` — the "+ New Person" sheet's
+    /// `onSave` closure, in the `+Sheets.swift` split, calls this directly.
+    func select(_ person: Person) {
+        onSelect(.person(person.id))
+        if promptsForMissingAddressRole != nil, person.address == nil {
+            onPersonSelectedNeedingAddress?(person)
         }
-        .sheet(isPresented: $isShowingNewLabelSheet) {
-            LabelEditorSheet(
-                existing: nil,
-                displayName: labelDisplayName,
-                showsKindField: showsLabelKindField,
-                newEntryDefaultKind: newLabelDefaultKind,
-                initialIntendedForLabelRoster: initialIntendedForLabelRoster,
-                onSave: { label in
-                    let result = await directoryViewModel.saveLabel(label)
-                    if case .saved = result {
-                        isShowingNewLabelSheet = false
-                        onSelect(.label(label.id))
-                    }
-                    return result
-                },
-                onCancel: { isShowingNewLabelSheet = false }
-            )
-        }
-        .sheet(item: $personBeingEdited) { person in
-            PersonEditorSheet(
-                existing: person,
-                showsAddressField: isCurrentDirector(person.id),
-                onSave: { edited in
-                    let result = await directoryViewModel.savePerson(edited)
-                    if case .saved = result {
-                        personBeingEdited = nil
-                    }
-                    return result
-                },
-                onCancel: { personBeingEdited = nil }
-            )
-        }
-        .sheet(item: $labelBeingEdited) { label in
-            LabelEditorSheet(
-                existing: label,
-                displayName: labelDisplayName,
-                showsKindField: showsLabelKindField,
-                newEntryDefaultKind: newLabelDefaultKind,
-                onSave: { edited in
-                    let result = await directoryViewModel.saveLabel(edited)
-                    if case .saved = result {
-                        labelBeingEdited = nil
-                    }
-                    return result
-                },
-                onCancel: { labelBeingEdited = nil }
-            )
-        }
-        .errorAlert(message: blockedDeleteMessage)
     }
 
     /// One directory entry's row: tapping the name selects it (`onSelect`,
@@ -318,8 +320,9 @@ struct PartyPickerView: View {
     /// `SetupView+CollaboratorsSection`'s own `blockedDeleteMessage` already
     /// establishes for the roster buckets — reused here via
     /// `PartyReferenceLocation.displayName` (`SetupView.swift`) rather than a
-    /// second, independently-maintained copy of the same switch.
-    private var blockedDeleteMessage: Binding<String?> {
+    /// second, independently-maintained copy of the same switch. Not
+    /// `private` — `PartyPickerView+Sheets.swift`'s `.errorAlert` uses it.
+    var blockedDeleteMessage: Binding<String?> {
         Binding(
             get: {
                 guard let locations = directoryViewModel.blockedDeleteLocations, !locations.isEmpty else {

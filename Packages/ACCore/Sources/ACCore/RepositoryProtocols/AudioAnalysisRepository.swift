@@ -57,7 +57,7 @@ public protocol AudioAnalysisRepository: Sendable {
     /// obvious cause at that point. `ImportAudioUseCase` never calls this —
     /// it always mints a brand-new bookmark from a live, user-just-selected
     /// `URL`, never resolves a previously-stored one.
-    func refreshBookmarkIfStale(_ bookmark: Data, mode: AudioAsset.BookmarkAccessMode) throws -> Data?
+    func refreshBookmarkIfStale(_ bookmark: Data, mode: BookmarkAccessMode) throws -> Data?
 
     /// **Raw signal detection only — never touches `asset.embeddedMarkers`.**
     /// Runs `SilenceDetector` against the file and maps each resulting

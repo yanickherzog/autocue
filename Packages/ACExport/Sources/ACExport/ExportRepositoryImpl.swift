@@ -1,4 +1,5 @@
 import ACCore
+import CoreGraphics
 import Foundation
 
 /// The real `ExportRepository` implementation (`ROADMAP.md` D11) — PDF since
@@ -39,6 +40,101 @@ public struct ExportRepositoryImpl: ExportRepository, Sendable {
 
     public func computeLayout(for project: Project) -> [CueSheetPageLayout] {
         CueSheetLayoutComputer.computeLayout(for: project)
+    }
+
+    public enum WAFormError: Error, Equatable {
+        case templateAccessDenied
+        case couldNotOpenTemplate
+    }
+
+    public func computeWAFormLayout(
+        for project: Project,
+        template: WAFormTemplateReference
+    ) throws -> [CueSheetPageLayout] {
+        let continuationPageCount = try Self.withResolvedTemplateDocument(
+            bookmark: template.continuationFormBookmark,
+            mode: template.continuationFormAccessMode
+        ) { $0.numberOfPages }
+        return WAFormLayoutComputer.computeLayout(for: project, continuationPagesAvailable: continuationPageCount)
+    }
+
+    public func exportWAForm(
+        project: Project,
+        template: WAFormTemplateReference,
+        to destination: URL
+    ) -> AsyncThrowingStream<OperationProgress<URL>, Error> {
+        AsyncThrowingStream { continuation in
+            guard destination.startAccessingSecurityScopedResource() else {
+                continuation.finish(throwing: WAFormError.templateAccessDenied)
+                return
+            }
+            defer { destination.stopAccessingSecurityScopedResource() }
+            do {
+                continuation.yield(.progress(ProgressUpdate(fractionCompleted: 0.3, message: "Reading template…")))
+                try Self.withResolvedTemplateDocuments(template: template) { mainDocument, continuationDocument in
+                    continuation.yield(.progress(ProgressUpdate(fractionCompleted: 0.6, message: "Rendering…")))
+                    let pages = WAFormLayoutComputer.computeLayout(
+                        for: project,
+                        continuationPagesAvailable: continuationDocument.numberOfPages
+                    )
+                    try WAFormRenderer.render(
+                        pages,
+                        mainFormDocument: mainDocument,
+                        continuationFormDocument: continuationDocument,
+                        mainPageCount: 2,
+                        to: destination
+                    )
+                }
+                continuation.yield(.completed(destination))
+                continuation.finish()
+            } catch {
+                continuation.finish(throwing: error)
+            }
+        }
+    }
+
+    /// Resolves a single bookmark to a real, security-scope-bracketed
+    /// `CGPDFDocument` for the duration of `body`, then releases access —
+    /// used by `computeWAFormLayout(for:template:)`, which only needs to
+    /// read the continuation file's page count, not render anything.
+    private static func withResolvedTemplateDocument<T>(
+        bookmark: Data,
+        mode: BookmarkAccessMode,
+        _ body: (CGPDFDocument) throws -> T
+    ) throws -> T {
+        let url = try WAFormTemplateRepositoryImpl.resolveURL(bookmark: bookmark, mode: mode)
+        guard url.startAccessingSecurityScopedResource() else {
+            throw WAFormError.templateAccessDenied
+        }
+        defer { url.stopAccessingSecurityScopedResource() }
+        guard let document = CGPDFDocument(url as CFURL) else {
+            throw WAFormError.couldNotOpenTemplate
+        }
+        return try body(document)
+    }
+
+    /// Resolves both of `template`'s bookmarks to real, security-scope-
+    /// bracketed `CGPDFDocument`s for the duration of `body`, then releases
+    /// both — used by `exportWAForm`, which needs both real files open at
+    /// once to render. Extracted from `exportWAForm` itself specifically to
+    /// keep that method's own body under `CONTRIBUTING.md` §8's `SwiftLint`
+    /// length limit, the same reason `CueSheetLayoutComputer` splits across
+    /// several `+`-suffixed files.
+    private static func withResolvedTemplateDocuments<T>(
+        template: WAFormTemplateReference,
+        _ body: (CGPDFDocument, CGPDFDocument) throws -> T
+    ) throws -> T {
+        try withResolvedTemplateDocument(
+            bookmark: template.mainFormBookmark,
+            mode: template.mainFormAccessMode
+        ) { mainDocument in
+            try withResolvedTemplateDocument(
+                bookmark: template.continuationFormBookmark,
+                mode: template.continuationFormAccessMode
+            ) { continuationDocument in
+                try body(mainDocument, continuationDocument)
+            }
+        }
     }
 
     public func export(

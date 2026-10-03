@@ -46,6 +46,16 @@ public struct SetupView: View {
     /// directly by id instead of reusing that resolved value.
     @State private var personBeingEdited: Person?
     @State private var labelBeingEdited: ACCore.Label?
+    /// Set from `PartyPickerView.onPersonSelectedNeedingAddress` when a
+    /// `Person` with no address is picked as Declarant — presents
+    /// `PersonAddressPromptSheet`. **Lives here, not on `PartyPickerView`
+    /// itself, deliberately:** selecting a party dismisses that picker's own
+    /// sheet (`activePartyField = nil`, below) in the same call, so a sheet
+    /// hosted on the picker's own body would be torn down along with it
+    /// before the user could use it — a real, confirmed bug (`docs/DECISIONS.md`,
+    /// 2026-10-03). `SetupView` survives selection, so hosting it here is
+    /// what actually keeps it on screen.
+    @State private var personNeedingAddressPrompt: Person?
 
     public init(viewModel: SetupViewModel, directoryViewModel: RightHolderDirectoryViewModel) {
         _viewModel = Bindable(viewModel)
@@ -94,9 +104,21 @@ public struct SetupView: View {
             Task { await viewModel.flushPendingSave() }
         }
         .sheet(item: $activePartyField) { partyField in
+            // `PartyField` is `.declarant`-only (`PartyField`'s own doc
+            // comment, below) — this is genuinely the Declarant picker, not
+            // a generic one, so `promptsForMissingAddressRole: "Declarant"`
+            // here is what makes a missing address immediately, unmissably
+            // prompted for right after selection (`docs/DECISIONS.md`,
+            // 2026-10-03) — not shown inline during creation and not gated
+            // on any role-membership check. `allowsCreatingNewEntries: false`
+            // (`docs/DECISIONS.md`, 2026-10-03, same date, second entry) is
+            // also Declarant-specific — Director/Producer/every roster
+            // bucket keep their own "+ New ..." buttons unchanged.
             PartyPickerView(
                 directoryViewModel: directoryViewModel,
-                isCurrentDirector: isDirector,
+                promptsForMissingAddressRole: "Declarant",
+                onPersonSelectedNeedingAddress: { person in personNeedingAddressPrompt = person },
+                allowsCreatingNewEntries: false,
                 onSelect: { party in
                     apply(party, to: partyField)
                     activePartyField = nil
@@ -107,7 +129,6 @@ public struct SetupView: View {
         .sheet(item: $personBeingEdited) { person in
             PersonEditorSheet(
                 existing: person,
-                showsAddressField: isDirector(person.id),
                 onSave: { edited in
                     let result = await directoryViewModel.savePerson(edited)
                     if case .saved = result {
@@ -116,6 +137,20 @@ public struct SetupView: View {
                     return result
                 },
                 onCancel: { personBeingEdited = nil }
+            )
+        }
+        .sheet(item: $personNeedingAddressPrompt) { person in
+            PersonAddressPromptSheet(
+                person: person,
+                roleDescription: "Declarant",
+                onSave: { edited in
+                    let result = await directoryViewModel.savePerson(edited)
+                    if case .saved = result {
+                        personNeedingAddressPrompt = nil
+                    }
+                    return result
+                },
+                onSkip: { personNeedingAddressPrompt = nil }
             )
         }
         .sheet(item: $labelBeingEdited) { label in
@@ -209,26 +244,6 @@ public struct SetupView: View {
     /// opens the matching edit sheet — a no-op if it fails to resolve (the
     /// dangling-reference edge case `resolvedDisplayName` already treats as
     /// "nothing to show," so there's nothing valid to edit either).
-    /// Whether `personID` currently holds the Regisseur*in role — i.e.
-    /// appears in `Setup.directorOrPrincipal`'s own live list, the real
-    /// source of truth for that relationship (`CLAUDE.md`, "Single Source of
-    /// Truth"). Drives `PersonEditorSheet.showsAddressField` for every edit
-    /// entry point on this screen, not just Regisseur*in's own bucket — a
-    /// person edited from *any* context (a roster row, Producer*in's list,
-    /// Declarant) still shows their address field correctly if they
-    /// currently hold this role, since the check is keyed off the actual
-    /// relationship rather than which picker happened to open the sheet.
-    /// Deliberately **not** driven by `Person.intendedRoles` — Regisseur*in
-    /// was never folded into that Person-only mechanism (`docs/DECISIONS.md`,
-    /// "`Setup.producer`/`.directorOrPrincipal` reversed... to `[Party]`"),
-    /// and mirroring `directorOrPrincipal` membership into a second,
-    /// separately-updated field would reintroduce exactly the
-    /// two-places-same-state problem `CLAUDE.md`'s "Single Source of Truth"
-    /// section warns against.
-    func isDirector(_ personID: Person.ID) -> Bool {
-        draft.directorOrPrincipal.contains(.person(personID))
-    }
-
     private func beginEditing(_ party: Party) {
         switch party {
         case let .person(id):

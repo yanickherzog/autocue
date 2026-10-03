@@ -10,17 +10,24 @@ import SwiftUI
 /// already establishes; the caller (`SetupView`) wires `onSave` to the
 /// ViewModel.
 ///
-/// **No address field by default.** `Person.address` is optional generally
-/// (SPEC.md §4.5) — required only when a `Person` is used as
-/// `Setup.producer`/`.directorOrPrincipal`/`.declarant`, unlike `Label`,
-/// whose address is always required. Prompting for it on every ordinary
+/// **Shows the address section if and only if `existing` already has an
+/// address — never on creation, no external flag needed.** `Person.address`
+/// is optional generally (SPEC.md §4.5) — prompting for it on every ordinary
 /// collaborator (a composer, an arranger) doesn't match that, so this sheet
-/// leaves `address` untouched by default, never showing UI for it — except
-/// when `showsAddressField` is explicitly set (see that property's own doc
-/// comment). On an *edit* of an existing `Person` that already has an
-/// address (e.g. one previously used as a producer), `save()` preserves
-/// `existing?.address` unchanged whenever this sheet doesn't show the
-/// field — it just never offers to *set* one outside that one flow.
+/// never shows it for someone who doesn't have one yet. That's not a gap: a
+/// `Person` first gains an address via `PersonAddressPromptSheet`, shown
+/// immediately after being selected as Declarant/Director if they're
+/// missing one (`PartyPickerView.promptsForMissingAddressOnSelect`) — this
+/// sheet's own job is narrower, just correcting a mistake in an address that
+/// already exists. **Replaces an earlier, more complicated design** (a
+/// `showsAddressField` parameter threaded through `PartyPickerView`/
+/// `MultiPartyFieldBucket`/`CollaboratorPersonBucket`, keyed off whether the
+/// person currently held an address-requiring *role*) — that design had a
+/// real bug: once `showsAddressField` defaulted to `false` for every edit
+/// path, there was no way to ever correct an address after it was set.
+/// `existing?.address != nil` fixes that directly: correctable whenever one
+/// exists, never shown as clutter when one doesn't, with no role-awareness
+/// needed anywhere. See `docs/DECISIONS.md`, 2026-10-03.
 struct PersonEditorSheet: View {
     let existing: Person?
     /// Pre-fills `Person.intendedRoles` (as a single-element set) when
@@ -52,30 +59,6 @@ struct PersonEditorSheet: View {
     /// IPI-Nr correctly the moment their entry is opened for editing from
     /// anywhere. See `docs/DECISIONS.md`.
     let showsIPINumberField: Bool
-    /// Shows `PostalAddressFields` when `true` — `false` (default) preserves
-    /// this sheet's original "no address UI" behavior everywhere except one
-    /// specific context: Regisseur*in's own "+ New Artist" creation flow
-    /// (`MultiPartyFieldBucket`/`PartyPickerView`, `scope: .personOnly`).
-    /// SUISA's real WA Film form requires a "complete address" for both
-    /// Producer and Director ("Produzent (vollständige Adresse)"/"Regisseur
-    /// ... (vollständige Adresse)") — Producer*in already satisfies this in
-    /// practice, since a Producer is almost always a `Label` (production
-    /// company), and `Label.address` is already always-required via the
-    /// existing "+ New Company" flow. Regisseur*in is `Person`-only (no
-    /// Company option, per SPEC.md §4.5 — a director is always a person),
-    /// and `Person`'s creation form had no address UI at all until this
-    /// property — so it was the one genuine gap. **Known, accepted residual
-    /// gap, not fixed here:** if a Producer is ever an individual `Person`
-    /// rather than a company, there's still no way to capture their
-    /// address, since this flag applies only to Regisseur*in's picker.
-    /// Acceptable since a Producer is almost always a company in practice —
-    /// revisit only if a real need for an individual-person Producer's
-    /// address surfaces. **Creation-only, never edit** — same reasoning as
-    /// `showsIPINumberField`: every edit sheet (however reached) keeps the
-    /// default `false` and simply preserves `existing?.address` unchanged,
-    /// so this never risks silently clearing an address a `Person` already
-    /// has when they're edited from a context that doesn't show this field.
-    let showsAddressField: Bool
     /// `async`, returning the Use Case's `SavePersonResult` (post-D7
     /// click-through-fix round) rather than a fire-and-forget `Void` — this
     /// sheet needs to know whether the save actually succeeded so it can
@@ -97,9 +80,10 @@ struct PersonEditorSheet: View {
     /// back unchanged in `save()`, so an edit never silently clears a value
     /// this sheet just doesn't offer a way to set or change.
     @State private var swissPerformNumber: String
-    /// Only ever read/written when `showsAddressField` is `true` — see that
-    /// property's doc comment. Seeded from `existing?.address` regardless
-    /// (harmless when unused), the same pattern every other field here uses.
+    /// Only ever read/written when `showsAddressSection` is `true` — see
+    /// that computed property's doc comment. Seeded from `existing?.address`
+    /// regardless (harmless when unused), the same pattern every other field
+    /// here uses.
     @State private var street: String
     @State private var postalCode: String
     @State private var city: String
@@ -111,14 +95,12 @@ struct PersonEditorSheet: View {
         existing: Person?,
         initialIntendedRole: PersonIntendedRole? = nil,
         showsIPINumberField: Bool = true,
-        showsAddressField: Bool = false,
         onSave: @escaping (Person) async -> SavePersonResult?,
         onCancel: @escaping () -> Void
     ) {
         self.existing = existing
         self.initialIntendedRole = initialIntendedRole
         self.showsIPINumberField = showsIPINumberField
-        self.showsAddressField = showsAddressField
         self.onSave = onSave
         self.onCancel = onCancel
         _firstName = State(initialValue: existing?.firstName ?? "")
@@ -141,13 +123,22 @@ struct PersonEditorSheet: View {
         lastName.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    /// Only assembled/consulted when `showsAddressField` is `true` — see
+    /// Only assembled/consulted when `showsAddressSection` is `true` — see
     /// `save()`. Unlike `LabelEditorSheet.currentAddress` (always required),
     /// an incomplete entry here simply means "no address," not a blocked
     /// save — `Person.address` is optional, so this sheet's `canSave` never
     /// depends on address completeness the way `LabelEditorSheet`'s does.
     private var currentAddress: PostalAddress {
         PostalAddress(street: street, postalCode: postalCode, city: city, country: country)
+    }
+
+    /// Whether to show (and allow correcting) the address section — `true`
+    /// iff `existing` already has one. See this type's own doc comment for
+    /// why this replaced an external `showsAddressField` parameter: address
+    /// capture for someone who *doesn't* have one yet happens via
+    /// `PersonAddressPromptSheet`, triggered at selection time, never here.
+    private var showsAddressSection: Bool {
+        existing?.address != nil
     }
 
     private var canSave: Bool {
@@ -168,7 +159,7 @@ struct PersonEditorSheet: View {
                 GhostTextField(placeholder: "IPI Number (optional)", text: $ipiNumber)
             }
             GhostTextField(placeholder: "Email (optional)", text: $email)
-            if showsAddressField {
+            if showsAddressSection {
                 PostalAddressFields(street: $street, postalCode: $postalCode, city: $city, country: $country)
             }
 
@@ -201,7 +192,7 @@ struct PersonEditorSheet: View {
             firstName: trimmedFirstName,
             lastName: trimmedLastName,
             ipiNumber: ipiNumber.isEmpty ? nil : ipiNumber,
-            address: showsAddressField ? (currentAddress.isComplete ? currentAddress : nil) : existing?.address,
+            address: showsAddressSection ? (currentAddress.isComplete ? currentAddress : nil) : existing?.address,
             email: email.isEmpty ? nil : email,
             swissPerformNumber: swissPerformNumber.isEmpty ? nil : swissPerformNumber,
             intendedRoles: intendedRoles

@@ -14,29 +14,6 @@ import Foundation
 /// detection — see SPEC.md §4.19 for why correction happens at the `Cue`
 /// level instead, leaving this type's immutability invariant intact.
 public struct AudioAsset: Identifiable, Equatable, Sendable {
-    /// Whether `securityScopedBookmark` is a real security-scoped bookmark
-    /// (the normal case) or a plain, non-security-scoped fallback captured
-    /// because security-scoped `bookmarkData(options: .withSecurityScope, ...)`
-    /// creation itself failed for this file — a real, documented macOS
-    /// failure mode independent of this app's own logic, not something
-    /// `ImportAudioUseCase` can avoid or retry its way out of. See "Security-
-    /// scoped bookmark creation can fail entirely," SPEC.md §4.10, and
-    /// `docs/DECISIONS.md`.
-    ///
-    /// A `.plainFallback` bookmark is genuinely usable for the remainder of
-    /// the *current* app session (the sandbox extension granted at import
-    /// time is still active), but — unlike `.securityScoped` — is not
-    /// guaranteed to still grant access after the app relaunches. Conformances:
-    /// `Equatable`, `Sendable` (`CLAUDE.md`, "Domain Model Value-Type
-    /// Conformances" — no `id` field, not `Identifiable`, same shape as
-    /// `TimecodeFrameRate`). `RawRepresentable` (`String`) purely so
-    /// `ACPersistence` can store it as a plain column without an extra
-    /// mapping enum of its own — not a SUISA/export concern.
-    public enum BookmarkAccessMode: String, Equatable, Sendable {
-        case securityScoped
-        case plainFallback
-    }
-
     public let id: UUID
     public let originalFileName: String
     /// Despite the field name, this holds a **plain** (non-security-scoped)

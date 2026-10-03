@@ -8,13 +8,19 @@ import Foundation
 public struct InMemoryExportRepository: ExportRepository, Sendable {
     public let exportedURL: URL
     public let layoutToReturn: [CueSheetPageLayout]
+    public let waFormLayoutToReturn: [CueSheetPageLayout]
+    public let waFormLayoutError: Error?
 
     public init(
         exportedURL: URL = URL(fileURLWithPath: "/tmp/fixture-export"),
-        layoutToReturn: [CueSheetPageLayout] = []
+        layoutToReturn: [CueSheetPageLayout] = [],
+        waFormLayoutToReturn: [CueSheetPageLayout] = [],
+        waFormLayoutError: Error? = nil
     ) {
         self.exportedURL = exportedURL
         self.layoutToReturn = layoutToReturn
+        self.waFormLayoutToReturn = waFormLayoutToReturn
+        self.waFormLayoutError = waFormLayoutError
     }
 
     public func export(
@@ -31,5 +37,27 @@ public struct InMemoryExportRepository: ExportRepository, Sendable {
 
     public func computeLayout(for _: Project) -> [CueSheetPageLayout] {
         layoutToReturn
+    }
+
+    public func computeWAFormLayout(
+        for _: Project,
+        template _: WAFormTemplateReference
+    ) throws -> [CueSheetPageLayout] {
+        if let waFormLayoutError {
+            throw waFormLayoutError
+        }
+        return waFormLayoutToReturn
+    }
+
+    public func exportWAForm(
+        project _: Project,
+        template _: WAFormTemplateReference,
+        to destination: URL
+    ) -> AsyncThrowingStream<OperationProgress<URL>, Error> {
+        AsyncThrowingStream { continuation in
+            continuation.yield(.progress(ProgressUpdate(fractionCompleted: 1.0)))
+            continuation.yield(.completed(destination))
+            continuation.finish()
+        }
     }
 }

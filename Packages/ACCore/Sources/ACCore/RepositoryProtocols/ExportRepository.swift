@@ -25,6 +25,32 @@ public protocol ExportRepository: Sendable {
     /// function. Both `PDFCueSheetRenderer` (the real PDF) and the
     /// on-screen preview View draw this identical, precomputed result —
     /// neither re-derives layout independently. Distinct from the literal
-    /// SUISA WA Film form's own layout (D12, not this method's concern).
+    /// SUISA WA Film form's own layout (D12, below).
     func computeLayout(for project: Project) -> [CueSheetPageLayout]
+
+    /// Computes the literal WA Film registration form's page-by-page
+    /// **overlay** content (`ROADMAP.md` D12) — the dynamic field values
+    /// only (text + checkbox marks), never the form's own labels/boxes,
+    /// which are drawn from `template`'s own pages as a background
+    /// (`WAFormRenderer`). Reuses `CueSheetPageLayout`'s mechanism unchanged
+    /// (SPEC.md §4.16's own open question, resolved: the type is already
+    /// content-agnostic) — only the content and the fixed-position,
+    /// fixed-capacity layout rule differ from the cue sheet's dynamic,
+    /// pack-to-capacity one.
+    ///
+    /// **Throwing, unlike `computeLayout(for:)` above** — a real, deliberate
+    /// difference: this method must resolve `template`'s security-scoped
+    /// bookmarks and read the continuation file's real page count to know
+    /// how many continuation pages are actually available, which is genuine
+    /// file I/O that can fail (the file moved, access revoked) in a way the
+    /// cue sheet's pure in-memory layout math never can.
+    func computeWAFormLayout(for project: Project, template: WAFormTemplateReference) throws -> [CueSheetPageLayout]
+
+    /// Renders the WA Film registration form (`ROADMAP.md` D12) by drawing
+    /// `computeWAFormLayout(for:template:)`'s overlay elements on top of
+    /// `template`'s own real pages (`CGPDFDocument`/`drawPDFPage`, plain
+    /// Core Graphics — never `PDFKit`), writing a brand-new output PDF to
+    /// `destination`. `template`'s own stored files are never modified.
+    func exportWAForm(project: Project, template: WAFormTemplateReference, to destination: URL)
+        -> AsyncThrowingStream<OperationProgress<URL>, Error>
 }

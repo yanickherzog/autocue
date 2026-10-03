@@ -71,7 +71,7 @@ public struct InMemoryAudioAnalysisRepository: AudioAnalysisRepository, Sendable
         }
     }
 
-    public func refreshBookmarkIfStale(_: Data, mode _: AudioAsset.BookmarkAccessMode) throws -> Data? {
+    public func refreshBookmarkIfStale(_: Data, mode _: BookmarkAccessMode) throws -> Data? {
         staleBookmarkRefreshedTo
     }
 

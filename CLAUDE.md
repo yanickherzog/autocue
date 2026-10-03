@@ -148,12 +148,16 @@ AutoCue.xcworkspace
 │   │   │                           Timecode, TimecodeFrameRate, PostalAddress,
 │   │   │                           WaveformPeaks, WaveformPeakBucket,
 │   │   │                           CueSheetPageLayout, CueSheetLayoutElement, LayoutRect,
-│   │   │                           ProgressUpdate, OperationProgress
+│   │   │                           ProgressUpdate, OperationProgress, BookmarkAccessMode,
+│   │   │                           WAFormTemplateReference
 │   │   ├── UseCases/                ImportAudioUseCase, DetectCuesUseCase, ExportCueSheetUseCase,
 │   │   │                           UpdateCueUseCase, RecalculateTotalMusicRuntimeUseCase,
 │   │   │                           DeleteRightHolderUseCase,
-│   │   │                           GenerateWaveformPeaksUseCase, GenerateWaveformDetailUseCase, ...
-│   │   └── RepositoryProtocols/     ProjectRepository, AudioAnalysisRepository, ExportRepository
+│   │   │                           GenerateWaveformPeaksUseCase, GenerateWaveformDetailUseCase,
+│   │   │                           WAFormTemplateUseCase, ComputeWAFormLayoutUseCase,
+│   │   │                           ExportWAFormUseCase, ...
+│   │   └── RepositoryProtocols/     ProjectRepository, AudioAnalysisRepository, ExportRepository,
+│   │                               WAFormTemplateRepository
 │   │
 │   ├── ACAudioKit/                DATA — audio ingestion & analysis
 │   │   ├── WAVParsing/              RIFF/BWF chunk reader
@@ -170,6 +174,9 @@ AutoCue.xcworkspace
 │   │   │                           not the real writer; see "Export Architecture" below. Exists
 │   │   │                           ahead of D11 deliberately; superseded once XLSXCueSheetWriter
 │   │   │                           is actually built
+│   │   ├── WAForm/                  WAFormLayoutComputer/WAFormRenderer/WAFormTemplateRepositoryImpl
+│   │   │                           (ROADMAP.md D12) — draws onto the user's own imported WA Film
+│   │   │                           template pages; see "Export Architecture" below
 │   │   └── ExportRepositoryImpl.swift
 │   │
 │   ├── ACPersistence/             DATA — project storage
@@ -380,7 +387,15 @@ The actual requirement — an on-screen A4 preview that matches the exported PDF
 - `ExportRepository` (`ACExport`) computes it, because accurate text measurement/line-breaking for real pagination genuinely requires Core Text — pure Foundation code can't do this. The *computation* is therefore a Data-layer responsibility even though the resulting *value* is a plain `ACCore` type, obtained by `ACFeatures` only through a Use Case wrapping `ExportRepository` (never `ACExport` directly — consistent with the dependency graph). (The literal SUISA WA Film form's own pagination rule — 5 works/page main form, 4/page continuation — is a real, confirmed fact about that specific document, `SPEC.md` §2.1; it is not necessarily the pagination rule for every document this mechanism ends up backing — see below.)
 - Two consumers draw the identical computed layout: the real PDF renderer (`ACExport`, via Core Graphics `PDFContext` + Core Text — the real export) and the on-screen preview View (`ACFeatures`, via SwiftUI `Canvas` painting the precomputed frames directly). **The preview View deliberately does not use SwiftUI's native `Text`/`VStack` layout for the form content** — doing so would let SwiftUI's text engine silently diverge from Core Text's, defeating the entire point of sharing one layout model.
 
-**As of 2026-09-27, this mechanism backs two genuinely separate documents, not one** — `ROADMAP.md` D11/T11.2's producer-facing cue sheet PDF (its own landscape, column-based design, confirmed by real-world evidence, unrelated to the WA form's layout) and, separately, the literal SUISA WA Film registration form (portrait, percentage-including, not yet scoped as a Deliverable/Task — `docs/DECISIONS.md`). The exact visual design (fonts, column widths, table borders) for either is real work at the point each is actually implemented — this section fixes the *mechanism* (one computed layout per document, two consumers each), not any one document's visual design. Whether both documents share `CueSheetPageLayout`'s existing types or the WA form gets its own analogous type is an open question for whoever scopes that work — see `SPEC.md` §4.16.
+**As of 2026-09-27, this mechanism backs two genuinely separate documents, not one** — `ROADMAP.md` D11/T11.2's producer-facing cue sheet PDF (its own landscape, column-based design, confirmed by real-world evidence, unrelated to the WA form's layout) and, separately, the literal SUISA WA Film registration form (portrait, percentage-including). The exact visual design (fonts, column widths, table borders) for either is real work at the point each is actually implemented — this section fixes the *mechanism* (one computed layout per document, two consumers each), not any one document's visual design.
+
+### The WA Film form specifically: overlay onto a user-supplied template, never a bundled copy
+
+**Resolved `ROADMAP.md` D12/T12.1's open question: `CueSheetPageLayout` is reused unchanged, not given a sibling type.** The type was already content-agnostic (`{pageIndex, pageCount, elements}`, Foundation-only geometry) — no `ACCore` change was needed. What *is* genuinely different from the cue sheet is how the resulting layout gets drawn:
+
+- **AutoCue never bundles or ships SUISA's own form PDF inside the app.** The real form has no AcroForm fields (confirmed via `pdfinfo`: `Form: none`) — it is a flat, non-interactive layout. Rather than hand-reconstructing its labels/boxes/lines from scratch the way `PDFCueSheetRenderer` does for the cue sheet, the user imports their own legitimately-obtained copy of the two real files once (mirroring `ROADMAP.md` D8's audio-import security-scoped-bookmark pattern, stored as `WAFormTemplateReference`, SPEC.md §4.24) — app-level, not per-`Project`, since it is the same file reused for every declaration. A new `WAFormRenderer` (`ACExport`) draws the computed `[CueSheetPageLayout]`'s elements **on top of** the user's own stored template pages (`CGPDFDocument`/`context.drawPDFPage` — plain Core Graphics, not `PDFKit`), producing a brand-new output file; the stored template is never modified. This sidesteps the redistribution question a bundled copy would raise, at the cost of a one-time import step before the feature works.
+- **`WAFormLayoutComputer`'s output contains only the dynamic field values and checkbox marks — never the form's own labels/boxes/lines**, which come from the background template page instead. Checkboxes need no new `LayoutElementContent` case: a checkbox mark is a plain `.text("X", ...)` element positioned at the real, measured square's coordinates (extracted from the real reference PDFs' own vector paths via `pdftocairo -svg`) — the empty square itself is already printed on the template.
+- **Fixed-position, fixed-capacity layout — a different shape from the cue sheet's dynamic pack-to-capacity pagination.** Every work's position on every page is a real, measured constant (confirmed per-document — the continuation form's own left margin and per-work pitch are genuinely, if slightly, different from the main form's own, not assumed shared). SPEC.md §4.24 has the full coordinate-extraction methodology and the real structural findings it surfaced, including two previously-unknown capacity ceilings a flat paper form imposes that the cue sheet never had (a 3-row right-holder limit per work; a finite continuation-template page count) — `ROADMAP.md` T12.3 decides how (not whether) to surface both as validation issues.
 
 ### XLSX: `libxlsxwriter` dependency — validated now, not at the old M28 position
 

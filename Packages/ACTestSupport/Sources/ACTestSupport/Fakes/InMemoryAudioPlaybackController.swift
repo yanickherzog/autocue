@@ -9,7 +9,7 @@ import Foundation
 public actor InMemoryAudioPlaybackController: AudioPlaybackController {
     public private(set) var prepareCallCount = 0
     public private(set) var lastPreparedBookmark: Data?
-    public private(set) var lastPreparedMode: AudioAsset.BookmarkAccessMode?
+    public private(set) var lastPreparedMode: BookmarkAccessMode?
     public private(set) var playCalls: [(from: Double, until: Double?)] = []
     public private(set) var pauseCallCount = 0
     public private(set) var stopCallCount = 0
@@ -25,7 +25,7 @@ public actor InMemoryAudioPlaybackController: AudioPlaybackController {
         self.continuation = continuation
     }
 
-    public func prepare(securityScopedBookmark: Data, mode: AudioAsset.BookmarkAccessMode) async throws {
+    public func prepare(securityScopedBookmark: Data, mode: BookmarkAccessMode) async throws {
         prepareCallCount += 1
         lastPreparedBookmark = securityScopedBookmark
         lastPreparedMode = mode

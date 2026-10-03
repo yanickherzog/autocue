@@ -40,8 +40,7 @@ enum AudioAssetMapper {
             id: entity.id,
             originalFileName: entity.originalFileName,
             securityScopedBookmark: entity.securityScopedBookmark,
-            bookmarkAccessMode: AudioAsset
-                .BookmarkAccessMode(rawValue: entity.bookmarkAccessModeRawValue) ?? .securityScoped,
+            bookmarkAccessMode: BookmarkAccessMode(rawValue: entity.bookmarkAccessModeRawValue) ?? .securityScoped,
             duration: MediaDuration(seconds: entity.durationSeconds),
             sampleRate: entity.sampleRate,
             channelCount: entity.channelCount,

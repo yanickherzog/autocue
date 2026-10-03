@@ -40,3 +40,9 @@ Packages/*/.build/
 /AutoCue-CueSheet-*.pdf
 /Autocue_PDF-Template.indd
 /Autocue_PDF-Template.pdf
+
+# D12/T12.1-T12.2 WA Film form verification renders — real output PDFs
+# generated against the project owner's own real reference files for direct
+# visual review. Local verification material, not source; never committed.
+# See docs/DECISIONS.md, 2026-10-02.
+/AutoCue-WAFilmForm-*.pdf
