@@ -63,10 +63,12 @@ final class IPINumberTests: XCTestCase {
         XCTAssertFalse(IPINumber.isValid("not-a-number"))
     }
 
-    // MARK: - grouped(_:) — corrected 2026-10-03, twice. The real display
-    // (confirmed against the project owner's own real, SUISA-accepted
-    // document) groups the full, unmodified 11-digit number `5-2-2-2` —
-    // nothing dropped, nothing split out, no hyphen.
+    // MARK: - grouped(_:)
+
+    // Corrected 2026-10-03, twice. The real display (confirmed against the
+    // project owner's own real, SUISA-accepted document) groups the full,
+    // unmodified 11-digit number `5-2-2-2` — nothing dropped, nothing split
+    // out, no hyphen.
 
     func test_grouped_realSUISADocumentExample_fiveTwoTwoTwo() {
         // The exact real-world evidence this format was confirmed against:

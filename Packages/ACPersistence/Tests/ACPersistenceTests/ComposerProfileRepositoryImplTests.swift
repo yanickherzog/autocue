@@ -28,12 +28,12 @@ final class ComposerProfileRepositoryImplTests: XCTestCase {
     }
 
     func test_currentProfile_nilWhenNeverSaved() throws {
-        let repository = ComposerProfileRepositoryImpl(defaults: try makeDefaults())
+        let repository = try ComposerProfileRepositoryImpl(defaults: makeDefaults())
         XCTAssertNil(repository.currentProfile())
     }
 
     func test_saveProfile_minimalFields_roundTrips() throws {
-        let repository = ComposerProfileRepositoryImpl(defaults: try makeDefaults())
+        let repository = try ComposerProfileRepositoryImpl(defaults: makeDefaults())
         let profile = makeProfile()
 
         try repository.saveProfile(profile)
@@ -42,7 +42,7 @@ final class ComposerProfileRepositoryImplTests: XCTestCase {
     }
 
     func test_saveProfile_everyOptionalFieldPresent_roundTrips() throws {
-        let repository = ComposerProfileRepositoryImpl(defaults: try makeDefaults())
+        let repository = try ComposerProfileRepositoryImpl(defaults: makeDefaults())
         let address = PostalAddress(street: "Bahnhofstrasse 1", postalCode: "8001", city: "Zürich", country: "CH")
         let profile = makeProfile(address: address, email: "ada@example.com", swissPerformNumber: "SP-1")
 
@@ -62,7 +62,7 @@ final class ComposerProfileRepositoryImplTests: XCTestCase {
     }
 
     func test_saveProfile_aSecondSave_replacesTheFirstEntirely() throws {
-        let repository = ComposerProfileRepositoryImpl(defaults: try makeDefaults())
+        let repository = try ComposerProfileRepositoryImpl(defaults: makeDefaults())
         try repository.saveProfile(makeProfile())
 
         let replacement = ComposerProfile(firstName: "Grace", lastName: "Hopper", ipiNumber: "00123456790")
@@ -75,7 +75,7 @@ final class ComposerProfileRepositoryImplTests: XCTestCase {
     /// it, "never saved" and "saved with every optional field blank" would
     /// be indistinguishable purely from absent `UserDefaults` reads.
     func test_saveProfile_withNoOptionalFields_stillDistinguishableFromNeverSaved() throws {
-        let repository = ComposerProfileRepositoryImpl(defaults: try makeDefaults())
+        let repository = try ComposerProfileRepositoryImpl(defaults: makeDefaults())
         try repository.saveProfile(makeProfile())
 
         XCTAssertNotNil(repository.currentProfile())

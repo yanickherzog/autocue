@@ -21,7 +21,7 @@ public struct ComposerProfileSettingsView: View {
 
             Text(
                 "Stored once, on this Mac, and never sent anywhere — used only to auto-fill \"That's Me\" " +
-                "when you add yourself as a right-holder on a Project."
+                    "when you add yourself as a right-holder on a Project."
             )
             .font(Theme.Typography.font(.regular, size: 12))
             .foregroundStyle(Theme.Surface.primary.foreground.opacity(0.6))
@@ -66,8 +66,8 @@ public struct ComposerProfileSettingsView: View {
         } message: {
             Text(
                 "\(viewModel.firstName) \(viewModel.lastName) — IPI-Nr. \(viewModel.groupedIPIForConfirmation)\n\n" +
-                "This will be saved and used to auto-fill future right-holder entries. Double-check the number " +
-                "above is correct before saving — an error here would silently repeat everywhere it's used."
+                    "This will be saved and used to auto-fill future right-holder entries. Double-check the number " +
+                    "above is correct before saving — an error here would silently repeat everywhere it's used."
             )
         }
     }

@@ -56,8 +56,13 @@ public final class ComposerProfileSettingsViewModel {
         swissPerformNumber = existing.swissPerformNumber ?? ""
     }
 
-    private var trimmedFirstName: String { firstName.trimmingCharacters(in: .whitespacesAndNewlines) }
-    private var trimmedLastName: String { lastName.trimmingCharacters(in: .whitespacesAndNewlines) }
+    private var trimmedFirstName: String {
+        firstName.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var trimmedLastName: String {
+        lastName.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
 
     /// Gates the Save button. The real IPI structure check
     /// (`IPINumber.isValid`) — not just "non-empty" — is deliberately
