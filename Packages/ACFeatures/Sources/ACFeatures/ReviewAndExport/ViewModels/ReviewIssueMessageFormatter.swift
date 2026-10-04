@@ -54,7 +54,13 @@ enum ReviewIssueMessageFormatter {
     /// "Cue N — Title", matching the display number `CueTableView`/the
     /// waveform's "CUE N" label already show (SPEC.md §4.22) — `N` is this
     /// cue's 1-indexed position in `cues`, not a stored field.
-    private static func cueLabel(for cueID: Cue.ID, in cues: [Cue]) -> String {
+    ///
+    /// **Widened from `private` at `ROADMAP.md` D12/T12.4** — a real second
+    /// caller, `WAFormValidationMessageFormatter`, now needs the identical
+    /// cue-labeling logic for its own WA-form-specific issue cases
+    /// (`CLAUDE.md` rule 7's promotion bar: a real second use, not a
+    /// hypothetical one).
+    static func cueLabel(for cueID: Cue.ID, in cues: [Cue]) -> String {
         guard let index = cues.firstIndex(where: { $0.id == cueID }) else { return "A cue" }
         return "Cue \(index + 1) — \(cues[index].title)"
     }

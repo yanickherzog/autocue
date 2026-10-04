@@ -86,12 +86,26 @@ final class ExportRepositoryImplTests: XCTestCase {
 
     // MARK: - WA Film form (ROADMAP.md D12)
 
-    private func makeTemplate(mainPageCount: Int, continuationPageCount: Int) throws -> WAFormTemplateReference {
+    /// Imports a synthetic template into a fresh, isolated storage directory
+    /// and returns an `ExportRepositoryImpl` pointed at that *same*
+    /// directory — the real `ExportRepositoryImpl` no longer takes a
+    /// `template:` parameter (`ROADMAP.md` D12/T12.4, `docs/DECISIONS.md`:
+    /// there's only ever one app-level template, read from wherever it was
+    /// actually imported to), so the repository under test must share the
+    /// import's own storage location, never the real developer machine's
+    /// actual Application Support folder.
+    private func makeRepositoryWithImportedTemplate(
+        mainPageCount: Int,
+        continuationPageCount: Int
+    ) throws -> ExportRepositoryImpl {
         let defaults = try XCTUnwrap(UserDefaults(suiteName: "ExportRepositoryImplTests-\(UUID().uuidString)"))
-        let templateRepository = WAFormTemplateRepositoryImpl(defaults: defaults)
+        let storageDirectory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        addTeardownBlock { try? FileManager.default.removeItem(at: storageDirectory) }
+        let templateRepository = WAFormTemplateRepositoryImpl(defaults: defaults, storageDirectory: storageDirectory)
         let mainURL = try makeSyntheticTemplatePDF(pageCount: mainPageCount)
         let continuationURL = try makeSyntheticTemplatePDF(pageCount: continuationPageCount)
-        return try templateRepository.importTemplate(mainFormURL: mainURL, continuationFormURL: continuationURL)
+        _ = try templateRepository.importTemplate(mainFormURL: mainURL, continuationFormURL: continuationURL)
+        return ExportRepositoryImpl(waFormUserDefaults: defaults, waFormStorageDirectory: storageDirectory)
     }
 
     private func makeSyntheticTemplatePDF(pageCount: Int) throws -> URL {
@@ -112,8 +126,7 @@ final class ExportRepositoryImplTests: XCTestCase {
     }
 
     func test_computeWAFormLayout_readsTheRealContinuationTemplatesPageCount_notAHardcodedNumber() throws {
-        let repository = ExportRepositoryImpl()
-        let template = try makeTemplate(mainPageCount: 2, continuationPageCount: 2)
+        let repository = try makeRepositoryWithImportedTemplate(mainPageCount: 2, continuationPageCount: 2)
 
         let cues = (0 ..< 13).map { index in
             Cue(
@@ -143,22 +156,17 @@ final class ExportRepositoryImplTests: XCTestCase {
         // 13 cues need 2 continuation pages (8 remaining after the main
         // form's 5, 4 per page) — the real template only has 2, so this
         // must cap there, not assume a larger/hardcoded capacity.
-        let pages = try repository.computeWAFormLayout(for: project, template: template)
+        let pages = try repository.computeWAFormLayout(for: project)
         XCTAssertEqual(pages.count, 4)
     }
 
     func test_exportWAForm_producesARealFileAndCompletes() async throws {
-        let repository = ExportRepositoryImpl()
-        let template = try makeTemplate(mainPageCount: 2, continuationPageCount: 1)
+        let repository = try makeRepositoryWithImportedTemplate(mainPageCount: 2, continuationPageCount: 1)
         let outputURL = temporaryURL(extension: "pdf")
         defer { try? FileManager.default.removeItem(at: outputURL) }
 
         var completedURL: URL?
-        for try await event in repository.exportWAForm(
-            project: ProjectFixture.make(),
-            template: template,
-            to: outputURL
-        ) {
+        for try await event in repository.exportWAForm(project: ProjectFixture.make(), to: outputURL) {
             if case let .completed(resultURL) = event {
                 completedURL = resultURL
             }

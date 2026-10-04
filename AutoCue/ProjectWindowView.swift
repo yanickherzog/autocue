@@ -5,7 +5,7 @@ import SwiftUI
 
 /// Root content of one Project window (`ROADMAP.md` D6/T6.1) — the 2-column
 /// `NavigationSplitView` shell `CLAUDE.md`'s "Navigation Model" describes:
-/// content = the three always-accessible section tabs, detail = the active
+/// content = the four always-accessible section tabs, detail = the active
 /// screen. `SetupView` is real as of `ROADMAP.md` D7; `.cueSheet` routes
 /// between `AudioImportView`/`CueDetectionProgressView`/
 /// `CueDetectionReviewView` based on `cueSheetSectionViewModel.resumeState`
@@ -13,7 +13,9 @@ import SwiftUI
 /// so reopening an already-processed (or mid-pipeline) Project resumes at
 /// the right screen instead of re-showing D8's import prompt.
 /// `.reviewAndExport` renders the real `ReviewAndExportView` as of
-/// `ROADMAP.md` D11/T11.5.
+/// `ROADMAP.md` D11/T11.5. `.waFilmForm` renders the real `WAFilmFormView`
+/// as of `ROADMAP.md` D12/T12.4 — a fourth tab added to what was originally
+/// a fixed three-tab shell, per `CLAUDE.md`'s updated Navigation Model.
 ///
 /// Owns this window's `AppState` (`ACFeatures`) — constructed once per
 /// window via `@State`, never a single app-wide instance (`CLAUDE.md`,
@@ -117,6 +119,7 @@ struct ProjectWindowView: View {
     @State private var cueDetectionViewModel: CueDetectionViewModel
     @State private var cueDetectionReviewViewModel: CueDetectionReviewViewModel
     @State private var reviewAndExportViewModel: ReviewAndExportViewModel
+    @State private var waFilmFormViewModel: WAFilmFormViewModel
     /// Set when a tab switch to `.cueSheet`/`.reviewAndExport` is blocked
     /// because `setupViewModel.missingRequiredFields` isn't empty at the
     /// moment the user clicks that tab — see `sidebarButton`'s doc comment
@@ -137,6 +140,7 @@ struct ProjectWindowView: View {
         _cueDetectionViewModel = State(initialValue: container.makeCueDetectionViewModel(for: projectID))
         _cueDetectionReviewViewModel = State(initialValue: container.makeCueDetectionReviewViewModel(for: projectID))
         _reviewAndExportViewModel = State(initialValue: container.makeReviewAndExportViewModel(for: projectID))
+        _waFilmFormViewModel = State(initialValue: container.makeWAFilmFormViewModel(for: projectID))
         let freshUndoManager = UndoManager()
         _undoManager = State(initialValue: freshUndoManager)
         _undoManagerObserver = State(initialValue: ProjectUndoManagerObserver(undoManager: freshUndoManager))
@@ -187,6 +191,7 @@ struct ProjectWindowView: View {
             sidebarButton(.setup, title: "Setup")
             sidebarButton(.cueSheet, title: "Cues")
             sidebarButton(.reviewAndExport, title: "Review & Export")
+            sidebarButton(.waFilmForm, title: "WA Film Form")
             Spacer()
         }
         .padding(Theme.Spacing.sm)
@@ -194,8 +199,9 @@ struct ProjectWindowView: View {
         .background(Theme.Surface.primary.background)
     }
 
-    /// Intercepts the switch to `.cueSheet`/`.reviewAndExport` (never
-    /// `.setup` itself — that's exactly the screen to fix things on) in this
+    /// Intercepts the switch to any non-`.setup` section (`.cueSheet`,
+    /// `.reviewAndExport`, `.waFilmForm` — never `.setup` itself, that's
+    /// exactly the screen to fix things on) in this
     /// button's own action closure, before `appState.selectedSection` is
     /// ever mutated — not an `.onChange(of: appState.selectedSection)`
     /// revert-after-the-fact handler, which would visibly flash to the new
@@ -237,10 +243,9 @@ struct ProjectWindowView: View {
     /// found. `setupViewModel.projectNotFound` is the one source of truth
     /// this checks — `RightHolderDirectoryViewModel` doesn't get its own
     /// separate flag (see that ViewModel's `loadDirectory()` doc comment).
-    /// `Cues` and `Review & Export` (still a placeholder, D11) would be
-    /// exactly as broken as Setup if this window's `projectID` were stale,
-    /// so the check sits above the tab `switch` entirely rather than
-    /// being duplicated into three places.
+    /// Every other tab would be exactly as broken as Setup if this window's
+    /// `projectID` were stale, so the check sits above the tab `switch`
+    /// entirely rather than being duplicated into four places.
     @ViewBuilder
     private var detail: some View {
         if setupViewModel.projectNotFound {
@@ -261,6 +266,8 @@ struct ProjectWindowView: View {
                 cueSheetDetail
             case .reviewAndExport:
                 ReviewAndExportView(viewModel: reviewAndExportViewModel)
+            case .waFilmForm:
+                WAFilmFormView(viewModel: waFilmFormViewModel)
             }
         }
     }

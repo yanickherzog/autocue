@@ -3,25 +3,22 @@ import Foundation
 
 /// The real `WAFormTemplateRepository` implementation (`ROADMAP.md` D12).
 ///
-/// **`UserDefaults`-backed, not `SwiftData`** — deliberate, mirroring
-/// `ProjectWindowFrameStore`'s own lightweight, non-`SwiftData` precedent
-/// (`AutoCue/ProjectWindowFrameStore.swift`): this is one small, app-level
-/// value, not a growing collection of project-scoped records, so the full
-/// `ACPersistence`/`SwiftData` machinery would be disproportionate. Reached
-/// through a proper `ACCore` protocol (unlike `ProjectWindowFrameStore`,
-/// which lives directly in the App target) because both `ACFeatures` and
-/// `ACExport` need it, not just the App target.
-///
-/// Bookmark minting/resolution mirrors `AudioAnalysisRepositoryImpl`'s own
-/// pattern exactly (SPEC.md §4.10): security-scoped first, falling back to
-/// plain if creation itself fails, independently per file.
+/// **Copies the user's selected files into AutoCue's own private container
+/// (`WAFormTemplateStorage`) rather than tracking them by security-scoped
+/// bookmark** — a deliberate reversal of this type's original D12/T12.1
+/// design (`docs/DECISIONS.md`, D12/T12.4). The original design mirrored
+/// `AudioAnalysisRepositoryImpl`'s bookmark pattern defensively, assuming
+/// the same staleness risk `AudioAsset` genuinely has applied here too. A
+/// real relaunch-survival test on that design actually passed, but the
+/// user's explicit requirement was a fully automatic experience with zero
+/// ongoing dependency on the original external file — a private copy
+/// removes that dependency class entirely, which bookmarks (even working
+/// ones) never fully do. Still `UserDefaults`-backed for the small amount
+/// of display metadata (`WAFormTemplateReference`), the same lightweight,
+/// non-`SwiftData` precedent `ProjectWindowFrameStore` already establishes.
 public struct WAFormTemplateRepositoryImpl: WAFormTemplateRepository, @unchecked Sendable {
     private enum Key {
-        static let mainFormBookmark = "WAFormTemplate.mainFormBookmark"
-        static let mainFormAccessMode = "WAFormTemplate.mainFormAccessMode"
         static let mainFormFileName = "WAFormTemplate.mainFormFileName"
-        static let continuationFormBookmark = "WAFormTemplate.continuationFormBookmark"
-        static let continuationFormAccessMode = "WAFormTemplate.continuationFormAccessMode"
         static let continuationFormFileName = "WAFormTemplate.continuationFormFileName"
         static let importedAt = "WAFormTemplate.importedAt"
     }
@@ -35,20 +32,25 @@ public struct WAFormTemplateRepositoryImpl: WAFormTemplateRepository, @unchecked
     /// marked the class `Sendable` yet, which is the one reason this type
     /// needs `@unchecked Sendable` above rather than plain `Sendable`.
     private let defaults: UserDefaults
+    /// Injectable override for `WAFormTemplateStorage.fileURLs(baseDirectory:)`
+    /// — `nil` in production (the real Application Support directory); real
+    /// tests pass a fresh temporary directory, the same isolation `defaults`
+    /// already provides via `UserDefaults(suiteName:)`. See
+    /// `WAFormTemplateStorage`'s own doc comment for why this exists at all.
+    private let storageDirectory: URL?
 
-    public init(defaults: UserDefaults = .standard) {
+    public init(defaults: UserDefaults = .standard, storageDirectory: URL? = nil) {
         self.defaults = defaults
+        self.storageDirectory = storageDirectory
     }
 
     public func importTemplate(mainFormURL: URL, continuationFormURL: URL) throws -> WAFormTemplateReference {
-        let (mainBookmark, mainMode) = try Self.makeBookmark(for: mainFormURL)
-        let (continuationBookmark, continuationMode) = try Self.makeBookmark(for: continuationFormURL)
+        let destination = try WAFormTemplateStorage.fileURLs(baseDirectory: storageDirectory)
+        try Self.copy(from: mainFormURL, to: destination.mainFormURL)
+        try Self.copy(from: continuationFormURL, to: destination.continuationFormURL)
+
         let reference = WAFormTemplateReference(
-            mainFormBookmark: mainBookmark,
-            mainFormAccessMode: mainMode,
             mainFormFileName: mainFormURL.lastPathComponent,
-            continuationFormBookmark: continuationBookmark,
-            continuationFormAccessMode: continuationMode,
             continuationFormFileName: continuationFormURL.lastPathComponent,
             importedAt: Date()
         )
@@ -58,130 +60,47 @@ public struct WAFormTemplateRepositoryImpl: WAFormTemplateRepository, @unchecked
 
     public func currentTemplate() -> WAFormTemplateReference? {
         guard
-            let mainFormBookmark = defaults.data(forKey: Key.mainFormBookmark),
-            let mainModeRaw = defaults.string(forKey: Key.mainFormAccessMode),
-            let mainMode = BookmarkAccessMode(rawValue: mainModeRaw),
             let mainFormFileName = defaults.string(forKey: Key.mainFormFileName),
-            let continuationFormBookmark = defaults.data(forKey: Key.continuationFormBookmark),
-            let continuationModeRaw = defaults.string(forKey: Key.continuationFormAccessMode),
-            let continuationMode = BookmarkAccessMode(rawValue: continuationModeRaw),
-            let continuationFormFileName = defaults.string(forKey: Key.continuationFormFileName)
+            let continuationFormFileName = defaults.string(forKey: Key.continuationFormFileName),
+            let destination = try? WAFormTemplateStorage.fileURLs(baseDirectory: storageDirectory),
+            FileManager.default.fileExists(atPath: destination.mainFormURL.path),
+            FileManager.default.fileExists(atPath: destination.continuationFormURL.path)
         else { return nil }
         let importedAt = Date(timeIntervalSince1970: defaults.double(forKey: Key.importedAt))
         return WAFormTemplateReference(
-            mainFormBookmark: mainFormBookmark,
-            mainFormAccessMode: mainMode,
             mainFormFileName: mainFormFileName,
-            continuationFormBookmark: continuationFormBookmark,
-            continuationFormAccessMode: continuationMode,
             continuationFormFileName: continuationFormFileName,
             importedAt: importedAt
         )
     }
 
-    public func refreshBookmarkIfStale(_ reference: WAFormTemplateReference) throws -> WAFormTemplateReference? {
-        let refreshedMain = try Self.refreshIfStale(reference.mainFormBookmark, mode: reference.mainFormAccessMode)
-        let refreshedContinuation = try Self.refreshIfStale(
-            reference.continuationFormBookmark,
-            mode: reference.continuationFormAccessMode
-        )
-        guard refreshedMain != nil || refreshedContinuation != nil else { return nil }
-        let updated = WAFormTemplateReference(
-            mainFormBookmark: refreshedMain ?? reference.mainFormBookmark,
-            mainFormAccessMode: reference.mainFormAccessMode,
-            mainFormFileName: reference.mainFormFileName,
-            continuationFormBookmark: refreshedContinuation ?? reference.continuationFormBookmark,
-            continuationFormAccessMode: reference.continuationFormAccessMode,
-            continuationFormFileName: reference.continuationFormFileName,
-            importedAt: reference.importedAt
-        )
-        store(updated)
-        return updated
+    public func templateFileURLs() -> (mainFormURL: URL, continuationFormURL: URL)? {
+        guard
+            currentTemplate() != nil,
+            let destination = try? WAFormTemplateStorage.fileURLs(baseDirectory: storageDirectory)
+        else { return nil }
+        return destination
     }
 
     private func store(_ reference: WAFormTemplateReference) {
-        defaults.set(reference.mainFormBookmark, forKey: Key.mainFormBookmark)
-        defaults.set(reference.mainFormAccessMode.rawValue, forKey: Key.mainFormAccessMode)
         defaults.set(reference.mainFormFileName, forKey: Key.mainFormFileName)
-        defaults.set(reference.continuationFormBookmark, forKey: Key.continuationFormBookmark)
-        defaults.set(reference.continuationFormAccessMode.rawValue, forKey: Key.continuationFormAccessMode)
         defaults.set(reference.continuationFormFileName, forKey: Key.continuationFormFileName)
         defaults.set(reference.importedAt.timeIntervalSince1970, forKey: Key.importedAt)
     }
 
-    // MARK: - Bookmark creation and resolution (mirrors AudioAnalysisRepositoryImpl)
-
-    private static func makeBookmark(for url: URL) throws -> (Data, BookmarkAccessMode) {
-        let accessGranted = url.startAccessingSecurityScopedResource()
-        defer {
-            if accessGranted {
-                url.stopAccessingSecurityScopedResource()
-            }
+    /// Brackets the user-selected source `URL` with real security-scoped
+    /// access (the same discipline every other import path in this app
+    /// uses, `SPEC.md` §4.10) for just long enough to copy its bytes —
+    /// unlike `AudioAsset`'s bookmark, nothing about this access needs to
+    /// outlive this one call.
+    private static func copy(from source: URL, to destination: URL) throws {
+        guard source.startAccessingSecurityScopedResource() else {
+            throw TemplateError.sourceAccessDenied
         }
-        do {
-            let bookmark = try url.bookmarkData(
-                options: .withSecurityScope,
-                includingResourceValuesForKeys: nil,
-                relativeTo: nil
-            )
-            return (bookmark, .securityScoped)
-        } catch {
-            let bookmark = try url.bookmarkData(options: [], includingResourceValuesForKeys: nil, relativeTo: nil)
-            return (bookmark, .plainFallback)
+        defer { source.stopAccessingSecurityScopedResource() }
+        if FileManager.default.fileExists(atPath: destination.path) {
+            try FileManager.default.removeItem(at: destination)
         }
-    }
-
-    private static func refreshIfStale(_ bookmark: Data, mode: BookmarkAccessMode) throws -> Data? {
-        var isStale = false
-        let url = try URL(
-            resolvingBookmarkData: bookmark,
-            options: mode.resolutionOptions,
-            relativeTo: nil,
-            bookmarkDataIsStale: &isStale
-        )
-        guard isStale else { return nil }
-        let accessGranted = url.startAccessingSecurityScopedResource()
-        defer {
-            if accessGranted {
-                url.stopAccessingSecurityScopedResource()
-            }
-        }
-        return try url.bookmarkData(options: mode.creationOptions, includingResourceValuesForKeys: nil, relativeTo: nil)
-    }
-
-    /// Resolves a stored bookmark back to a usable `URL` — package-internal
-    /// so `WAFormLayoutComputer`/`WAFormRenderer` (same module) can open the
-    /// real template files without duplicating this resolution logic.
-    static func resolveURL(bookmark: Data, mode: BookmarkAccessMode) throws -> URL {
-        var isStale = false
-        return try URL(
-            resolvingBookmarkData: bookmark,
-            options: mode.resolutionOptions,
-            relativeTo: nil,
-            bookmarkDataIsStale: &isStale
-        )
-    }
-}
-
-/// Maps `BookmarkAccessMode` to the actual `URL` bookmark options it
-/// corresponds to — duplicated from `ACAudioKit`'s identical extension
-/// rather than shared, since `ACAudioKit`/`ACExport` never depend on each
-/// other (`CLAUDE.md`'s Package Dependency Graph) — the same small,
-/// deliberate cross-Data-package duplication `CueSheetLayoutComputer
-/// +Formatting.swift`'s own doc comment already establishes as the correct
-/// tradeoff for this exact situation.
-extension BookmarkAccessMode {
-    var creationOptions: URL.BookmarkCreationOptions {
-        switch self {
-        case .securityScoped: .withSecurityScope
-        case .plainFallback: []
-        }
-    }
-
-    var resolutionOptions: URL.BookmarkResolutionOptions {
-        switch self {
-        case .securityScoped: .withSecurityScope
-        case .plainFallback: []
-        }
+        try FileManager.default.copyItem(at: source, to: destination)
     }
 }

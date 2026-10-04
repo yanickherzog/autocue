@@ -31,37 +31,47 @@ public protocol ExportRepository: Sendable {
     /// Computes the literal WA Film registration form's page-by-page
     /// **overlay** content (`ROADMAP.md` D12) — the dynamic field values
     /// only (text + checkbox marks), never the form's own labels/boxes,
-    /// which are drawn from `template`'s own pages as a background
-    /// (`WAFormRenderer`). Reuses `CueSheetPageLayout`'s mechanism unchanged
-    /// (SPEC.md §4.16's own open question, resolved: the type is already
-    /// content-agnostic) — only the content and the fixed-position,
-    /// fixed-capacity layout rule differ from the cue sheet's dynamic,
-    /// pack-to-capacity one.
+    /// which are drawn from the user's own imported template pages as a
+    /// background (`WAFormRenderer`). Reuses `CueSheetPageLayout`'s
+    /// mechanism unchanged (SPEC.md §4.16's own open question, resolved: the
+    /// type is already content-agnostic) — only the content and the
+    /// fixed-position, fixed-capacity layout rule differ from the cue
+    /// sheet's dynamic, pack-to-capacity one.
     ///
-    /// **Throwing, unlike `computeLayout(for:)` above** — a real, deliberate
-    /// difference: this method must resolve `template`'s security-scoped
-    /// bookmarks and read the continuation file's real page count to know
-    /// how many continuation pages are actually available, which is genuine
-    /// file I/O that can fail (the file moved, access revoked) in a way the
-    /// cue sheet's pure in-memory layout math never can.
-    func computeWAFormLayout(for project: Project, template: WAFormTemplateReference) throws -> [CueSheetPageLayout]
+    /// **No `template:` parameter, unlike this method's original D12/T12.1
+    /// signature** — there is only ever one app-level template
+    /// (`WAFormTemplateReference`'s own doc comment), so this method reads
+    /// whichever one is currently imported via the same
+    /// `WAFormTemplateRepository` the Impl already holds, rather than the
+    /// caller threading a reference value through that no longer carries
+    /// any file-location data to act on (`ROADMAP.md` D12/T12.4,
+    /// `docs/DECISIONS.md`). Throws `WAFormError.noTemplateConfigured` (the
+    /// concrete type `ExportRepositoryImpl` defines) if none is imported —
+    /// callers that already know `WAFormTemplateUseCase.currentTemplate()`
+    /// is non-`nil` won't normally hit this.
+    func computeWAFormLayout(for project: Project) throws -> [CueSheetPageLayout]
 
-    /// The real, live page count of `template`'s imported continuation-form
+    /// The real, live page count of the currently-imported continuation-form
     /// file (`ROADMAP.md` D12/T12.3) — the same value
-    /// `computeWAFormLayout(for:template:)` already resolves internally to
-    /// pass as `WAFormLayoutComputer.computeLayout`'s
-    /// `continuationPagesAvailable`, exposed as its own method so
-    /// `ValidateWAFormUseCase` can determine real export-capacity (SPEC.md
-    /// §2.1's 5-main-form/4-per-continuation-page rule) without computing a
-    /// full layout just to read this one number. Throws under the same real
-    /// file-I/O conditions `computeWAFormLayout` already documents.
-    func continuationTemplatePageCount(for template: WAFormTemplateReference) throws -> Int
+    /// `computeWAFormLayout(for:)` already resolves internally to pass as
+    /// `WAFormLayoutComputer.computeLayout`'s `continuationPagesAvailable`,
+    /// exposed as its own method so `ValidateWAFormUseCase` can determine
+    /// real export-capacity (SPEC.md §2.1's 5-main-form/4-per-continuation-
+    /// page rule) without computing a full layout just to read this one
+    /// number.
+    ///
+    /// Returns `nil` — not an error — when no template is imported at all;
+    /// throws only if a template *is* imported but its own file genuinely
+    /// can't be read (rare now that it's AutoCue's own private copy, not an
+    /// external file subject to being moved/renamed).
+    func continuationTemplatePageCount() throws -> Int?
 
     /// Renders the WA Film registration form (`ROADMAP.md` D12) by drawing
-    /// `computeWAFormLayout(for:template:)`'s overlay elements on top of
-    /// `template`'s own real pages (`CGPDFDocument`/`drawPDFPage`, plain
-    /// Core Graphics — never `PDFKit`), writing a brand-new output PDF to
-    /// `destination`. `template`'s own stored files are never modified.
-    func exportWAForm(project: Project, template: WAFormTemplateReference, to destination: URL)
-        -> AsyncThrowingStream<OperationProgress<URL>, Error>
+    /// `computeWAFormLayout(for:)`'s overlay elements on top of the
+    /// currently-imported template's own real pages
+    /// (`CGPDFDocument`/`drawPDFPage`, plain Core Graphics — never
+    /// `PDFKit`), writing a brand-new output PDF to `destination`. The
+    /// user's own imported copy is never modified. Throws
+    /// `WAFormError.noTemplateConfigured` if none is imported.
+    func exportWAForm(project: Project, to destination: URL) -> AsyncThrowingStream<OperationProgress<URL>, Error>
 }

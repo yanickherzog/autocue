@@ -12,18 +12,6 @@ import XCTest
 /// (unlike `ExportCueSheetUseCase.isExportAllowed`) — each is pure
 /// orchestration over a Repository protocol.
 final class WAFormUseCaseOrchestrationTests: XCTestCase {
-    private func makeReference() -> WAFormTemplateReference {
-        WAFormTemplateReference(
-            mainFormBookmark: Data([1, 2, 3]),
-            mainFormAccessMode: .securityScoped,
-            mainFormFileName: "WA Film.pdf",
-            continuationFormBookmark: Data([4, 5, 6]),
-            continuationFormAccessMode: .securityScoped,
-            continuationFormFileName: "WA Film II.pdf",
-            importedAt: Date(timeIntervalSince1970: 0)
-        )
-    }
-
     // MARK: - WAFormTemplateUseCase
 
     func test_waFormTemplateUseCase_currentTemplate_nilWhenNoneImported() {
@@ -56,6 +44,23 @@ final class WAFormUseCaseOrchestrationTests: XCTestCase {
         ))
     }
 
+    func test_waFormTemplateUseCase_templateFileURLs_nilWhenNoneImported() {
+        let repository = InMemoryWAFormTemplateRepository()
+        let useCase = WAFormTemplateUseCase(waFormTemplateRepository: repository)
+        XCTAssertNil(useCase.templateFileURLs())
+    }
+
+    func test_waFormTemplateUseCase_templateFileURLs_nonNilOnceImported() throws {
+        let repository = InMemoryWAFormTemplateRepository()
+        let useCase = WAFormTemplateUseCase(waFormTemplateRepository: repository)
+        _ = try useCase.importTemplate(
+            mainFormURL: URL(fileURLWithPath: "/tmp/main.pdf"),
+            continuationFormURL: URL(fileURLWithPath: "/tmp/continuation.pdf")
+        )
+
+        XCTAssertNotNil(useCase.templateFileURLs())
+    }
+
     // MARK: - ComputeWAFormLayoutUseCase
 
     func test_computeWAFormLayoutUseCase_delegatesToExportRepository() throws {
@@ -63,7 +68,7 @@ final class WAFormUseCaseOrchestrationTests: XCTestCase {
         let exportRepository = InMemoryExportRepository(waFormLayoutToReturn: fakeLayout)
         let useCase = ComputeWAFormLayoutUseCase(exportRepository: exportRepository)
 
-        let result = try useCase.compute(for: ProjectFixture.make(), template: makeReference())
+        let result = try useCase.compute(for: ProjectFixture.make())
 
         XCTAssertEqual(result, fakeLayout)
     }
@@ -73,7 +78,7 @@ final class WAFormUseCaseOrchestrationTests: XCTestCase {
         let exportRepository = InMemoryExportRepository(waFormLayoutError: TestError.boom)
         let useCase = ComputeWAFormLayoutUseCase(exportRepository: exportRepository)
 
-        XCTAssertThrowsError(try useCase.compute(for: ProjectFixture.make(), template: makeReference()))
+        XCTAssertThrowsError(try useCase.compute(for: ProjectFixture.make()))
     }
 
     // MARK: - ExportWAFormUseCase
@@ -103,7 +108,6 @@ final class WAFormUseCaseOrchestrationTests: XCTestCase {
 
         let result = await collectResults(useCase.export(
             projectID: project.id,
-            template: makeReference(),
             to: destination,
             shareValidationStrictness: .warnOnly
         ))
@@ -120,7 +124,6 @@ final class WAFormUseCaseOrchestrationTests: XCTestCase {
 
         let result = await collectResults(useCase.export(
             projectID: missingID,
-            template: makeReference(),
             to: URL(fileURLWithPath: "/tmp/wa-film.pdf"),
             shareValidationStrictness: .warnOnly
         ))
@@ -160,7 +163,6 @@ final class WAFormUseCaseOrchestrationTests: XCTestCase {
 
         let result = await collectResults(useCase.export(
             projectID: project.id,
-            template: makeReference(),
             to: URL(fileURLWithPath: "/tmp/wa-film.pdf"),
             shareValidationStrictness: .blockExport
         ))
@@ -169,7 +171,7 @@ final class WAFormUseCaseOrchestrationTests: XCTestCase {
             XCTFail("Expected .validationIssuesPresent, got \(String(describing: result.error))")
             return
         }
-        XCTAssertEqual(issues, [.cueSheetIssue(.cueHasNoRightHolders(cueID: project.cues[0].id))])
+        XCTAssertEqual(issues, [WAFormValidationIssue.cueSheetIssue(.cueHasNoRightHolders(cueID: project.cues[0].id))])
     }
 
     func test_exportWAFormUseCase_warnOnlyStrictness_withIssues_stillExports() async {
@@ -181,7 +183,6 @@ final class WAFormUseCaseOrchestrationTests: XCTestCase {
 
         let result = await collectResults(useCase.export(
             projectID: project.id,
-            template: makeReference(),
             to: destination,
             shareValidationStrictness: .warnOnly
         ))

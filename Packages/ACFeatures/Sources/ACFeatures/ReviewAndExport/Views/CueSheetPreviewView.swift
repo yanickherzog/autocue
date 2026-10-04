@@ -1,7 +1,6 @@
 import ACCore
 import ACDesignSystem
 import CoreGraphics
-import CoreText
 import SwiftUI
 
 /// Draws the identical, precomputed `[CueSheetPageLayout]`
@@ -25,8 +24,15 @@ import SwiftUI
 /// from `PDFCueSheetRenderer`'s — but it calls the identical Core Text APIs
 /// against a `CGContext`, so the two can't visually diverge regardless of
 /// being two source files, the same guarantee as the font-name mapping this
-/// screen's own `fontName(for:)` duplicates from `ACExport`'s
-/// `PDFFontMapping`.
+/// screen's own drawing duplicates from `ACExport`'s `PDFFontMapping`.
+///
+/// **The actual draw primitives (`drawText`/`drawRule`/`fontName`) moved to
+/// the shared `CanvasElementDrawing` at `ROADMAP.md` D12/T12.4** — the
+/// moment a second `Canvas`-hosted preview (`WAFormPreviewView`) needed the
+/// identical logic, per `CLAUDE.md` rule 7. This View's own behavior is
+/// completely unchanged by that extraction — see `CanvasElementDrawing`'s
+/// own doc comment for why sharing this specific, bug-prone primitive is
+/// worth doing on the first real second-caller, not deferred to a third.
 public struct CueSheetPreviewView: View {
     @Bindable var viewModel: CueSheetPreviewViewModel
 
@@ -82,80 +88,10 @@ public struct CueSheetPreviewView: View {
             // rect/line geometry — unlike `PDFCueSheetRenderer`'s Core
             // Graphics `PDFContext`, no *frame-position* flip is needed
             // here. `CTFrameDraw` itself still needs a local correction
-            // regardless — see `drawText`'s own doc comment.
-            for element in page.elements {
-                let frame = CGRect(
-                    x: element.frame.x,
-                    y: element.frame.y,
-                    width: element.frame.width,
-                    height: element.frame.height
-                )
-                switch element.content {
-                case let .text(string, font):
-                    drawText(string, font: font, in: frame, context: cgContext)
-                case let .rule(spec):
-                    drawRule(spec, in: frame, context: cgContext)
-                }
-            }
-        }
-    }
-
-    /// **Real, confirmed fix (`ROADMAP.md` D11/T11.5 manual verification) —
-    /// not the original assumption.** This screen's own doc comment above
-    /// used to claim `Canvas`'s coordinate space needs "no flip" the way
-    /// `PDFCueSheetRenderer` does — true for plain rects/lines, but wrong for
-    /// `CTFrameDraw` specifically: Core Text always lays out and draws a
-    /// `CTFrame` assuming a bottom-left-origin, y-*up* coordinate system —
-    /// the same one `PDFCueSheetRenderer`'s raw (unflipped) `PDFContext` IS
-    /// natively, which is exactly why that renderer needs no per-text-draw
-    /// correction. `Canvas`'s own raw `CGContext` (via `withCGContext`) is
-    /// the opposite: already flipped to top-left-origin, y-*down*, to match
-    /// SwiftUI's own view-hosted drawing convention. Left uncorrected, every
-    /// glyph draws upside-down — confirmed by a real screenshot of this
-    /// exact screen, composed live for the first time at T11.5 (this View
-    /// existed since T11.2 but was never wired into real navigation until
-    /// now, so this divergence had no way to surface earlier). The fix:
-    /// build the `CTFrame`'s path in *local* frame-relative coordinates,
-    /// then flip only around this one element's own origin before drawing.
-    private func drawText(_ string: String, font: LayoutFontSpec, in frame: CGRect, context: CGContext) {
-        guard !string.isEmpty else { return }
-        let ctFont = CTFontCreateWithName(fontName(for: font.weight) as CFString, font.size, nil)
-        var attributes: [NSAttributedString.Key: Any] = [
-            kCTFontAttributeName as NSAttributedString.Key: ctFont,
-            kCTForegroundColorAttributeName as NSAttributedString.Key: CGColor(gray: 0, alpha: 1),
-        ]
-        if font.tracking != 0 {
-            attributes[kCTKernAttributeName as NSAttributedString.Key] = font.tracking
-        }
-        let attributedString = NSAttributedString(string: string, attributes: attributes)
-        let framesetter = CTFramesetterCreateWithAttributedString(attributedString)
-        let localPath = CGPath(rect: CGRect(origin: .zero, size: frame.size), transform: nil)
-        let ctFrame = CTFramesetterCreateFrame(framesetter, CFRange(location: 0, length: 0), localPath, nil)
-
-        context.saveGState()
-        context.translateBy(x: frame.minX, y: frame.minY + frame.height)
-        context.scaleBy(x: 1, y: -1)
-        CTFrameDraw(ctFrame, context)
-        context.restoreGState()
-    }
-
-    private func drawRule(_ spec: LayoutRuleSpec, in frame: CGRect, context: CGContext) {
-        context.setLineWidth(spec.thickness)
-        context.setStrokeColor(CGColor(gray: 0, alpha: 1))
-        context.move(to: CGPoint(x: frame.minX, y: frame.midY))
-        context.addLine(to: CGPoint(x: frame.maxX, y: frame.midY))
-        context.strokePath()
-    }
-
-    /// Matches `ACExport`'s `PDFFontMapping.fontName(for:)` exactly — see
-    /// `CueSheetLayoutComputer`'s own doc comment for why system Helvetica
-    /// Neue, not this app's Space Grotesk, is this Task's deliberate,
-    /// easily-revisited first-pass choice.
-    private func fontName(for weight: LayoutFontWeight) -> String {
-        switch weight {
-        case .regular: "HelveticaNeue"
-        case .medium: "HelveticaNeue-Medium"
-        case .bold: "HelveticaNeue-Bold"
+            // regardless — see `CanvasElementDrawing.drawText`'s own doc
+            // comment (real, confirmed fix, `ROADMAP.md` D11/T11.5 manual
+            // verification).
+            CanvasElementDrawing.drawElements(page.elements, in: cgContext)
         }
     }
 }

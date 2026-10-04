@@ -1,15 +1,20 @@
 import Foundation
 
 /// Fetches the current `Project` by id and exports the WA Film registration
-/// form via `ExportRepository.exportWAForm(project:template:to:)`
-/// (`ROADMAP.md` D12) — the same fetch-fresh-at-call-time shape
-/// `ExportCueSheetUseCase` already establishes for the cue sheet.
+/// form via `ExportRepository.exportWAForm(project:to:)` (`ROADMAP.md` D12)
+/// — the same fetch-fresh-at-call-time shape `ExportCueSheetUseCase` already
+/// establishes for the cue sheet.
+///
+/// **No `template:` parameter, unlike this method's original D12/T12.3
+/// signature** — there is only ever one app-level template; see
+/// `ExportRepository.computeWAFormLayout(for:)`'s own doc comment for why
+/// (`ROADMAP.md` D12/T12.4, `docs/DECISIONS.md`).
 ///
 /// **`shareValidationStrictness` gating added at T12.3** — closes the gap
 /// this type's own earlier doc comment named explicitly ("gating is added
 /// here once T12.3 resolves what to gate on"). Mirrors
 /// `ExportCueSheetUseCase.export(projectID:format:to:shareValidationStrictness:)`
-/// exactly: `ValidateWAFormUseCase.validate(_:template:)` runs against the
+/// exactly: `ValidateWAFormUseCase.validate(_:)` runs against the
 /// freshly-fetched `Project` before any real render/write happens, and
 /// `ValidateWAFormUseCase.isExportAllowed(issues:strictness:)` decides
 /// whether to proceed — the one rule a ViewModel's preemptive
@@ -33,7 +38,6 @@ public struct ExportWAFormUseCase: Sendable {
 
     public func export(
         projectID: Project.ID,
-        template: WAFormTemplateReference,
         to destination: URL,
         shareValidationStrictness: ShareValidationStrictness
     ) -> AsyncThrowingStream<OperationProgress<URL>, Error> {
@@ -45,17 +49,13 @@ public struct ExportWAFormUseCase: Sendable {
                         return
                     }
                     let validateUseCase = ValidateWAFormUseCase(exportRepository: exportRepository)
-                    let issues = try validateUseCase.validate(project, template: template)
+                    let issues = try validateUseCase.validate(project)
                     guard ValidateWAFormUseCase.isExportAllowed(issues: issues, strictness: shareValidationStrictness)
                     else {
                         continuation.finish(throwing: Failure.validationIssuesPresent(issues))
                         return
                     }
-                    for try await progress in exportRepository.exportWAForm(
-                        project: project,
-                        template: template,
-                        to: destination
-                    ) {
+                    for try await progress in exportRepository.exportWAForm(project: project, to: destination) {
                         continuation.yield(progress)
                     }
                     continuation.finish()

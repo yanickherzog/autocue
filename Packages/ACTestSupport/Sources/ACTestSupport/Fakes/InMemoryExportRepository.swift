@@ -10,7 +10,12 @@ public struct InMemoryExportRepository: ExportRepository, Sendable {
     public let layoutToReturn: [CueSheetPageLayout]
     public let waFormLayoutToReturn: [CueSheetPageLayout]
     public let waFormLayoutError: Error?
-    public let continuationTemplatePageCountToReturn: Int
+    /// `nil` means "no template configured" — the same not-an-error state
+    /// `ExportRepository.continuationTemplatePageCount()` itself documents;
+    /// defaults to `5`, a plausible real continuation page count, so tests
+    /// that don't care about this specifically get a configured-looking
+    /// value without each needing to set it explicitly.
+    public let continuationTemplatePageCountToReturn: Int?
     public let continuationTemplatePageCountError: Error?
 
     public init(
@@ -18,7 +23,7 @@ public struct InMemoryExportRepository: ExportRepository, Sendable {
         layoutToReturn: [CueSheetPageLayout] = [],
         waFormLayoutToReturn: [CueSheetPageLayout] = [],
         waFormLayoutError: Error? = nil,
-        continuationTemplatePageCountToReturn: Int = 5,
+        continuationTemplatePageCountToReturn: Int? = 5,
         continuationTemplatePageCountError: Error? = nil
     ) {
         self.exportedURL = exportedURL
@@ -45,17 +50,14 @@ public struct InMemoryExportRepository: ExportRepository, Sendable {
         layoutToReturn
     }
 
-    public func computeWAFormLayout(
-        for _: Project,
-        template _: WAFormTemplateReference
-    ) throws -> [CueSheetPageLayout] {
+    public func computeWAFormLayout(for _: Project) throws -> [CueSheetPageLayout] {
         if let waFormLayoutError {
             throw waFormLayoutError
         }
         return waFormLayoutToReturn
     }
 
-    public func continuationTemplatePageCount(for _: WAFormTemplateReference) throws -> Int {
+    public func continuationTemplatePageCount() throws -> Int? {
         if let continuationTemplatePageCountError {
             throw continuationTemplatePageCountError
         }
@@ -64,7 +66,6 @@ public struct InMemoryExportRepository: ExportRepository, Sendable {
 
     public func exportWAForm(
         project _: Project,
-        template _: WAFormTemplateReference,
         to destination: URL
     ) -> AsyncThrowingStream<OperationProgress<URL>, Error> {
         AsyncThrowingStream { continuation in

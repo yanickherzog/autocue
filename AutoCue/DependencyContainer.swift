@@ -21,6 +21,7 @@ final class DependencyContainer {
     private let audioAnalysisRepository: AudioAnalysisRepository
     private let exportRepository: ExportRepository
     private let composerProfileRepository: ComposerProfileRepository
+    private let waFormTemplateRepository: WAFormTemplateRepository
 
     init() {
         let modelContainer = Self.makeModelContainer()
@@ -28,6 +29,7 @@ final class DependencyContainer {
         audioAnalysisRepository = AudioAnalysisRepositoryImpl()
         exportRepository = ExportRepositoryImpl()
         composerProfileRepository = ComposerProfileRepositoryImpl()
+        waFormTemplateRepository = WAFormTemplateRepositoryImpl()
     }
 
     func makeProjectLibraryViewModel() -> ProjectLibraryViewModel {
@@ -147,6 +149,28 @@ final class DependencyContainer {
                 ),
                 shareValidationStrictness: shareValidationStrictness
             )
+        )
+    }
+
+    /// The WA Film tab's one ViewModel (`ROADMAP.md` D12/T12.4) — a
+    /// deliberate departure from `makeReviewAndExportViewModel(for:)`'s
+    /// three-composed-ViewModels shape just above; see
+    /// `WAFilmFormViewModel`'s own doc comment for why. Same temporary
+    /// `shareValidationStrictness` interim value as every other export
+    /// screen, pending `ROADMAP.md` D15/T15.1.
+    func makeWAFilmFormViewModel(for projectID: Project.ID) -> WAFilmFormViewModel {
+        let shareValidationStrictness = Settings().shareValidationStrictness
+        return WAFilmFormViewModel(
+            projectID: projectID,
+            observeProjectsUseCase: ObserveProjectsUseCase(projectRepository: projectRepository),
+            waFormTemplateUseCase: WAFormTemplateUseCase(waFormTemplateRepository: waFormTemplateRepository),
+            computeWAFormLayoutUseCase: ComputeWAFormLayoutUseCase(exportRepository: exportRepository),
+            validateWAFormUseCase: ValidateWAFormUseCase(exportRepository: exportRepository),
+            exportWAFormUseCase: ExportWAFormUseCase(
+                projectRepository: projectRepository,
+                exportRepository: exportRepository
+            ),
+            shareValidationStrictness: shareValidationStrictness
         )
     }
 

@@ -14,13 +14,20 @@ public final class AppState {
     public init() {}
 }
 
-/// The three always-accessible section tabs a Project window's
+/// The four always-accessible section tabs a Project window's
 /// `NavigationSplitView` shell shows (`CLAUDE.md`, "Navigation Model") —
 /// small and tightly coupled to `AppState`, so it's co-located here rather
 /// than given its own file, the same convention already used for
 /// `AdditionalWorksDeclaration`/`CueSource`.
+///
+/// **`.waFilmForm` added at `ROADMAP.md` D12/T12.4** — a real change to
+/// `CLAUDE.md`'s Navigation Model (previously "three always-visible tabs"),
+/// not an incidental addition; see that section's own updated text and
+/// `docs/DECISIONS.md` for why this is a fourth co-equal tab rather than a
+/// section nested inside Review & Export.
 public enum ProjectSection: CaseIterable, Equatable {
     case setup
     case cueSheet
     case reviewAndExport
+    case waFilmForm
 }

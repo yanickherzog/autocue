@@ -23,7 +23,7 @@ import Foundation
 /// export needs none of it: the access `.fileExporter`'s Powerbox grant
 /// provides only needs to last for this one write, never persisted or
 /// resolved again later.
-public struct ExportRepositoryImpl: ExportRepository, Sendable {
+public struct ExportRepositoryImpl: ExportRepository, @unchecked Sendable {
     public enum ExportError: Error, Equatable {
         /// `.both` isn't a valid argument to this method — see this type's
         /// own doc comment for why splitting it into two calls is the
@@ -36,107 +36,96 @@ public struct ExportRepositoryImpl: ExportRepository, Sendable {
         case destinationAccessDenied
     }
 
-    public init() {}
+    /// Injectable overrides threaded into every internal
+    /// `WAFormTemplateRepositoryImpl` this type constructs — both default to
+    /// production values (`.standard`, the real Application Support
+    /// directory); real tests pass a dedicated `UserDefaults` suite and a
+    /// fresh temporary directory, mirroring exactly what
+    /// `WAFormTemplateRepositoryImpl`'s own tests already do — this type
+    /// must use the *same* two values a test's own template-import step
+    /// used, or it reads back nothing, a real bug this type's own tests
+    /// caught (`docs/DECISIONS.md`, D12/T12.4). `UserDefaults` itself isn't
+    /// `Sendable` yet (Apple documents it as safe for concurrent access
+    /// regardless) — the one reason this type needs `@unchecked Sendable`
+    /// above, the same precedent `WAFormTemplateRepositoryImpl` already
+    /// establishes for storing this exact type.
+    private let waFormUserDefaults: UserDefaults
+    private let waFormStorageDirectory: URL?
+
+    public init(waFormUserDefaults: UserDefaults = .standard, waFormStorageDirectory: URL? = nil) {
+        self.waFormUserDefaults = waFormUserDefaults
+        self.waFormStorageDirectory = waFormStorageDirectory
+    }
 
     public func computeLayout(for project: Project) -> [CueSheetPageLayout] {
         CueSheetLayoutComputer.computeLayout(for: project)
     }
 
     public enum WAFormError: Error, Equatable {
-        case templateAccessDenied
+        /// No template has been imported yet — `WAFormTemplateUseCase
+        /// .currentTemplate()` returned `nil` at the point this method
+        /// needed real files to read. Callers that already check that
+        /// before calling won't normally hit this.
+        case noTemplateConfigured
         case couldNotOpenTemplate
     }
 
-    public func computeWAFormLayout(
-        for project: Project,
-        template: WAFormTemplateReference
-    ) throws -> [CueSheetPageLayout] {
-        let continuationPageCount = try continuationTemplatePageCount(for: template)
-        return WAFormLayoutComputer.computeLayout(for: project, continuationPagesAvailable: continuationPageCount)
+    private var waFormTemplateRepository: WAFormTemplateRepositoryImpl {
+        WAFormTemplateRepositoryImpl(defaults: waFormUserDefaults, storageDirectory: waFormStorageDirectory)
     }
 
-    public func continuationTemplatePageCount(for template: WAFormTemplateReference) throws -> Int {
-        try Self.withResolvedTemplateDocument(
-            bookmark: template.continuationFormBookmark,
-            mode: template.continuationFormAccessMode
-        ) { $0.numberOfPages }
+    public func computeWAFormLayout(for project: Project) throws -> [CueSheetPageLayout] {
+        let continuationPageCount = try continuationTemplatePageCount()
+        return WAFormLayoutComputer.computeLayout(for: project, continuationPagesAvailable: continuationPageCount ?? 0)
+    }
+
+    public func continuationTemplatePageCount() throws -> Int? {
+        guard let urls = waFormTemplateRepository.templateFileURLs() else { return nil }
+        guard let document = CGPDFDocument(urls.continuationFormURL as CFURL) else {
+            throw WAFormError.couldNotOpenTemplate
+        }
+        return document.numberOfPages
     }
 
     public func exportWAForm(
         project: Project,
-        template: WAFormTemplateReference,
         to destination: URL
     ) -> AsyncThrowingStream<OperationProgress<URL>, Error> {
         AsyncThrowingStream { continuation in
             guard destination.startAccessingSecurityScopedResource() else {
-                continuation.finish(throwing: WAFormError.templateAccessDenied)
+                continuation.finish(throwing: ExportError.destinationAccessDenied)
                 return
             }
             defer { destination.stopAccessingSecurityScopedResource() }
             do {
-                continuation.yield(.progress(ProgressUpdate(fractionCompleted: 0.3, message: "Reading template…")))
-                try Self.withResolvedTemplateDocuments(template: template) { mainDocument, continuationDocument in
-                    continuation.yield(.progress(ProgressUpdate(fractionCompleted: 0.6, message: "Rendering…")))
-                    let pages = WAFormLayoutComputer.computeLayout(
-                        for: project,
-                        continuationPagesAvailable: continuationDocument.numberOfPages
-                    )
-                    try WAFormRenderer.render(
-                        pages,
-                        mainFormDocument: mainDocument,
-                        continuationFormDocument: continuationDocument,
-                        mainPageCount: 2,
-                        to: destination
-                    )
+                guard let urls = waFormTemplateRepository.templateFileURLs() else {
+                    continuation.finish(throwing: WAFormError.noTemplateConfigured)
+                    return
                 }
+                continuation.yield(.progress(ProgressUpdate(fractionCompleted: 0.3, message: "Reading template…")))
+                guard
+                    let mainDocument = CGPDFDocument(urls.mainFormURL as CFURL),
+                    let continuationDocument = CGPDFDocument(urls.continuationFormURL as CFURL)
+                else {
+                    continuation.finish(throwing: WAFormError.couldNotOpenTemplate)
+                    return
+                }
+                continuation.yield(.progress(ProgressUpdate(fractionCompleted: 0.6, message: "Rendering…")))
+                let pages = WAFormLayoutComputer.computeLayout(
+                    for: project,
+                    continuationPagesAvailable: continuationDocument.numberOfPages
+                )
+                try WAFormRenderer.render(
+                    pages,
+                    mainFormDocument: mainDocument,
+                    continuationFormDocument: continuationDocument,
+                    mainPageCount: 2,
+                    to: destination
+                )
                 continuation.yield(.completed(destination))
                 continuation.finish()
             } catch {
                 continuation.finish(throwing: error)
-            }
-        }
-    }
-
-    /// Resolves a single bookmark to a real, security-scope-bracketed
-    /// `CGPDFDocument` for the duration of `body`, then releases access —
-    /// used by `computeWAFormLayout(for:template:)`, which only needs to
-    /// read the continuation file's page count, not render anything.
-    private static func withResolvedTemplateDocument<T>(
-        bookmark: Data,
-        mode: BookmarkAccessMode,
-        _ body: (CGPDFDocument) throws -> T
-    ) throws -> T {
-        let url = try WAFormTemplateRepositoryImpl.resolveURL(bookmark: bookmark, mode: mode)
-        guard url.startAccessingSecurityScopedResource() else {
-            throw WAFormError.templateAccessDenied
-        }
-        defer { url.stopAccessingSecurityScopedResource() }
-        guard let document = CGPDFDocument(url as CFURL) else {
-            throw WAFormError.couldNotOpenTemplate
-        }
-        return try body(document)
-    }
-
-    /// Resolves both of `template`'s bookmarks to real, security-scope-
-    /// bracketed `CGPDFDocument`s for the duration of `body`, then releases
-    /// both — used by `exportWAForm`, which needs both real files open at
-    /// once to render. Extracted from `exportWAForm` itself specifically to
-    /// keep that method's own body under `CONTRIBUTING.md` §8's `SwiftLint`
-    /// length limit, the same reason `CueSheetLayoutComputer` splits across
-    /// several `+`-suffixed files.
-    private static func withResolvedTemplateDocuments<T>(
-        template: WAFormTemplateReference,
-        _ body: (CGPDFDocument, CGPDFDocument) throws -> T
-    ) throws -> T {
-        try withResolvedTemplateDocument(
-            bookmark: template.mainFormBookmark,
-            mode: template.mainFormAccessMode
-        ) { mainDocument in
-            try withResolvedTemplateDocument(
-                bookmark: template.continuationFormBookmark,
-                mode: template.continuationFormAccessMode
-            ) { continuationDocument in
-                try body(mainDocument, continuationDocument)
             }
         }
     }

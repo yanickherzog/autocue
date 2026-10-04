@@ -28,9 +28,9 @@ import Foundation
 /// assumed." Per an explicit project-owner decision: in that state, the
 /// capacity check still runs, scoped to what the main form alone holds (5
 /// works) — never silently skipped and never assumed-zero without being
-/// stated as its own case. `instance.validate(_:template:)`, below, resolves
-/// this live value for a real, already-imported template via
-/// `ExportRepository.continuationTemplatePageCount(for:)`; the pure static
+/// stated as its own case. `instance.validate(_:)`, below, resolves this
+/// live value for whichever template is currently imported (if any) via
+/// `ExportRepository.continuationTemplatePageCount()`; the pure static
 /// `validate(_:continuationPagesAvailable:)` is what's actually
 /// directly unit-tested, the same "pure half tested directly, I/O half
 /// tested via orchestration" split `ExportCueSheetUseCase.isExportAllowed`
@@ -44,9 +44,14 @@ public struct ValidateWAFormUseCase: Sendable {
     /// (`ACAudioKit`/`ACExport`) and `CueSheetLayoutComputer+Formatting`'s
     /// font-name mapping (`ACExport`/`ACFeatures`) — keep these three values
     /// in sync with `WAFormLayoutComputer`'s own if either ever changes.
-    static let rightHolderCapacityPerWork = 3
-    static let worksOnMainForm = 5
-    static let worksPerContinuationPage = 4
+    ///
+    /// **`public`, not `internal`** — `WAFormValidationMessageFormatter`
+    /// (`ACFeatures`, D12/T12.4) quotes `rightHolderCapacityPerWork` directly
+    /// in its own message text rather than hardcoding the number `3` a
+    /// second time.
+    public static let rightHolderCapacityPerWork = 3
+    public static let worksOnMainForm = 5
+    public static let worksPerContinuationPage = 4
 
     private let exportRepository: ExportRepository
 
@@ -54,13 +59,14 @@ public struct ValidateWAFormUseCase: Sendable {
         self.exportRepository = exportRepository
     }
 
-    /// Resolves `template`'s real, live continuation-page count via
-    /// `ExportRepository` before running the pure check below — the one
-    /// place in this type that can throw, for the same real file-I/O reasons
-    /// `ExportRepository.continuationTemplatePageCount(for:)` already
-    /// documents.
-    public func validate(_ project: Project, template: WAFormTemplateReference) throws -> [WAFormValidationIssue] {
-        let continuationPagesAvailable = try exportRepository.continuationTemplatePageCount(for: template)
+    /// Resolves whichever template is currently imported's real, live
+    /// continuation-page count via `ExportRepository` before running the
+    /// pure check below (`nil` if none is imported at all — not an error) —
+    /// the one place in this type that can throw, for the same real
+    /// file-I/O reasons `ExportRepository.continuationTemplatePageCount()`
+    /// already documents.
+    public func validate(_ project: Project) throws -> [WAFormValidationIssue] {
+        let continuationPagesAvailable = try exportRepository.continuationTemplatePageCount()
         return Self.validate(project, continuationPagesAvailable: continuationPagesAvailable)
     }
 
