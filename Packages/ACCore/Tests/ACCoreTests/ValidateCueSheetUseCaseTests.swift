@@ -227,4 +227,36 @@ final class ValidateCueSheetUseCaseTests: XCTestCase {
 
         XCTAssertEqual(issues, [.missingSetupField(.declarant), .cueHasNoRightHolders(cueID: cueID)])
     }
+
+    /// **Regression test for `ROADMAP.md` D12/T12.3's own architectural
+    /// requirement** (`docs/DECISIONS.md`): the producer-facing cue sheet's
+    /// Review path (this Use Case, consumed directly by `ReviewViewModel`)
+    /// must never surface a WA-form-specific capacity warning — that
+    /// document has no such limit. A `Cue` with 4 non-`.performer`
+    /// right-holders (one more than the WA Film form's real 3-row ceiling,
+    /// `ValidateWAFormUseCase.rightHolderCapacityPerWork`) is otherwise
+    /// completely valid for the cue sheet (shares sum to 100% for both pools,
+    /// at least one right-holder present) — this proves that case reports
+    /// zero issues here, not merely that `CueSheetValidationIssue` has no
+    /// case to express one (which the type system already guarantees; this
+    /// confirms the actual runtime behavior matches).
+    func test_cueWithFourRightHolders_exceedingWAFormCapacity_reportsNoIssueOnTheCueSheetPath() {
+        let fourRightHolders = (0 ..< 4).map { _ in
+            CueRightHolder(
+                party: .person(UUID()),
+                role: .composer,
+                performanceBroadcastShare: 25,
+                mechanicalRightsShare: 25
+            )
+        }
+        let cue = Cue(
+            title: "Four-Composer Theme",
+            duration: MediaDuration(seconds: 60),
+            rightHolders: fourRightHolders,
+            source: .manual
+        )
+        let project = Self.makeProject(setup: Self.makeValidSetup(), cues: [cue])
+
+        XCTAssertEqual(ValidateCueSheetUseCase.validate(project), [])
+    }
 }

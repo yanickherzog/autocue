@@ -104,7 +104,8 @@ final class WAFormUseCaseOrchestrationTests: XCTestCase {
         let result = await collectResults(useCase.export(
             projectID: project.id,
             template: makeReference(),
-            to: destination
+            to: destination,
+            shareValidationStrictness: .warnOnly
         ))
 
         XCTAssertEqual(result.completed, destination)
@@ -120,9 +121,72 @@ final class WAFormUseCaseOrchestrationTests: XCTestCase {
         let result = await collectResults(useCase.export(
             projectID: missingID,
             template: makeReference(),
-            to: URL(fileURLWithPath: "/tmp/wa-film.pdf")
+            to: URL(fileURLWithPath: "/tmp/wa-film.pdf"),
+            shareValidationStrictness: .warnOnly
         ))
 
         XCTAssertEqual(result.error as? ProjectNotFoundError, ProjectNotFoundError(projectID: missingID))
+    }
+
+    /// A minimal fixture with one deliberate, real issue (a `Cue` with no
+    /// right-holders — `CueSheetValidationIssue.cueHasNoRightHolders`,
+    /// surfaced here via `WAFormValidationIssue.cueSheetIssue(_:)`) rather
+    /// than `ProjectFixture.makeMinimal()`, which is deliberately
+    /// fully-valid per its own doc comment and so can't exercise the
+    /// blocking path at all.
+    private func makeProjectWithOneIssue() -> Project {
+        let base = ProjectFixture.makeMinimal()
+        let cueWithNoRightHolders = Cue(
+            title: "Untitled Cue",
+            duration: MediaDuration(seconds: 30),
+            rightHolders: [],
+            source: .manual
+        )
+        return Project(
+            id: base.id,
+            name: base.name,
+            createdAt: base.createdAt,
+            updatedAt: base.updatedAt,
+            setup: base.setup,
+            cues: [cueWithNoRightHolders]
+        )
+    }
+
+    func test_exportWAFormUseCase_blockExportStrictness_withIssues_throwsValidationIssuesPresent() async {
+        let project = makeProjectWithOneIssue()
+        let projectRepository = InMemoryProjectRepository(projects: [project])
+        let exportRepository = InMemoryExportRepository()
+        let useCase = ExportWAFormUseCase(projectRepository: projectRepository, exportRepository: exportRepository)
+
+        let result = await collectResults(useCase.export(
+            projectID: project.id,
+            template: makeReference(),
+            to: URL(fileURLWithPath: "/tmp/wa-film.pdf"),
+            shareValidationStrictness: .blockExport
+        ))
+
+        guard case let .validationIssuesPresent(issues)? = result.error as? ExportWAFormUseCase.Failure else {
+            XCTFail("Expected .validationIssuesPresent, got \(String(describing: result.error))")
+            return
+        }
+        XCTAssertEqual(issues, [.cueSheetIssue(.cueHasNoRightHolders(cueID: project.cues[0].id))])
+    }
+
+    func test_exportWAFormUseCase_warnOnlyStrictness_withIssues_stillExports() async {
+        let project = makeProjectWithOneIssue()
+        let projectRepository = InMemoryProjectRepository(projects: [project])
+        let destination = URL(fileURLWithPath: "/tmp/wa-film.pdf")
+        let exportRepository = InMemoryExportRepository(exportedURL: destination)
+        let useCase = ExportWAFormUseCase(projectRepository: projectRepository, exportRepository: exportRepository)
+
+        let result = await collectResults(useCase.export(
+            projectID: project.id,
+            template: makeReference(),
+            to: destination,
+            shareValidationStrictness: .warnOnly
+        ))
+
+        XCTAssertEqual(result.completed, destination)
+        XCTAssertNil(result.error)
     }
 }

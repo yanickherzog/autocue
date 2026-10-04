@@ -46,6 +46,17 @@ public protocol ExportRepository: Sendable {
     /// cue sheet's pure in-memory layout math never can.
     func computeWAFormLayout(for project: Project, template: WAFormTemplateReference) throws -> [CueSheetPageLayout]
 
+    /// The real, live page count of `template`'s imported continuation-form
+    /// file (`ROADMAP.md` D12/T12.3) — the same value
+    /// `computeWAFormLayout(for:template:)` already resolves internally to
+    /// pass as `WAFormLayoutComputer.computeLayout`'s
+    /// `continuationPagesAvailable`, exposed as its own method so
+    /// `ValidateWAFormUseCase` can determine real export-capacity (SPEC.md
+    /// §2.1's 5-main-form/4-per-continuation-page rule) without computing a
+    /// full layout just to read this one number. Throws under the same real
+    /// file-I/O conditions `computeWAFormLayout` already documents.
+    func continuationTemplatePageCount(for template: WAFormTemplateReference) throws -> Int
+
     /// Renders the WA Film registration form (`ROADMAP.md` D12) by drawing
     /// `computeWAFormLayout(for:template:)`'s overlay elements on top of
     /// `template`'s own real pages (`CGPDFDocument`/`drawPDFPage`, plain

@@ -10,17 +10,23 @@ public struct InMemoryExportRepository: ExportRepository, Sendable {
     public let layoutToReturn: [CueSheetPageLayout]
     public let waFormLayoutToReturn: [CueSheetPageLayout]
     public let waFormLayoutError: Error?
+    public let continuationTemplatePageCountToReturn: Int
+    public let continuationTemplatePageCountError: Error?
 
     public init(
         exportedURL: URL = URL(fileURLWithPath: "/tmp/fixture-export"),
         layoutToReturn: [CueSheetPageLayout] = [],
         waFormLayoutToReturn: [CueSheetPageLayout] = [],
-        waFormLayoutError: Error? = nil
+        waFormLayoutError: Error? = nil,
+        continuationTemplatePageCountToReturn: Int = 5,
+        continuationTemplatePageCountError: Error? = nil
     ) {
         self.exportedURL = exportedURL
         self.layoutToReturn = layoutToReturn
         self.waFormLayoutToReturn = waFormLayoutToReturn
         self.waFormLayoutError = waFormLayoutError
+        self.continuationTemplatePageCountToReturn = continuationTemplatePageCountToReturn
+        self.continuationTemplatePageCountError = continuationTemplatePageCountError
     }
 
     public func export(
@@ -47,6 +53,13 @@ public struct InMemoryExportRepository: ExportRepository, Sendable {
             throw waFormLayoutError
         }
         return waFormLayoutToReturn
+    }
+
+    public func continuationTemplatePageCount(for _: WAFormTemplateReference) throws -> Int {
+        if let continuationTemplatePageCountError {
+            throw continuationTemplatePageCountError
+        }
+        return continuationTemplatePageCountToReturn
     }
 
     public func exportWAForm(

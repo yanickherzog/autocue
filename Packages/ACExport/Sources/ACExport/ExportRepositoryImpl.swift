@@ -51,11 +51,15 @@ public struct ExportRepositoryImpl: ExportRepository, Sendable {
         for project: Project,
         template: WAFormTemplateReference
     ) throws -> [CueSheetPageLayout] {
-        let continuationPageCount = try Self.withResolvedTemplateDocument(
+        let continuationPageCount = try continuationTemplatePageCount(for: template)
+        return WAFormLayoutComputer.computeLayout(for: project, continuationPagesAvailable: continuationPageCount)
+    }
+
+    public func continuationTemplatePageCount(for template: WAFormTemplateReference) throws -> Int {
+        try Self.withResolvedTemplateDocument(
             bookmark: template.continuationFormBookmark,
             mode: template.continuationFormAccessMode
         ) { $0.numberOfPages }
-        return WAFormLayoutComputer.computeLayout(for: project, continuationPagesAvailable: continuationPageCount)
     }
 
     public func exportWAForm(
