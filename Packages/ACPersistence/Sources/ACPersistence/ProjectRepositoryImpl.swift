@@ -177,8 +177,20 @@ public actor ProjectRepositoryImpl: ProjectRepository {
         return try Self.fetchAllProjects(in: modelContainer)
     }
 
+    /// Was unguarded by the reader/writer barrier until this fix: a direct
+    /// `Self.fetchProject` call, materializing a full entity graph with no
+    /// slot protection at all, even though every other full-graph
+    /// materialization in this type (`fetchAll()`, `register`'s initial
+    /// snapshot, a writer's own post-write snapshot) goes through the
+    /// reader slot. Not implicated in the crash `docs/DECISIONS.md` traces
+    /// through the writer-vs-writer `save()` race (this bypass was never on
+    /// the crashing stack), but a real, separate exposure closed regardless
+    /// — see `docs/DECISIONS.md`.
     public func fetch(id: Project.ID) async throws -> Project? {
-        try Self.fetchProject(id: id, in: modelContainer)
+        try await acquireReaderSlot()
+        defer { releaseReaderSlot() }
+        try await postAcquireReaderSlotHook?()
+        return try Self.fetchProject(id: id, in: modelContainer)
     }
 
     public func create(_ project: Project) async throws {
@@ -196,6 +208,19 @@ public actor ProjectRepositoryImpl: ProjectRepository {
     /// every other write for `id` — closing the fetch-then-write race a
     /// caller-side "fetch, build a modified copy, call `update(_:)`" pattern
     /// is exposed to.
+    ///
+    /// **The initial fetch below takes a reader slot, released before
+    /// `transform`/`upsertProjectAndFetchSnapshot` ever requests a writer
+    /// slot — never both at once.** Was unguarded until this fix (see
+    /// `fetch(id:)`'s doc comment, same underlying exposure); fixed the same
+    /// way, same reasoning. The release-before-acquire ordering here is the
+    /// mirror image of `upsertProjectAndFetchSnapshot`'s own
+    /// writer-released-before-reader-acquired rule (see that method's doc
+    /// comment in `+ReaderWriterBarrier.swift`) — for the identical reason:
+    /// a single logical operation holding a reader slot while also awaiting
+    /// a writer slot for itself would self-deadlock, since
+    /// `acquireWriterSlot`'s `activeReaderCount == 0` condition could never
+    /// be satisfied by a count that includes its own caller.
     @discardableResult
     public func update(
         id: Project.ID,
@@ -204,9 +229,17 @@ public actor ProjectRepositoryImpl: ProjectRepository {
         let result: UpdateResult? =
             try await enqueueWrite(for: id) { [self, writeHook] () async throws -> UpdateResult? in
                 await writeHook?(id)
-                guard let current = try Self.fetchProject(id: id, in: self.modelContainer) else {
-                    return nil
+                try await self.acquireReaderSlot()
+                let current: Project?
+                do {
+                    try await self.firePostAcquireReaderSlotHook()
+                    current = try Self.fetchProject(id: id, in: self.modelContainer)
+                } catch {
+                    await self.releaseReaderSlot()
+                    throw error
                 }
+                await self.releaseReaderSlot()
+                guard let current else { return nil }
                 let updated = try transform(current)
                 let snapshot = try await self.upsertProjectAndFetchSnapshot(updated)
                 return UpdateResult(updated: updated, snapshot: snapshot)
