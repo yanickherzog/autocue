@@ -1,0 +1,109 @@
+name: Repro — SecondImportCrashReproTests (manual only)
+
+# Manual-only reproduction harness for a real, as-yet-unexplained SwiftData
+# crash observed exactly once in CI (`test-packages` / ACPersistence,
+# 2026-10-05, run 37285931310): "This model instance was invalidated
+# because its backing data could no longer be found in the store," inside
+# SecondImportCrashReproTests.test_manyProjectsImportedConcurrently_assetAndPeaksWritesNeverRace.
+# 400 local reproduction attempts (200 baseline, 200 under deliberate heavy
+# CPU contention) never reproduced it — see docs/DECISIONS.md for the full
+# investigation. The one thing local runs structurally can't replicate is
+# GitHub's actual virtualized runner image/disk characteristics, so this
+# workflow runs the identical test on the identical runner image/Xcode
+# version as the normal `test-packages` ACPersistence job, 200 times in one
+# job: a clean 200/200 here is real evidence for "runner anomaly, not a
+# reproducible defect"; even one failure in 200 is a real reproduction, not
+# a flake, and gives a shot at a symbolicated crash report via the same
+# diagnostic-collection mechanism `ci.yml` itself now also carries.
+#
+# Deliberately `workflow_dispatch` only — never `push`/`pull_request`. This
+# is a diagnostic tool, not a merge gate: 200 iterations is far too slow and
+# far too narrowly scoped to run on every push, and this one deliberately
+# adversarial stress test failing here must never block a real PR — that
+# gate is still `test-packages`'s own single-iteration run in `ci.yml`,
+# unchanged by this file.
+
+on:
+  workflow_dispatch:
+
+jobs:
+  repro:
+    name: SecondImportCrashReproTests — 200 iterations
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      # Deliberately identical to `ci.yml`'s `test-packages` job — the whole
+      # point of this workflow is testing whether *this* environment
+      # reproduces the crash, not a different one.
+      - name: Select Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: "26.3"
+
+      - name: Build ACPersistence tests once
+        working-directory: Packages/ACPersistence
+        run: swift build --build-tests
+
+      - name: Record job start time (for crash-log filtering)
+        run: touch /tmp/job-start-marker
+
+      - name: Run SecondImportCrashReproTests 200 times
+        working-directory: Packages/ACPersistence
+        run: |
+          set +e
+          PASS=0
+          FAIL=0
+          FIRST_FAILURE_LOG=""
+          N=200
+          TEST_ID="SecondImportCrashReproTests/test_manyProjectsImportedConcurrently_assetAndPeaksWritesNeverRace"
+          for i in $(seq 1 "$N"); do
+            OUT=$(swift test --filter "$TEST_ID" 2>&1)
+            if echo "$OUT" | grep -q "Executed 1 test, with 0 failures"; then
+              PASS=$((PASS + 1))
+            else
+              FAIL=$((FAIL + 1))
+              echo "$OUT" > "/tmp/repro-fail-$i.log"
+              if [ -z "$FIRST_FAILURE_LOG" ]; then
+                FIRST_FAILURE_LOG="/tmp/repro-fail-$i.log"
+              fi
+              echo "::warning::Iteration $i FAILED (see uploaded artifact for the full log)"
+            fi
+          done
+          echo "=================================================="
+          echo "RESULT: $PASS passed, $FAIL failed, out of $N"
+          echo "=================================================="
+          if [ -n "$FIRST_FAILURE_LOG" ]; then
+            echo "--- First failure's output ($FIRST_FAILURE_LOG) ---"
+            cat "$FIRST_FAILURE_LOG"
+          fi
+          {
+            echo "## SecondImportCrashReproTests — 200-iteration reproduction result"
+            echo ""
+            echo "- Passed: $PASS"
+            echo "- Failed: $FAIL"
+            echo "- Out of: $N"
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$FAIL" -gt 0 ]; then
+            exit 1
+          fi
+
+      # Same mechanism as `ci.yml`'s own on-failure step, reused here so a
+      # reproduction also comes with a symbolicated stack, not just the
+      # fatalError message line the original 2026-10-05 failure's log had.
+      - name: Collect crash diagnostics on failure
+        if: failure()
+        run: |
+          mkdir -p /tmp/crash-logs
+          find ~/Library/Logs/DiagnosticReports -type f -newer /tmp/job-start-marker -exec cp {} /tmp/crash-logs/ \; 2>/dev/null || true
+          echo "Collected $(find /tmp/crash-logs -type f 2>/dev/null | wc -l | tr -d ' ') diagnostic report(s)"
+
+      - name: Upload failure logs and crash diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: second-import-crash-repro-failures
+          path: |
+            /tmp/repro-fail-*.log
+            /tmp/crash-logs
+          if-no-files-found: ignore

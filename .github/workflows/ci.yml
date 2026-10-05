@@ -79,9 +79,40 @@ jobs:
         with:
           xcode-version: "26.3"
 
+      # Baseline for "Collect crash diagnostics on failure," below — macOS's
+      # crash reporter (ReportCrash) writes a `.ips` report to this directory
+      # for any unhandled trap/signal, including a Swift `fatalError`'s
+      # SIGTRAP (confirmed: that's exactly what crashed `ACPersistence`'s
+      # `SecondImportCrashReproTests` once, 2026-10-05 — see
+      # docs/DECISIONS.md). The CI log only ever showed that crash's single
+      # `fatalError` message line, with no stack — this marker lets the
+      # on-failure step find only reports written *during this job*, not
+      # stale ones from a previous job sharing the same runner image.
+      - name: Record job start time (for crash-log filtering)
+        run: touch /tmp/job-start-marker
+
       - name: swift test
         working-directory: Packages/${{ matrix.package }}
         run: swift test
+
+      # Best-effort: a crash here means `swift test` already failed the job
+      # regardless of whether a report exists, so failures in this step
+      # itself are swallowed (`|| true`) rather than compounding the
+      # original failure with a second, misleading one.
+      - name: Collect crash diagnostics on failure
+        if: failure()
+        run: |
+          mkdir -p /tmp/crash-logs
+          find ~/Library/Logs/DiagnosticReports -type f -newer /tmp/job-start-marker -exec cp {} /tmp/crash-logs/ \; 2>/dev/null || true
+          echo "Collected $(find /tmp/crash-logs -type f 2>/dev/null | wc -l | tr -d ' ') diagnostic report(s)"
+
+      - name: Upload crash diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: crash-logs-${{ matrix.package }}
+          path: /tmp/crash-logs
+          if-no-files-found: ignore
 
   xcodebuild-app:
     name: xcodebuild build/test — AutoCue
