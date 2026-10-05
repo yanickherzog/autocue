@@ -125,6 +125,31 @@ extension ProjectRepositoryImpl {
     func cancelReaderWait(_ waiterID: UUID) {
         readerWaiters.removeValue(forKey: waiterID)?.resume(throwing: CancellationError())
     }
+
+    /// See `isSavingGlobally`'s comment in `ProjectRepositoryImpl.swift`.
+    /// Not cancellable, unlike the reader/writer slots above: a `save()`
+    /// already in flight for this call is always brief (one project's
+    /// entity graph), and there is no caller-facing operation to cancel
+    /// *out of* mid-save the way there is for a user dismissing an
+    /// in-progress import — a simpler non-cancellable lock is the right
+    /// amount of mechanism here, not a gap.
+    func acquireGlobalSaveLock() async {
+        if !isSavingGlobally {
+            isSavingGlobally = true
+            return
+        }
+        let waiterID = UUID()
+        await withCheckedContinuation { globalSaveWaiters[waiterID] = $0 }
+    }
+
+    func releaseGlobalSaveLock() {
+        if let next = globalSaveWaiters.first {
+            globalSaveWaiters.removeValue(forKey: next.key)
+            next.value.resume()
+        } else {
+            isSavingGlobally = false
+        }
+    }
 }
 
 // MARK: - SwiftData work (nonisolated: safe to run inside a dispatched `Task`, off the actor)
@@ -180,7 +205,17 @@ extension ProjectRepositoryImpl {
                 context.delete(existing)
             }
             context.insert(ProjectMapper.toEntity(project))
-            try context.save()
+            // Serialize only this atomic moment against every other
+            // concurrent `save()`, for any `Project.ID` — see
+            // `isSavingGlobally`'s comment in `ProjectRepositoryImpl.swift`.
+            await acquireGlobalSaveLock()
+            do {
+                try context.save()
+            } catch {
+                await releaseGlobalSaveLock()
+                throw error
+            }
+            await releaseGlobalSaveLock()
         } catch {
             await releaseWriterSlot()
             throw error
@@ -210,7 +245,15 @@ extension ProjectRepositoryImpl {
             try await firePostAcquireWriterSlotHook()
             if let existing = try Self.fetchEntity(id: id, in: context) {
                 context.delete(existing)
-                try context.save()
+                // See the matching comment in `upsertProjectAndFetchSnapshot`, above.
+                await acquireGlobalSaveLock()
+                do {
+                    try context.save()
+                } catch {
+                    await releaseGlobalSaveLock()
+                    throw error
+                }
+                await releaseGlobalSaveLock()
             }
         } catch {
             await releaseWriterSlot()

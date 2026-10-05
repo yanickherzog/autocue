@@ -136,6 +136,28 @@ public actor ProjectRepositoryImpl: ProjectRepository {
     var activeReaderCount = 0
     var readerWaiters: [UUID: CheckedContinuation<Void, Error>] = [:]
 
+    /// A global lock serializing every `ModelContext.save()` call across
+    /// *all* `Project.ID`s — on top of, not instead of, the reader/writer
+    /// barrier above. A real crash was reproduced in CI (2026-10-05, 5/200
+    /// then 7/200 iterations — see `docs/DECISIONS.md`) inside
+    /// `upsertProjectAndFetchSnapshot`/`deleteProjectAndFetchSnapshot`,
+    /// isolated via four confirming experiments to a race the barrier was
+    /// never designed to cover: it brackets writer-vs-*reader*, but
+    /// different `Project.ID` writers' own `save()` calls were always left
+    /// free to run fully concurrently with each other (deliberately, per
+    /// `CLAUDE.md`'s "Document & Window Model"). Two concurrent `save()`
+    /// calls against the same shared `ModelContainer`, for entirely
+    /// unrelated `Project.ID`s, can invalidate a sibling context's
+    /// in-flight fetch. Serializing only the atomic `save()` moment (never
+    /// the surrounding fetch/delete/insert mutation-building, which still
+    /// runs fully concurrently per `Project.ID` exactly as before) closes
+    /// this without reintroducing the global write-serialization
+    /// `CLAUDE.md` already rejected once. See `docs/DECISIONS.md` for the
+    /// full experiment evidence and why this was chosen over a larger
+    /// thread-confinement rewrite.
+    var isSavingGlobally = false
+    var globalSaveWaiters: [UUID: CheckedContinuation<Void, Never>] = [:]
+
     public init(modelContainer: ModelContainer) {
         self.modelContainer = modelContainer
     }
