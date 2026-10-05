@@ -181,6 +181,13 @@ extension ProjectRepositoryImpl {
             }
             context.insert(ProjectMapper.toEntity(project))
             try context.save()
+            // EXPERIMENT 1 (temporary, CI-only — not for `main`): a short,
+            // explicit settle delay between a committed save and releasing
+            // the writer slot, testing the hypothesis that `save()`
+            // returning does not itself guarantee the store coordinator's
+            // shared row cache has finished propagating to sibling
+            // contexts. See docs/DECISIONS.md.
+            try? await Task.sleep(nanoseconds: 3_000_000)
         } catch {
             await releaseWriterSlot()
             throw error
@@ -211,6 +218,8 @@ extension ProjectRepositoryImpl {
             if let existing = try Self.fetchEntity(id: id, in: context) {
                 context.delete(existing)
                 try context.save()
+                // EXPERIMENT 1, same reasoning as above.
+                try? await Task.sleep(nanoseconds: 3_000_000)
             }
         } catch {
             await releaseWriterSlot()
