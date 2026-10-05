@@ -172,15 +172,17 @@ extension ProjectRepositoryImpl {
     /// synchronously at this function's exit. Every exit path (success and
     /// thrown error) releases explicitly instead.
     nonisolated func upsertProjectAndFetchSnapshot(_ project: Project) async throws -> [Project] {
+        // EXPERIMENT 4 (temporary, CI-only — not for `main`): the
+        // `ModelContext` now lives inside a `@ModelActor`-isolated
+        // executor, constructed once and used for both phases below,
+        // instead of a raw `nonisolated`-code-held local variable. Barrier
+        // slot structure/timing is otherwise byte-for-byte identical to
+        // baseline — see `ExperimentUpsertExecutor.swift`'s doc comment.
         try await acquireWriterSlot()
-        let context = ModelContext(modelContainer)
+        let executor = ExperimentUpsertExecutor(modelContainer: modelContainer)
         do {
             try await firePostAcquireWriterSlotHook()
-            if let existing = try Self.fetchEntity(id: project.id, in: context) {
-                context.delete(existing)
-            }
-            context.insert(ProjectMapper.toEntity(project))
-            try context.save()
+            try await executor.mutateAndSave(project)
         } catch {
             await releaseWriterSlot()
             throw error
@@ -190,8 +192,7 @@ extension ProjectRepositoryImpl {
         try await acquireReaderSlot()
         do {
             try await firePostAcquireReaderSlotHook()
-            let entities = try context.fetch(FetchDescriptor<ProjectEntity>())
-            let snapshot = try entities.map(ProjectMapper.toDomain)
+            let snapshot = try await executor.fetchSnapshot()
             await releaseReaderSlot()
             return snapshot
         } catch {
@@ -200,18 +201,14 @@ extension ProjectRepositoryImpl {
         }
     }
 
-    /// See `upsertProjectAndFetchSnapshot`'s doc comment — same-context
-    /// read-after-write behind the reader/writer barrier, for the same
-    /// reason.
+    /// See `upsertProjectAndFetchSnapshot`'s doc comment — same reasoning,
+    /// same experiment, delete side.
     nonisolated func deleteProjectAndFetchSnapshot(id: Project.ID) async throws -> [Project] {
         try await acquireWriterSlot()
-        let context = ModelContext(modelContainer)
+        let executor = ExperimentUpsertExecutor(modelContainer: modelContainer)
         do {
             try await firePostAcquireWriterSlotHook()
-            if let existing = try Self.fetchEntity(id: id, in: context) {
-                context.delete(existing)
-                try context.save()
-            }
+            try await executor.deleteAndSave(id: id)
         } catch {
             await releaseWriterSlot()
             throw error
@@ -221,8 +218,7 @@ extension ProjectRepositoryImpl {
         try await acquireReaderSlot()
         do {
             try await firePostAcquireReaderSlotHook()
-            let entities = try context.fetch(FetchDescriptor<ProjectEntity>())
-            let snapshot = try entities.map(ProjectMapper.toDomain)
+            let snapshot = try await executor.fetchSnapshot()
             await releaseReaderSlot()
             return snapshot
         } catch {
