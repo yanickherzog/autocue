@@ -187,10 +187,16 @@ extension ProjectRepositoryImpl {
         }
         await releaseWriterSlot()
 
+        // EXPERIMENT 2 (temporary, CI-only — not for `main`): a *fresh*
+        // `ModelContext` for the reader phase, instead of reusing the
+        // writer's own `context` — testing whether reusing a context that
+        // also just wrote is itself a contributing factor, independent of
+        // timing. See docs/DECISIONS.md.
         try await acquireReaderSlot()
         do {
             try await firePostAcquireReaderSlotHook()
-            let entities = try context.fetch(FetchDescriptor<ProjectEntity>())
+            let readContext = ModelContext(modelContainer)
+            let entities = try readContext.fetch(FetchDescriptor<ProjectEntity>())
             let snapshot = try entities.map(ProjectMapper.toDomain)
             await releaseReaderSlot()
             return snapshot
@@ -218,10 +224,12 @@ extension ProjectRepositoryImpl {
         }
         await releaseWriterSlot()
 
+        // EXPERIMENT 2, same reasoning as above.
         try await acquireReaderSlot()
         do {
             try await firePostAcquireReaderSlotHook()
-            let entities = try context.fetch(FetchDescriptor<ProjectEntity>())
+            let readContext = ModelContext(modelContainer)
+            let entities = try readContext.fetch(FetchDescriptor<ProjectEntity>())
             let snapshot = try entities.map(ProjectMapper.toDomain)
             await releaseReaderSlot()
             return snapshot
