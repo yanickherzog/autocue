@@ -36,7 +36,8 @@ final class UpdateCueUseCaseTests: XCTestCase {
         rightHolders: [CueRightHolder] = [],
         workNumber: String? = nil,
         notes: String? = nil,
-        isArrangementOfProtectedOriginal: Bool = false
+        isArrangementOfProtectedOriginal: Bool = false,
+        recordingLabel: Party? = nil
     ) -> Cue {
         Cue(
             title: title,
@@ -46,7 +47,8 @@ final class UpdateCueUseCaseTests: XCTestCase {
             isArrangementOfProtectedOriginal: isArrangementOfProtectedOriginal,
             source: source,
             startTimecode: startSeconds.map { Timecode(offsetSeconds: $0) },
-            notes: notes
+            notes: notes,
+            recordingLabel: recordingLabel
         )
     }
 
@@ -100,6 +102,45 @@ final class UpdateCueUseCaseTests: XCTestCase {
         XCTAssertEqual(updated?.setup.totalMusicRuntime, MediaDuration(seconds: 45))
     }
 
+    /// **Regression test for a real bug found while building the Cues tab's
+    /// Recording Info UI (SPEC.md §4.26, `docs/DECISIONS.md`):**
+    /// `reclassifiedAsManual()` — called by every `edit()` write, on
+    /// whatever `Cue` `transform` returns — reconstructed that `Cue` without
+    /// carrying `recordingLabel`/`.recordingLabelNumber`/`.recordingISRC`
+    /// forward, silently wiping all three on every single `edit()` call
+    /// regardless of what the transform itself did or didn't touch. Proven
+    /// here with an identity transform (`{ $0 }`) specifically, so this
+    /// exercises `reclassifiedAsManual()` in isolation — every real
+    /// production transform closure (`saveTitle`, `saveStartTimecode`,
+    /// `commitRightHolderEdits`, the new `+RecordingInfo.swift` methods) was
+    /// separately audited and fixed to forward these three fields from its
+    /// own `existing`/`cue` parameter too, since `reclassifiedAsManual()`
+    /// can only preserve what `transform` actually returned to it.
+    func test_edit_identityTransform_stillPreservesRecordingInfoFields() async throws {
+        let labelID = UUID()
+        var cue = Self.makeCue()
+        cue = Cue(
+            id: cue.id,
+            title: cue.title,
+            duration: cue.duration,
+            rightHolders: cue.rightHolders,
+            source: cue.source,
+            startTimecode: cue.startTimecode,
+            recordingLabel: .label(labelID),
+            recordingLabelNumber: "NDR-4471",
+            recordingISRC: "CH-A12-26-00001"
+        )
+        let project = Self.makeProject(cues: [cue])
+        let repository = InMemoryProjectRepository(projects: [project])
+        let useCase = UpdateCueUseCase(projectRepository: repository)
+
+        let edited = try await useCase.edit(projectID: project.id, cueID: cue.id) { $0 }
+
+        XCTAssertEqual(edited.recordingLabel, .label(labelID))
+        XCTAssertEqual(edited.recordingLabelNumber, "NDR-4471")
+        XCTAssertEqual(edited.recordingISRC, "CH-A12-26-00001")
+    }
+
     func test_edit_unknownCueID_throwsCueNotFound() async throws {
         let project = Self.makeProject(cues: [])
         let repository = InMemoryProjectRepository(projects: [project])
@@ -121,6 +162,7 @@ final class UpdateCueUseCaseTests: XCTestCase {
             performanceBroadcastShare: 100,
             mechanicalRightsShare: 100
         )
+        let recordingLabelID = UUID()
         let cue = Self.makeCue(
             title: "Original",
             duration: 60,
@@ -128,7 +170,8 @@ final class UpdateCueUseCaseTests: XCTestCase {
             rightHolders: [rightHolder],
             workNumber: "W1",
             notes: "note",
-            isArrangementOfProtectedOriginal: true
+            isArrangementOfProtectedOriginal: true,
+            recordingLabel: .label(recordingLabelID)
         )
         let project = Self.makeProject(cues: [cue])
         let repository = InMemoryProjectRepository(projects: [project])
@@ -145,6 +188,11 @@ final class UpdateCueUseCaseTests: XCTestCase {
         XCTAssertEqual(first.startTimecode, Timecode(offsetSeconds: 100))
         XCTAssertEqual(first.duration, MediaDuration(seconds: 30))
         XCTAssertEqual(first.source, .manual)
+        // Regression: `split`'s earlier half must carry the original cue's
+        // recording info forward (SPEC.md §4.26) — a real bug found while
+        // building the Cues tab's Recording Info UI, fixed directly in
+        // `split`'s own `earlier` construction.
+        XCTAssertEqual(first.recordingLabel, .label(recordingLabelID))
 
         XCTAssertNotEqual(second.id, cue.id)
         // "ProjectTitle_Score_Cue-N" (ROADMAP.md D10) -- a real, persisted
@@ -201,92 +249,6 @@ final class UpdateCueUseCaseTests: XCTestCase {
 
     // MARK: - Merge
 
-    func test_merge_appliesEveryFieldRuleExactly() async throws {
-        let rightHolderA = CueRightHolder(
-            party: .person(UUID()),
-            role: .composer,
-            performanceBroadcastShare: 100,
-            mechanicalRightsShare: 100
-        )
-        let rightHolderB = CueRightHolder(
-            party: .person(UUID()),
-            role: .composer,
-            performanceBroadcastShare: 100,
-            mechanicalRightsShare: 100
-        )
-        let preceding = Self.makeCue(
-            title: "First Half",
-            duration: 30,
-            startSeconds: 100,
-            rightHolders: [rightHolderA],
-            workNumber: "W1",
-            notes: nil,
-            isArrangementOfProtectedOriginal: false
-        )
-        let following = Self.makeCue(
-            title: "",
-            duration: 30,
-            startSeconds: 130,
-            rightHolders: [rightHolderA, rightHolderB],
-            workNumber: nil,
-            notes: "second note",
-            isArrangementOfProtectedOriginal: true
-        )
-        let project = Self.makeProject(cues: [preceding, following])
-        let repository = InMemoryProjectRepository(projects: [project])
-        let useCase = UpdateCueUseCase(projectRepository: repository)
-
-        let merged = try await useCase.merge(
-            projectID: project.id,
-            precedingCueID: preceding.id,
-            cueID: following.id
-        )
-
-        XCTAssertEqual(merged.id, preceding.id)
-        XCTAssertEqual(merged.startTimecode, Timecode(offsetSeconds: 100))
-        XCTAssertEqual(merged.duration, MediaDuration(seconds: 60))
-        XCTAssertEqual(merged.title, "First Half") // earlier non-empty wins
-        XCTAssertEqual(merged.workNumber, "W1") // earlier non-nil wins
-        XCTAssertEqual(merged.notes, "second note") // earlier nil -> later wins
-        XCTAssertTrue(merged.isArrangementOfProtectedOriginal) // logical OR
-        XCTAssertEqual(merged.rightHolders, [rightHolderA, rightHolderA, rightHolderB]) // concatenation, no dedup
-        XCTAssertEqual(merged.source, .manual)
-
-        let updated = try await repository.fetch(id: project.id)
-        XCTAssertEqual(updated?.cues.map(\.id), [preceding.id])
-    }
-
-    func test_merge_nonContiguous_throwsAndDoesNotMutate() async throws {
-        let preceding = Self.makeCue(duration: 30, startSeconds: 100)
-        // A real gap: `following` starts a full second after `preceding` ends (130),
-        // far outside the 0.001s merge epsilon.
-        let following = Self.makeCue(duration: 30, startSeconds: 131)
-        let project = Self.makeProject(cues: [preceding, following])
-        let repository = InMemoryProjectRepository(projects: [project])
-        let useCase = UpdateCueUseCase(projectRepository: repository)
-
-        do {
-            _ = try await useCase.merge(projectID: project.id, precedingCueID: preceding.id, cueID: following.id)
-            XCTFail("Expected mergeNotContiguous")
-        } catch UpdateCueUseCaseError.mergeNotContiguous {}
-
-        let unchanged = try await repository.fetch(id: project.id)
-        XCTAssertEqual(unchanged?.cues.count, 2)
-    }
-
-    func test_merge_toleranceIsStricterThanEmbeddedMarkerMergeTolerance() async throws {
-        // 0.5s gap: well inside AnalysisSettings' default 1.0s
-        // embeddedMarkerMergeToleranceSeconds, but far outside merge's own
-        // deliberately much stricter 0.001s epsilon (SPEC.md §4.15).
-        let preceding = Self.makeCue(duration: 30, startSeconds: 100)
-        let following = Self.makeCue(duration: 30, startSeconds: 130.5)
-        let project = Self.makeProject(cues: [preceding, following])
-        let repository = InMemoryProjectRepository(projects: [project])
-        let useCase = UpdateCueUseCase(projectRepository: repository)
-
-        do {
-            _ = try await useCase.merge(projectID: project.id, precedingCueID: preceding.id, cueID: following.id)
-            XCTFail("Expected mergeNotContiguous")
-        } catch UpdateCueUseCaseError.mergeNotContiguous {}
-    }
+    // See `UpdateCueUseCaseTests+Merge.swift` — moved out of this file to
+    // keep it under this project's type-body-length lint limit.
 }

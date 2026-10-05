@@ -71,6 +71,7 @@ final class CueTests: XCTestCase {
         let id = UUID()
         let rightHolder = Self.makeRightHolder()
         let startTimecode = Timecode(offsetSeconds: 42)
+        let recordLabelID = UUID()
 
         let cue = Cue(
             id: id,
@@ -82,7 +83,7 @@ final class CueTests: XCTestCase {
             source: .detectedFromAudio,
             startTimecode: startTimecode,
             notes: "Loud entrance",
-            recordingLabel: "Needle Drop Records",
+            recordingLabel: .label(recordLabelID),
             recordingLabelNumber: "NDR-4471",
             recordingISRC: "CH-A12-26-00001"
         )
@@ -96,7 +97,7 @@ final class CueTests: XCTestCase {
         XCTAssertEqual(cue.source, .detectedFromAudio)
         XCTAssertEqual(cue.startTimecode, startTimecode)
         XCTAssertEqual(cue.notes, "Loud entrance")
-        XCTAssertEqual(cue.recordingLabel, "Needle Drop Records")
+        XCTAssertEqual(cue.recordingLabel, .label(recordLabelID))
         XCTAssertEqual(cue.recordingLabelNumber, "NDR-4471")
         XCTAssertEqual(cue.recordingISRC, "CH-A12-26-00001")
     }

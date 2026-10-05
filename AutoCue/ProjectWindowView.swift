@@ -191,7 +191,7 @@ struct ProjectWindowView: View {
             sidebarButton(.setup, title: "Setup")
             sidebarButton(.cueSheet, title: "Cues")
             sidebarButton(.reviewAndExport, title: "Review & Export")
-            sidebarButton(.waFilmForm, title: "WA Film Form")
+            sidebarButton(.waFilmForm, title: "WA Form")
             Spacer()
         }
         .padding(Theme.Spacing.sm)

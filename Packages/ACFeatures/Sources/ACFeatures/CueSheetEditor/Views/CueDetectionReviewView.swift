@@ -19,6 +19,7 @@ public struct CueDetectionReviewView: View {
     @FocusState private var isFocused: Bool
     @State private var isConfirmingClearAudio = false
     @State private var rowDetailTarget: RowDetailTarget?
+    @State private var recordingInfoTarget: RowDetailTarget?
     /// **Real bug found during manual testing, not anticipated at design
     /// time:** without this, typing a space into `CueTableView`'s new
     /// editable Title field was silently swallowed by this screen's own
@@ -174,6 +175,9 @@ public struct CueDetectionReviewView: View {
                     onOpenDetail: { index in
                         rowDetailTarget = RowDetailTarget(id: index)
                     },
+                    onOpenRecordingInfo: { index in
+                        recordingInfoTarget = RowDetailTarget(id: index)
+                    },
                     onDelete: { index in
                         viewModel.deleteCue(at: index, undoManager: undoManager)
                     },
@@ -211,6 +215,15 @@ public struct CueDetectionReviewView: View {
                 directoryViewModel: directoryViewModel,
                 undoManager: undoManager,
                 onDismiss: { rowDetailTarget = nil }
+            )
+        }
+        .sheet(item: $recordingInfoTarget) { target in
+            CueRecordingInfoSheet(
+                cueIndex: target.id,
+                viewModel: viewModel,
+                directoryViewModel: directoryViewModel,
+                undoManager: undoManager,
+                onDismiss: { recordingInfoTarget = nil }
             )
         }
     }

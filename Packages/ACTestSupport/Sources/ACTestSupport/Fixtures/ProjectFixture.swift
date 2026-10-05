@@ -27,6 +27,7 @@ public enum ProjectFixture {
         let directorPersonID = UUID()
         let declarantLabelID = UUID()
         let performerID = UUID()
+        let recordLabelID = UUID()
     }
 
     public static func make() -> Project {
@@ -117,7 +118,18 @@ public enum ProjectFixture {
                 country: "Switzerland"
             )
         )
-        return [publisherLabel, declarantLabel]
+        let recordLabel = Label(
+            id: ids.recordLabelID,
+            name: "Needle Drop Records",
+            address: PostalAddress(
+                street: "Music Row 22",
+                postalCode: "10001",
+                city: "New York",
+                country: "USA"
+            ),
+            kind: .other
+        )
+        return [publisherLabel, declarantLabel, recordLabel]
     }
 
     // MARK: - Cues
@@ -160,7 +172,7 @@ public enum ProjectFixture {
             source: .embeddedMarker,
             startTimecode: Timecode(offsetSeconds: 12.0),
             notes: "Cold open",
-            recordingLabel: "Needle Drop Records",
+            recordingLabel: .label(ids.recordLabelID),
             recordingLabelNumber: "NDR-4471",
             recordingISRC: "CH-A12-26-00001"
         )

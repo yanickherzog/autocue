@@ -80,6 +80,9 @@ public struct DeleteRightHolderUseCase: Sendable {
         for cue in project.cues where cue.rightHolders.contains(where: { $0.party == party }) {
             locations.append(.cueRightHolder(cueID: cue.id))
         }
+        for cue in project.cues where cue.recordingLabel == party {
+            locations.append(.cueRecordingLabel(cueID: cue.id))
+        }
 
         return locations
     }
@@ -180,6 +183,10 @@ public enum PartyReferenceLocation: Equatable, Sendable {
     case setupDeclarant
     case settingsDefaultDeclarant
     case cueRightHolder(cueID: Cue.ID)
+    /// `Cue.recordingLabel`'s own reference — distinct from `.cueRightHolder`
+    /// above, since a recording label is not a right-holder entry at all
+    /// (SPEC.md §4.3, §4.12).
+    case cueRecordingLabel(cueID: Cue.ID)
 }
 
 /// The outcome of a `DeleteRightHolderUseCase` deletion attempt.

@@ -21,6 +21,20 @@ import Foundation
 /// confirmed absent from the literal SUISA WA Film form (`docs/DECISIONS.md`,
 /// 2026-09-27); rendered on the cue sheet PDF (`ROADMAP.md` D11/T11.2) as
 /// "Label"/"Label-Nr."/"ISRC-Nr." respectively.
+///
+/// **`recordingLabel` is `Party?`, not `String` — changed at real-UI build
+/// time (no Deliverable number; a narrow, project-owner-requested addition
+/// alongside the Cues tab's own recording-info UI), reversing this field's
+/// original `String?` shape.** Resolved via `PartyResolver` everywhere it's
+/// displayed/exported, the same single-source-of-truth shape every other
+/// right-holder reference in this app already uses (`CLAUDE.md`, "Single
+/// Source of Truth") — renaming a `Label` in the directory now updates every
+/// cue sheet automatically, rather than requiring the user to re-type a
+/// free-text name on every cue that happens to share it. No migration
+/// concern: confirmed directly (a repo-wide grep of every production code
+/// path that constructs a `Cue`) that no UI ever existed to set this field
+/// to a non-`nil` value before this change, so no real persisted `Project`
+/// can hold one. See `docs/DECISIONS.md`.
 public struct Cue: Identifiable, Equatable, Sendable {
     public let id: UUID
     public let title: String
@@ -31,7 +45,7 @@ public struct Cue: Identifiable, Equatable, Sendable {
     public let source: CueSource
     public let startTimecode: Timecode?
     public let notes: String?
-    public let recordingLabel: String?
+    public let recordingLabel: Party?
     public let recordingLabelNumber: String?
     public let recordingISRC: String?
 
@@ -45,7 +59,7 @@ public struct Cue: Identifiable, Equatable, Sendable {
         source: CueSource,
         startTimecode: Timecode? = nil,
         notes: String? = nil,
-        recordingLabel: String? = nil,
+        recordingLabel: Party? = nil,
         recordingLabelNumber: String? = nil,
         recordingISRC: String? = nil
     ) {

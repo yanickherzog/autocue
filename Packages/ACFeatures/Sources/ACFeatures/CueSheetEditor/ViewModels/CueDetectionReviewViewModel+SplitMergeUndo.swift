@@ -102,7 +102,10 @@ extension CueDetectionReviewViewModel {
                         isArrangementOfProtectedOriginal: cue.isArrangementOfProtectedOriginal,
                         source: cue.source,
                         startTimecode: context.originalStartTimecode,
-                        notes: cue.notes
+                        notes: cue.notes,
+                        recordingLabel: cue.recordingLabel,
+                        recordingLabelNumber: cue.recordingLabelNumber,
+                        recordingISRC: cue.recordingISRC
                     )
                 }
                 try await updateCueUseCase.delete(projectID: projectID, cueID: context.secondCueID)

@@ -20,7 +20,11 @@ final class CueEntity {
     var source: String
     var startTimecodeOffsetSeconds: Double?
     var notes: String?
-    var recordingLabel: String?
+    /// `Cue.recordingLabel: Party?` — a `Person`/`Label` reference, not a
+    /// copied name, mirroring `SetupEntity.declarantPartyKind`/`.declarantPartyID`
+    /// exactly (`docs/DECISIONS.md`).
+    var recordingLabelPartyKind: String?
+    var recordingLabelPartyID: UUID?
     var recordingLabelNumber: String?
     var recordingISRC: String?
 
@@ -37,7 +41,8 @@ final class CueEntity {
         source: String,
         startTimecodeOffsetSeconds: Double?,
         notes: String?,
-        recordingLabel: String?,
+        recordingLabelPartyKind: String?,
+        recordingLabelPartyID: UUID?,
         recordingLabelNumber: String?,
         recordingISRC: String?
     ) {
@@ -50,7 +55,8 @@ final class CueEntity {
         self.source = source
         self.startTimecodeOffsetSeconds = startTimecodeOffsetSeconds
         self.notes = notes
-        self.recordingLabel = recordingLabel
+        self.recordingLabelPartyKind = recordingLabelPartyKind
+        self.recordingLabelPartyID = recordingLabelPartyID
         self.recordingLabelNumber = recordingLabelNumber
         self.recordingISRC = recordingISRC
         project = nil

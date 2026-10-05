@@ -70,7 +70,10 @@ private extension Cue {
             isArrangementOfProtectedOriginal: isArrangementOfProtectedOriginal,
             source: .manual,
             startTimecode: startTimecode,
-            notes: notes
+            notes: notes,
+            recordingLabel: recordingLabel,
+            recordingLabelNumber: recordingLabelNumber,
+            recordingISRC: recordingISRC
         )
     }
 }

@@ -42,9 +42,9 @@ extension CueSheetLayoutComputer {
             tcIn,
             tcOut,
             formattedLength(cue.duration),
-            cue.recordingLabel ?? "",
+            cue.recordingLabel.flatMap { PartyResolver.resolve($0, people: people, labels: labels)?.displayName } ?? "",
             cue.recordingLabelNumber ?? "",
-            cue.recordingISRC ?? "",
+            cue.recordingISRC.map(ISRCNumber.normalized) ?? "",
         ]
     }
 

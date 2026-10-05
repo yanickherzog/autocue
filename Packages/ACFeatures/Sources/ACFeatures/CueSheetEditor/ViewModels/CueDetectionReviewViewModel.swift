@@ -101,12 +101,12 @@ public final class CueDetectionReviewViewModel {
     private nonisolated(unsafe) var detailFetchTask: Task<Void, Never>?
     @ObservationIgnored
     private nonisolated(unsafe) var playbackObservationTask: Task<Void, Never>?
-    /// Per-`Cue.ID` debounce tasks for `+RowDetail.swift`'s title field edit.
-    /// `startTimecodeEditDebounceTasks` backs that file's direct-timecode
-    /// edit — UI-unreachable since D10's Start Timecode field was dropped,
-    /// kept unused like `UpdateCueUseCase.add`/`.reorder` (`docs/DECISIONS.md`).
+    /// Per-`Cue.ID` debounce tasks: title/timecode (`+RowDetail.swift`),
+    /// Label-Nr./ISRC-Nr. (`+RecordingInfo.swift`; its Label picker writes immediately).
     @ObservationIgnored nonisolated(unsafe) var titleEditDebounceTasks: [Cue.ID: Task<Void, Never>] = [:]
     @ObservationIgnored nonisolated(unsafe) var startTimecodeEditDebounceTasks: [Cue.ID: Task<Void, Never>] = [:]
+    @ObservationIgnored nonisolated(unsafe) var recordingLabelNumberEditDebounceTasks: [Cue.ID: Task<Void, Never>] = [:]
+    @ObservationIgnored nonisolated(unsafe) var recordingISRCEditDebounceTasks: [Cue.ID: Task<Void, Never>] = [:]
 
     private static let reimportErrorMessage =
         "This file's audio could no longer be located. Re-import it to restore waveform and playback access."

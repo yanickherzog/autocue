@@ -163,6 +163,27 @@ final class DeleteRightHolderUseCaseTests: XCTestCase {
         XCTAssertTrue(locations.contains(.cueRightHolder(cueID: cue.id)))
     }
 
+    func test_referencedAsACueRecordingLabel_isReportedWithTheOwningCueID() {
+        let party = Party.label(UUID())
+        let cue = Cue(
+            title: "Needle Drop",
+            duration: MediaDuration(seconds: 60),
+            rightHolders: [],
+            source: .manual,
+            recordingLabel: party
+        )
+        let project = Self.makeProject(
+            producer: .person(UUID()),
+            directorOrPrincipal: .person(UUID()),
+            declarant: .person(UUID()),
+            cues: [cue]
+        )
+
+        let locations = DeleteRightHolderUseCase.referenceLocations(for: party, in: project, settings: Settings())
+
+        XCTAssertEqual(locations, [.cueRecordingLabel(cueID: cue.id)])
+    }
+
     func test_labelPartyDoesNotFalselyMatchAPersonReferenceWithTheSameUnderlyingID() {
         // Party.person(id) and Party.label(id) with the same UUID must never
         // be treated as the same reference.

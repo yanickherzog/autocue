@@ -32,7 +32,8 @@ enum CueMapper {
             source: rawValue(for: cue.source),
             startTimecodeOffsetSeconds: cue.startTimecode?.offsetSeconds,
             notes: cue.notes,
-            recordingLabel: cue.recordingLabel,
+            recordingLabelPartyKind: PartyMapper.kind(for: cue.recordingLabel),
+            recordingLabelPartyID: PartyMapper.id(for: cue.recordingLabel),
             recordingLabelNumber: cue.recordingLabelNumber,
             recordingISRC: cue.recordingISRC
         )
@@ -60,7 +61,10 @@ enum CueMapper {
             source: cueSource(from: entity.source),
             startTimecode: entity.startTimecodeOffsetSeconds.map(Timecode.init(offsetSeconds:)),
             notes: entity.notes,
-            recordingLabel: entity.recordingLabel,
+            recordingLabel: PartyMapper.party(
+                kind: entity.recordingLabelPartyKind,
+                id: entity.recordingLabelPartyID
+            ),
             recordingLabelNumber: entity.recordingLabelNumber,
             recordingISRC: entity.recordingISRC
         )

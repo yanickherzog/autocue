@@ -303,7 +303,10 @@ private extension Cue {
             isArrangementOfProtectedOriginal: isArrangementOfProtectedOriginal,
             source: source,
             startTimecode: startTimecode,
-            notes: notes
+            notes: notes,
+            recordingLabel: recordingLabel,
+            recordingLabelNumber: recordingLabelNumber,
+            recordingISRC: recordingISRC
         )
     }
 
@@ -317,7 +320,10 @@ private extension Cue {
             isArrangementOfProtectedOriginal: isArrangementOfProtectedOriginal,
             source: source,
             startTimecode: startTimecode,
-            notes: notes
+            notes: notes,
+            recordingLabel: recordingLabel,
+            recordingLabelNumber: recordingLabelNumber,
+            recordingISRC: recordingISRC
         )
     }
 }

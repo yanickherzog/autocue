@@ -36,7 +36,10 @@ public extension CueDetectionReviewViewModel {
                     isArrangementOfProtectedOriginal: cue.isArrangementOfProtectedOriginal,
                     source: cue.source,
                     startTimecode: cue.startTimecode,
-                    notes: cue.notes
+                    notes: cue.notes,
+                    recordingLabel: cue.recordingLabel,
+                    recordingLabelNumber: cue.recordingLabelNumber,
+                    recordingISRC: cue.recordingISRC
                 )
             }
         } catch {

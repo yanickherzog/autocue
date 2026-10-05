@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 /// One row's already-formatted display values — never an `ACCore` `Cue`
@@ -98,6 +99,7 @@ public struct CueTableView: View {
     private let onPlayToggle: (Int) -> Void
     private let onTitleChanged: (Int, String) -> Void
     private let onOpenDetail: (Int) -> Void
+    private let onOpenRecordingInfo: (Int) -> Void
     private let onDelete: (Int) -> Void
     /// **Found during real manual testing, not anticipated at design time:**
     /// `CueDetectionReviewView`'s existing `.onKeyPress(.space)` (D9,
@@ -119,6 +121,7 @@ public struct CueTableView: View {
         onPlayToggle: @escaping (Int) -> Void = { _ in },
         onTitleChanged: @escaping (Int, String) -> Void = { _, _ in },
         onOpenDetail: @escaping (Int) -> Void = { _ in },
+        onOpenRecordingInfo: @escaping (Int) -> Void = { _ in },
         onDelete: @escaping (Int) -> Void = { _ in },
         onTitleFieldFocusChanged: @escaping (Bool) -> Void = { _ in }
     ) {
@@ -128,6 +131,7 @@ public struct CueTableView: View {
         self.onPlayToggle = onPlayToggle
         self.onTitleChanged = onTitleChanged
         self.onOpenDetail = onOpenDetail
+        self.onOpenRecordingInfo = onOpenRecordingInfo
         self.onDelete = onDelete
         self.onTitleFieldFocusChanged = onTitleFieldFocusChanged
     }
@@ -152,8 +156,13 @@ public struct CueTableView: View {
             // read-only `Text` this column used through D9's pull-forward.
             // TC In/TC Out/Length below are unaffected: they keep the
             // existing click-plays-span behavior, so typing a title never
-            // competes with auditioning a cue's boundaries.
-            TableColumn("Title") { row in
+            // competes with auditioning a cue's boundaries. Header reads
+            // "Cue Title" (not "Title") — real manual testing found "Title"
+            // read ambiguously next to "Royalty Split"/"Label"; this column
+            // deliberately stays the one flexible-width column (no
+            // `.width()`), so the space freed up by narrowing the two
+            // detail-icon columns flows here automatically.
+            TableColumn("Cue Title") { row in
                 EditableTitleCell(row: row, focusedTitleRowID: $focusedTitleRowID, onTitleChanged: onTitleChanged)
             }
 
@@ -193,20 +202,28 @@ public struct CueTableView: View {
             // row's existing click-to-play gesture, which stays reachable on
             // TC In/TC Out/Length exactly as it was before this pass. Header
             // reads "Royalty Split" (not blank) since that's what this
-            // column's sheet is mostly used for; icon is a gear, not the
-            // three-dot "more" glyph originally used here.
-            TableColumn("Royalty Split") { row in
-                Button {
-                    onOpenDetail(row.id)
-                } label: {
-                    Image(systemName: "gearshape")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(Theme.Colors.white)
-                }
-                .buttonStyle(SharpButtonStyle(emphasis: .secondary, surface: .primary))
-                .accessibilityLabel(Text("Edit details for cue \(row.number)"))
-            }
-            .width(96)
+            // column's sheet is mostly used for. The icon is now
+            // center-aligned within the column (found during real manual
+            // testing that it sat at the leading edge); the header's own
+            // title text stays left-aligned — no public SwiftUI API centers
+            // a `TableColumn` header on macOS, see `detailIconColumn`'s own
+            // doc comment below. Extracted into that shared function, used
+            // by the "Label" column immediately after too — partly to avoid
+            // duplicating this identical shape twice, partly because
+            // inlining both here pushed this `Table`'s column-builder
+            // expression past the type checker's time limit.
+            detailIconColumn(title: "Royalty Split", accessibilityVerb: "Edit details for", action: onOpenDetail)
+
+            // Opens the row's Label sheet (`Cue.recordingLabel`/
+            // `.recordingLabelNumber`/`.recordingISRC`) — a separate column
+            // and a separate sheet from "Royalty Split" above, since the two
+            // edit genuinely unrelated data (a licensed/pre-existing
+            // recording's own identity vs. this work's right-holder split).
+            // Same gear icon/size/button style as "Royalty Split" — a real,
+            // project-owner-requested change from this column's original,
+            // distinct `tag` icon, for visual consistency between the two
+            // detail-sheet columns.
+            detailIconColumn(title: "Label", accessibilityVerb: "Edit label for", action: onOpenRecordingInfo)
 
             TableColumn("") { row in
                 Button {
@@ -229,88 +246,124 @@ public struct CueTableView: View {
             onTitleFieldFocusChanged(newValue != nil)
         }
     }
-}
 
-/// The Title column's cell — a real `TextField`, backed by local `@State`
-/// seeded from `row.title` so keystrokes render immediately without waiting
-/// on a round-trip through the caller's debounced save (`ROADMAP.md`
-/// D10/T10.2, SPEC.md §4.18). A dedicated child view, not an inline closure,
-/// specifically so this `@State` survives `Table`'s own re-diffing of the
-/// row closure across re-renders — SwiftUI keys per-row identity by
-/// `CueTableRow.id`, so this cell's local text stays put across unrelated
-/// state changes (e.g. another row's edit, playback ticking) as long as this
-/// row's `id` doesn't change.
-///
-/// Also renders the small validation-warning glyph (`row.hasValidationIssue`)
-/// leading the field — a non-blocking indicator only (SPEC.md §4.6): a cue's
-/// shares can be left non-100% at edit time, this just makes that visible
-/// per-row without stopping anything.
-private struct EditableTitleCell: View {
-    let row: CueTableRow
-    var focusedTitleRowID: FocusState<Int?>.Binding
-    let onTitleChanged: (Int, String) -> Void
-
-    @State private var text: String
-
-    init(
-        row: CueTableRow,
-        focusedTitleRowID: FocusState<Int?>.Binding,
-        onTitleChanged: @escaping (Int, String) -> Void
-    ) {
-        self.row = row
-        self.focusedTitleRowID = focusedTitleRowID
-        self.onTitleChanged = onTitleChanged
-        _text = State(initialValue: row.title)
-    }
-
-    var body: some View {
-        HStack(spacing: 4) {
-            if row.hasValidationIssue {
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .font(.system(size: 10))
-                    .foregroundStyle(Theme.Colors.accent)
-                    .accessibilityLabel(Text("Right-holder shares don't sum to 100% for cue \(row.number)"))
+    /// Shared shape for "Royalty Split"/"Label" — a center-aligned gear icon
+    /// button, sized to a real measured fixed width (`measuredDetailColumnWidth`
+    /// below), not a guessed round number. See `body`'s own comment for why
+    /// this is a real function, not two inlined `TableColumn`s.
+    ///
+    /// **The column header's own title text cannot be centered — a real,
+    /// confirmed platform limitation, not a style choice left undone.**
+    /// `TableColumn` has no `alignment:` parameter on macOS (confirmed by a
+    /// real compiler error attempting one), and its only `Content`-closure
+    /// initializer constrains `Label == Text` with no way to substitute a
+    /// custom header view (also confirmed by a real compiler error, not
+    /// assumed) — there is no public API on this SDK for centering a
+    /// `TableColumn`'s own header text. Only the icon inside the cell is
+    /// centered here; the header above it stays left-aligned, same as every
+    /// other column's header in this table.
+    private func detailIconColumn(
+        title: String,
+        accessibilityVerb: String,
+        action: @escaping (Int) -> Void
+    ) -> some TableColumnContent<CueTableRow, Never> {
+        TableColumn(title) { row in
+            Button {
+                action(row.id)
+            } label: {
+                Image(systemName: "gearshape")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(Theme.Colors.white)
             }
-            TextField(
-                "",
-                text: $text,
-                prompt: Text("Untitled").foregroundStyle(Theme.Colors.ghostTextPrimary)
-            )
-            .textFieldStyle(.plain)
-            .font(Theme.Typography.font(.regular, size: 12))
-            // White, not `Theme.Surface.primary.foreground` (Carbon Black) —
-            // found during real manual testing: this `Table`'s row
-            // background renders dark (a native `NSTableView` appearance
-            // leak that follows the system's actual Light/Dark Mode setting,
-            // independent of this screen's own hardcoded white
-            // `Theme.Surface.primary` background elsewhere), so Carbon Black
-            // text here was nearly unreadable rather than merely
-            // low-contrast. White stays legible against that real row
-            // background regardless of the system appearance; fixing the
-            // underlying leak so `Table` itself always renders light,
-            // matching `CLAUDE.md`'s "AutoCue does not adapt to system
-            // Light/Dark Mode," is a separate, broader follow-up (`Table` is
-            // this project's one real AppKit-interop gap, `CLAUDE.md`'s
-            // Technology Stack table), not scoped to this fix.
-            .foregroundStyle(Theme.Colors.white)
-            .tint(Theme.Colors.white.opacity(0.3))
-            .focused(focusedTitleRowID, equals: row.id)
-            // An external update (a fresh live-stream emission after this
-            // row's own debounced save lands, or an unrelated edit from
-            // another window) may hand this cell a new `row` value with a
-            // different `title` — resync local state only when it actually
-            // differs, so this never clobbers a keystroke the user is
-            // mid-typing when the two happen to coincide.
-            .onChange(of: row.title) { _, newValue in
-                if newValue != text {
-                    text = newValue
-                }
-            }
-            .onChange(of: text) { _, newValue in onTitleChanged(row.id, newValue) }
+            .buttonStyle(SharpButtonStyle(emphasis: .secondary, surface: .primary))
+            .accessibilityLabel(Text("\(accessibilityVerb) cue \(row.number)"))
+            .frame(maxWidth: .infinity, alignment: .center)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .width(Self.measuredDetailColumnWidth(headerTitle: title))
+    }
+
+    /// **Real measurement, not a guessed round number — the same discipline
+    /// `CueSheetLayoutComputer+Measurement.swift`'s PDF column-width code
+    /// already establishes, applied here to this `Table`'s own real header
+    /// rendering.**
+    ///
+    /// **A first version of this measurement was wrong, and the fix is
+    /// recorded here rather than silently corrected — real evidence, not a
+    /// re-guess.** It measured `NSTableHeaderCell(textCell:).cellSize`
+    /// against a *default* cell, which reports AppKit's own built-in
+    /// header font — `.SFNS-Regular` 11pt, confirmed via a real,
+    /// standalone measurement script before that version shipped. That's
+    /// the font a *plain* `NSTableHeaderView` uses, but it is **not** the
+    /// font this `Table` actually draws its headers in: `body`'s own
+    /// `.font(Theme.Typography.font(.regular, size: 12))` modifier (line
+    /// ~244) is applied to the whole `Table`, and on this SDK that
+    /// environment value propagates into the header title text too, not
+    /// only into cell content — confirmed two ways, not assumed: (1) a real
+    /// screenshot of the running app showed "Royalty Split" truncated to
+    /// "Royalty S…" even though the old measurement's 69pt budget was
+    /// supposedly wide enough for an 11pt system-font rendering of that
+    /// string; (2) a standalone measurement script loading the real bundled
+    /// `SpaceGrotesk-Regular.ttf` at 12pt (`Theme.FontWeight.regular`, the
+    /// exact weight/size `body`'s own modifier requests) measured "Royalty
+    /// Split" at ≈74.6pt raw — wider than the old 69pt total budget before
+    /// any padding was even added, which fully explains the observed
+    /// truncation. **Two other candidate causes were checked and ruled out:**
+    /// no `TableColumn` here uses `sortUsing:`/a `SortComparator` (confirmed
+    /// by grep), so no header reserves sort-indicator space; the
+    /// column-resize handle draws at the column boundary, not subtracted
+    /// from any one column's own content width.
+    ///
+    /// **The fix measures against the real font** — `NSFont(name:
+    /// Theme.FontWeight.regular.postScriptName, size: 12)`, the identical
+    /// PostScript name/size `Theme.Typography.font(.regular, size: 12)`
+    /// wraps, so this can never silently drift from what `body`'s own
+    /// modifier actually requests — via `NSAttributedString.size(withAttributes:)`.
+    /// **Plus a small, explicit `headerSafetyMargin` of 6pt (3pt a side),
+    /// not folded silently into the measurement:** raw glyph-run
+    /// measurement can slightly under-report a string's real on-screen
+    /// footprint (sub-pixel anti-aliasing/hinting rounding at render time —
+    /// a different, smaller concern than "which font," the actual bug
+    /// here), and `NSTableHeaderCell`'s own padding figure is no longer
+    /// used at all (it reports a default cell's layout, not this
+    /// SwiftUI-rendered header's). 6pt is deliberately small: enough to
+    /// absorb that rounding, not enough to paper over a real future
+    /// measurement error.
+    ///
+    /// Compared against the gear button's own real natural width
+    /// (`SharpButtonStyle`'s actual `Theme.Spacing.md` horizontal padding
+    /// either side of the real rendered `gearshape` glyph size at this
+    /// button's actual point size/weight, read via `NSImage.SymbolConfiguration`
+    /// rather than guessed) — whichever is wider wins, so the header is
+    /// never clipped and the button is never visually cramped. Every
+    /// measurement here is a real API call against the real font/icon
+    /// actually drawn, not a hardcoded constant, so this stays correct if
+    /// either title, `body`'s own font modifier, or the icon's own
+    /// size/weight/padding ever changes.
+    /// Not `private`: `ACDesignSystemTests` calls this directly (via
+    /// `@testable import`) to assert a header's measured width is never
+    /// smaller than its real text width at the real font — the exact
+    /// regression this function itself was written to fix. `internal` (the
+    /// default) still keeps it out of this package's public API.
+    static func measuredDetailColumnWidth(headerTitle: String) -> CGFloat {
+        let headerSafetyMargin: CGFloat = 6
+
+        let headerFont = NSFont(name: Theme.FontWeight.regular.postScriptName, size: 12)
+            ?? NSFont.systemFont(ofSize: 12)
+        let headerTextWidth = (headerTitle as NSString).size(withAttributes: [.font: headerFont]).width
+        let headerWidth = headerTextWidth + headerSafetyMargin
+
+        let iconConfiguration = NSImage.SymbolConfiguration(pointSize: 12, weight: .medium)
+        let iconSize = NSImage(systemSymbolName: "gearshape", accessibilityDescription: nil)?
+            .withSymbolConfiguration(iconConfiguration)?.size ?? CGSize(width: 15, height: 15)
+        let buttonWidth = iconSize.width + Theme.Spacing.md * 2
+
+        return ceil(max(headerWidth, buttonWidth))
     }
 }
+
+// `EditableTitleCell` lives in its own file, `EditableTitleCell.swift` —
+// moved out once this file grew past this project's file-length lint
+// limit; see that file's own doc comment.
 
 #Preview("CueTableView") {
     CueTableView(rows: [

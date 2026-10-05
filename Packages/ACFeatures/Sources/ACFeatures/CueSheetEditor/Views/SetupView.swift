@@ -358,6 +358,7 @@ public extension PartyReferenceLocation {
         case .setupDeclarant: "Declarant"
         case .settingsDefaultDeclarant: "Default Declarant (Settings)"
         case .cueRightHolder: "a Cue's right-holder list"
+        case .cueRecordingLabel: "a Cue's recording label"
         }
     }
 }

@@ -122,7 +122,10 @@ public struct UpdateCueUseCase: Sendable {
                 isArrangementOfProtectedOriginal: original.isArrangementOfProtectedOriginal,
                 source: .manual,
                 startTimecode: start,
-                notes: original.notes
+                notes: original.notes,
+                recordingLabel: original.recordingLabel,
+                recordingLabelNumber: original.recordingLabelNumber,
+                recordingISRC: original.recordingISRC
             )
             // Title/right-holders auto-populated the same way a freshly
             // detected cue is (`ROADMAP.md` D10, `CueAutoPopulation`) — the
@@ -196,7 +199,13 @@ public struct UpdateCueUseCase: Sendable {
                     || following.isArrangementOfProtectedOriginal,
                 source: .manual,
                 startTimecode: precedingStart,
-                notes: Self.preferringEarlier(preceding.notes, following.notes)
+                notes: Self.preferringEarlier(preceding.notes, following.notes),
+                recordingLabel: preceding.recordingLabel ?? following.recordingLabel,
+                recordingLabelNumber: Self.preferringEarlier(
+                    preceding.recordingLabelNumber,
+                    following.recordingLabelNumber
+                ),
+                recordingISRC: Self.preferringEarlier(preceding.recordingISRC, following.recordingISRC)
             )
 
             var cues = project.cues
@@ -312,7 +321,10 @@ extension Cue {
             isArrangementOfProtectedOriginal: isArrangementOfProtectedOriginal,
             source: .manual,
             startTimecode: startTimecode,
-            notes: notes
+            notes: notes,
+            recordingLabel: recordingLabel,
+            recordingLabelNumber: recordingLabelNumber,
+            recordingISRC: recordingISRC
         )
     }
 }
