@@ -136,6 +136,15 @@ public actor ProjectRepositoryImpl: ProjectRepository {
     var activeReaderCount = 0
     var readerWaiters: [UUID: CheckedContinuation<Void, Error>] = [:]
 
+    // EXPERIMENT 3 (temporary, CI-only — not for `main`): a global lock
+    // serializing every `ModelContext.save()` call across *all*
+    // `Project.ID`s, testing whether concurrent sibling-context saves
+    // colliding at the shared `NSPersistentStoreCoordinator` level
+    // (independent of the reader/writer barrier, which never brackets
+    // writer-vs-writer) is the actual mechanism. See docs/DECISIONS.md.
+    var isSavingGlobally = false
+    var globalSaveWaiters: [UUID: CheckedContinuation<Void, Never>] = [:]
+
     public init(modelContainer: ModelContainer) {
         self.modelContainer = modelContainer
     }

@@ -125,6 +125,29 @@ extension ProjectRepositoryImpl {
     func cancelReaderWait(_ waiterID: UUID) {
         readerWaiters.removeValue(forKey: waiterID)?.resume(throwing: CancellationError())
     }
+
+    // EXPERIMENT 3 (temporary, CI-only — not for `main`): see
+    // `isSavingGlobally`'s comment in `ProjectRepositoryImpl.swift`. Not
+    // cancellable (unlike the reader/writer slots above) — this is a
+    // throwaway diagnostic, not production code, so a simpler
+    // non-cancellable lock is fine here.
+    func acquireGlobalSaveLock() async {
+        if !isSavingGlobally {
+            isSavingGlobally = true
+            return
+        }
+        let waiterID = UUID()
+        await withCheckedContinuation { globalSaveWaiters[waiterID] = $0 }
+    }
+
+    func releaseGlobalSaveLock() {
+        if let next = globalSaveWaiters.first {
+            globalSaveWaiters.removeValue(forKey: next.key)
+            next.value.resume()
+        } else {
+            isSavingGlobally = false
+        }
+    }
 }
 
 // MARK: - SwiftData work (nonisolated: safe to run inside a dispatched `Task`, off the actor)
@@ -180,7 +203,17 @@ extension ProjectRepositoryImpl {
                 context.delete(existing)
             }
             context.insert(ProjectMapper.toEntity(project))
-            try context.save()
+            // EXPERIMENT 3 (temporary, CI-only — not for `main`): serialize
+            // this `save()` against every other concurrent `save()`, for
+            // any `Project.ID`. See docs/DECISIONS.md.
+            await acquireGlobalSaveLock()
+            do {
+                try context.save()
+            } catch {
+                await releaseGlobalSaveLock()
+                throw error
+            }
+            await releaseGlobalSaveLock()
         } catch {
             await releaseWriterSlot()
             throw error
@@ -210,7 +243,17 @@ extension ProjectRepositoryImpl {
             try await firePostAcquireWriterSlotHook()
             if let existing = try Self.fetchEntity(id: id, in: context) {
                 context.delete(existing)
-                try context.save()
+                // EXPERIMENT 3 (temporary, CI-only — not for `main`): see
+                // the matching comment in `upsertProjectAndFetchSnapshot`,
+                // above.
+                await acquireGlobalSaveLock()
+                do {
+                    try context.save()
+                } catch {
+                    await releaseGlobalSaveLock()
+                    throw error
+                }
+                await releaseGlobalSaveLock()
             }
         } catch {
             await releaseWriterSlot()
