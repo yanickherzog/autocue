@@ -155,18 +155,6 @@ extension ProjectRepositoryImpl {
 // MARK: - SwiftData work (nonisolated: safe to run inside a dispatched `Task`, off the actor)
 
 extension ProjectRepositoryImpl {
-    static func fetchAllProjects(in container: ModelContainer) throws -> [Project] {
-        let context = ModelContext(container)
-        let entities = try context.fetch(FetchDescriptor<ProjectEntity>())
-        return try entities.map(ProjectMapper.toDomain)
-    }
-
-    static func fetchProject(id: Project.ID, in container: ModelContainer) throws -> Project? {
-        let context = ModelContext(container)
-        guard let entity = try fetchEntity(id: id, in: context) else { return nil }
-        return try ProjectMapper.toDomain(entity)
-    }
-
     /// Upsert: if `project.id` already has a persisted entity, its scalar
     /// fields are updated and every child relationship is replaced wholesale
     /// (existing children deleted, fresh ones inserted from `project`'s
@@ -176,19 +164,26 @@ extension ProjectRepositoryImpl {
     /// — and avoids the real complexity of matching old vs. new child rows
     /// for a cue-sheet-sized collection where that cost is not justified.
     ///
-    /// **Returns the post-save snapshot fetched from this same `context`,
-    /// deliberately never a fresh, independent one, and only once the
-    /// reader/writer barrier's reader slot is held** (see the "Reader/writer
-    /// barrier" section above for why the writer slot is released first).
-    /// Two real crashes were reproduced (2026-09-05, see
-    /// `docs/DECISIONS.md`): a same-`Project.ID` one, where a subsequent
-    /// write's delete-and-reinsert invalidated an entity an independent
-    /// context had already fetched but not finished materializing, closed by
-    /// same-context read-after-write; and a cross-project one, where this
-    /// snapshot's own fetch raced a *different* project's concurrent write,
-    /// closed by the barrier. `SwiftData/BackingData.swift`'s "invalidated
-    /// because its backing data could no longer be found in the store" is
-    /// the shared symptom of both.
+    /// **Returns the post-save snapshot fetched from the same confined
+    /// `ProjectStoreExecutor`, deliberately never a fresh, independent one,
+    /// and only once the reader/writer barrier's reader slot is held** (see
+    /// the "Reader/writer barrier" section above for why the writer slot is
+    /// released first). Three real crash mechanisms were found and closed
+    /// here, not just one — see `docs/DECISIONS.md` for the full history:
+    /// a same-`Project.ID` one (2026-09-05, same-context read-after-write);
+    /// a cross-project one where this snapshot's own fetch raced a
+    /// *different* project's concurrent write (closed by the barrier
+    /// above); and a writer-vs-writer one, where two different
+    /// `Project.ID`s' own `save()` calls could race each other at the
+    /// shared store-coordinator level, independent of the barrier (closed
+    /// by the global save lock below) — confirmed, via a dedicated
+    /// confirming experiment, to also require `ModelContext` confinement:
+    /// the global save lock alone left a real residual (1 failure in 2,600
+    /// CI iterations); `ProjectStoreExecutor`'s `@ModelActor` confinement,
+    /// layered on top, reached zero failures across 12,600 iterations.
+    /// `SwiftData/BackingData.swift`'s "invalidated because its backing
+    /// data could no longer be found in the store" is the shared symptom of
+    /// all three.
     ///
     /// No `defer` for either slot's release: this method is `nonisolated`
     /// (it must run off the actor so different `Project.ID` writes stay
@@ -198,19 +193,16 @@ extension ProjectRepositoryImpl {
     /// thrown error) releases explicitly instead.
     nonisolated func upsertProjectAndFetchSnapshot(_ project: Project) async throws -> [Project] {
         try await acquireWriterSlot()
-        let context = ModelContext(modelContainer)
+        let executor = ProjectStoreExecutor(modelContainer: modelContainer)
         do {
             try await firePostAcquireWriterSlotHook()
-            if let existing = try Self.fetchEntity(id: project.id, in: context) {
-                context.delete(existing)
-            }
-            context.insert(ProjectMapper.toEntity(project))
+            try await executor.prepareUpsert(project)
             // Serialize only this atomic moment against every other
             // concurrent `save()`, for any `Project.ID` — see
             // `isSavingGlobally`'s comment in `ProjectRepositoryImpl.swift`.
             await acquireGlobalSaveLock()
             do {
-                try context.save()
+                try await executor.save()
             } catch {
                 await releaseGlobalSaveLock()
                 throw error
@@ -225,8 +217,7 @@ extension ProjectRepositoryImpl {
         try await acquireReaderSlot()
         do {
             try await firePostAcquireReaderSlotHook()
-            let entities = try context.fetch(FetchDescriptor<ProjectEntity>())
-            let snapshot = try entities.map(ProjectMapper.toDomain)
+            let snapshot = try await executor.fetchSnapshot()
             await releaseReaderSlot()
             return snapshot
         } catch {
@@ -235,20 +226,20 @@ extension ProjectRepositoryImpl {
         }
     }
 
-    /// See `upsertProjectAndFetchSnapshot`'s doc comment — same-context
-    /// read-after-write behind the reader/writer barrier, for the same
-    /// reason.
+    /// See `upsertProjectAndFetchSnapshot`'s doc comment — same confined
+    /// executor, read-after-write behind the reader/writer barrier, for the
+    /// same reason.
     nonisolated func deleteProjectAndFetchSnapshot(id: Project.ID) async throws -> [Project] {
         try await acquireWriterSlot()
-        let context = ModelContext(modelContainer)
+        let executor = ProjectStoreExecutor(modelContainer: modelContainer)
         do {
             try await firePostAcquireWriterSlotHook()
-            if let existing = try Self.fetchEntity(id: id, in: context) {
-                context.delete(existing)
+            let hadExisting = try await executor.prepareDelete(id: id)
+            if hadExisting {
                 // See the matching comment in `upsertProjectAndFetchSnapshot`, above.
                 await acquireGlobalSaveLock()
                 do {
-                    try context.save()
+                    try await executor.save()
                 } catch {
                     await releaseGlobalSaveLock()
                     throw error
@@ -264,8 +255,7 @@ extension ProjectRepositoryImpl {
         try await acquireReaderSlot()
         do {
             try await firePostAcquireReaderSlotHook()
-            let entities = try context.fetch(FetchDescriptor<ProjectEntity>())
-            let snapshot = try entities.map(ProjectMapper.toDomain)
+            let snapshot = try await executor.fetchSnapshot()
             await releaseReaderSlot()
             return snapshot
         } catch {

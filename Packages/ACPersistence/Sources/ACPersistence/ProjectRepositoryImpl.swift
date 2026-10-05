@@ -49,8 +49,9 @@ import SwiftData
 /// ## Reader/writer barrier
 ///
 /// `writeTails` alone only serializes writes against *other writes for the
-/// same `Project.ID`*. It says nothing about `fetchAllProjects` — the
-/// all-projects snapshot fetch used after every write and on new
+/// same `Project.ID`*. It says nothing about the all-projects snapshot
+/// fetch (`ProjectStoreExecutor.fetchSnapshot()`) used after every write
+/// and on new
 /// subscription — which touches *every* project's entity graph, including
 /// ones with no relationship to whichever write just completed. A real
 /// crash was reproduced (2026-09-05, live under a debugger — see
@@ -152,9 +153,16 @@ public actor ProjectRepositoryImpl: ProjectRepository {
     /// the surrounding fetch/delete/insert mutation-building, which still
     /// runs fully concurrently per `Project.ID` exactly as before) closes
     /// this without reintroducing the global write-serialization
-    /// `CLAUDE.md` already rejected once. See `docs/DECISIONS.md` for the
-    /// full experiment evidence and why this was chosen over a larger
-    /// thread-confinement rewrite.
+    /// `CLAUDE.md` already rejected once.
+    ///
+    /// **This lock alone was verified insufficient, not just theorized to
+    /// be**: `main`'s own post-adoption verification (2026-10-05) hit 1
+    /// failure in 2,600 CI iterations (0.038%) — a real residual, not
+    /// noise. `ProjectStoreExecutor`'s `@ModelActor`-based `ModelContext`
+    /// confinement, layered on top of this same lock (never in place of
+    /// it), closed that residual: 0 failures across 12,600 further
+    /// iterations. See `docs/DECISIONS.md` for the full experiment
+    /// evidence for both mechanisms.
     var isSavingGlobally = false
     var globalSaveWaiters: [UUID: CheckedContinuation<Void, Never>] = [:]
 
@@ -174,23 +182,24 @@ public actor ProjectRepositoryImpl: ProjectRepository {
         try await acquireReaderSlot()
         defer { releaseReaderSlot() }
         try await postAcquireReaderSlotHook?()
-        return try Self.fetchAllProjects(in: modelContainer)
+        let executor = ProjectStoreExecutor(modelContainer: modelContainer)
+        return try await executor.fetchSnapshot()
     }
 
     /// Was unguarded by the reader/writer barrier until this fix: a direct
-    /// `Self.fetchProject` call, materializing a full entity graph with no
-    /// slot protection at all, even though every other full-graph
-    /// materialization in this type (`fetchAll()`, `register`'s initial
-    /// snapshot, a writer's own post-write snapshot) goes through the
-    /// reader slot. Not implicated in the crash `docs/DECISIONS.md` traces
-    /// through the writer-vs-writer `save()` race (this bypass was never on
-    /// the crashing stack), but a real, separate exposure closed regardless
-    /// — see `docs/DECISIONS.md`.
+    /// fetch, materializing a full entity graph with no slot protection at
+    /// all, even though every other full-graph materialization in this type
+    /// (`fetchAll()`, `register`'s initial snapshot, a writer's own
+    /// post-write snapshot) goes through the reader slot. Not implicated in
+    /// the crash `docs/DECISIONS.md` traces through the writer-vs-writer
+    /// `save()` race (this bypass was never on the crashing stack), but a
+    /// real, separate exposure closed regardless — see `docs/DECISIONS.md`.
     public func fetch(id: Project.ID) async throws -> Project? {
         try await acquireReaderSlot()
         defer { releaseReaderSlot() }
         try await postAcquireReaderSlotHook?()
-        return try Self.fetchProject(id: id, in: modelContainer)
+        let executor = ProjectStoreExecutor(modelContainer: modelContainer)
+        return try await executor.fetchOne(id: id)
     }
 
     public func create(_ project: Project) async throws {
@@ -233,7 +242,8 @@ public actor ProjectRepositoryImpl: ProjectRepository {
                 let current: Project?
                 do {
                     try await self.firePostAcquireReaderSlotHook()
-                    current = try Self.fetchProject(id: id, in: self.modelContainer)
+                    let executor = ProjectStoreExecutor(modelContainer: self.modelContainer)
+                    current = try await executor.fetchOne(id: id)
                 } catch {
                     await self.releaseReaderSlot()
                     throw error
@@ -336,7 +346,8 @@ public actor ProjectRepositoryImpl: ProjectRepository {
         subscribers[subscriberID] = continuation
         guard await (try? acquireReaderSlot()) != nil else { return }
         defer { releaseReaderSlot() }
-        if let snapshot = try? Self.fetchAllProjects(in: modelContainer) {
+        let executor = ProjectStoreExecutor(modelContainer: modelContainer)
+        if let snapshot = try? await executor.fetchSnapshot() {
             continuation.yield(snapshot)
         }
     }
