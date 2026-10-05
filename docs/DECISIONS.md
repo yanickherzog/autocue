@@ -3604,3 +3604,40 @@ Neither "confirmed deterministic regression" nor "flaky test with bad waiting lo
 - **Outcome of the manual workflow's first real run is recorded in a follow-up entry below, once it completes** — this entry documents the infrastructure change itself, not yet its result.
 
 **Full detail:** `.github/workflows/ci.yml`; `.github/workflows/repro-second-import-crash.yml`.
+
+---
+
+## 2026-10-05 (fifth entry) — Outcome of the manual reproduction run: a real, confirmed regression, not a runner anomaly — 5/200 (2.5%) on real CI hardware, with a full symbolicated stack
+
+**Context:** Follow-up to the immediately preceding entry. The `repro-second-import-crash.yml` workflow (`workflow_dispatch`, run [37289765756](https://github.com/yanickherzog/autocue/actions/runs/37289765756)) ran `SecondImportCrashReproTests.test_manyProjectsImportedConcurrently_assetAndPeaksWritesNeverRace` 200 times on the same runner image/Xcode pin as the normal `test-packages` job.
+
+**Result: 195 passed, 5 failed, out of 200 (iterations 38, 77, 97, 129, 197) — a real, repeatable reproduction on the actual CI environment, not a one-off.** This resolves the open question from the prior investigation's 400 clean local iterations: the crash is real and runner-reproducible; it just doesn't reproduce on local hardware even under deliberate heavy CPU contention, confirming that dimension (CPU scheduling) was never the differentiator. The crash-diagnostics-collection step added in the same pass worked exactly as intended: all 5 failures produced a real `.ips` crash report (vs. the original CI failure's single `fatalError` log line), downloaded and inspected directly.
+
+**All 5 crash reports share the identical shape, confirming one consistent bug, not five unrelated incidents:**
+
+| Iteration | Crashing property getter | Called from |
+|---|---|---|
+| 38 | `AudioAssetEntity.embeddedMarkers` | `AudioAssetMapper.toDomain(_:)` |
+| 77 | `WaveformPeaksEntity.minValues` | `WaveformPeaksMapper.toDomain(_:)` |
+| 97 | `SetupEntity.title` | `SetupMapper.toDomain(_:)` |
+| 129 | `EmbeddedMarkerEntity.order` | closure in `AudioAssetMapper.toDomain(_:)` |
+| 197 | `WaveformPeaksEntity.minValues` | `WaveformPeaksMapper.toDomain(_:)` |
+
+Every one: `EXC_BREAKPOINT`/`SIGTRAP`, via `libswiftCore.dylib _assertionFailure` ← 3 unsymbolicated `SwiftData` framework frames ← a `@Model` property getter on a *different* entity/property each time ← that entity's `...Mapper.toDomain(_:)` ← `ProjectMapper.toDomain(_:)` ← **`implicit closure #1 in ProjectRepositoryImpl.upsertProjectAndFetchSnapshot(_:)` ← `Collection.map` ← `ProjectRepositoryImpl.upsertProjectAndFetchSnapshot(_:)`**. This is `upsertProjectAndFetchSnapshot`'s own post-write snapshot fetch (`ProjectRepositoryImpl+ReaderWriterBarrier.swift`, `let snapshot = try entities.map(ProjectMapper.toDomain)`) — **crashing while materializing a fault on some entity's property, during a fetch that only starts after `acquireReaderSlot()` has already succeeded.** The specific entity/property that happens to be mid-fault-resolution at the moment of the race varies run to run (whichever one SwiftData's own lazy fault resolution happens to touch at that instant) — that variability across all 5, landing on five different entity types, is itself consistent with one single underlying race rather than five separate bugs.
+
+**A real, concrete environment difference, not just "different hardware":** every crash report's `os_version` reads `macOS 15.7.9 (24G830)`; the local machine used for the 400-iteration local investigation runs macOS 15.7.3. Xcode is identically pinned at 26.3 in both places, but the underlying macOS/SwiftData-framework point release differs — a real, measurable variable the local investigation could not control for or replicate, consistent with this project's prior, confirmed finding (`CLAUDE.md`'s Deployment Target section) that this codebase's SwiftData usage has real, environment-sensitive failure modes that don't reproduce on arbitrary local hardware.
+
+**Classification: a real, confirmed regression — or more precisely, a real, confirmed gap — reported as such, not as a flake.** The crash occurs *after* the reader slot is legitimately held, which means this isn't simply "a writer slipped through while a reader was active" in the exact shape the barrier's own stated invariant addresses. Two live hypotheses, neither investigated further in this pass (no production code was changed, per direct instruction):
+1. A subtler bug in the barrier's own slot-tracking under real (not simulated) OS thread scheduling on this specific macOS point release.
+2. A deeper SwiftData/Core Data behavior where a fault resolving *within* one already-reader-slot-protected `ModelContext`'s full-graph materialization can still observe backing data invalidated by a different `ModelContext`'s concurrent write — i.e., the app-level reader/writer barrier may not fully bound when SwiftData's own underlying persistent-store coordination completes a merge/invalidation relative to an in-flight fault resolution, meaning the barrier's reader-slot protection might not be sufficient by itself for this specific crash shape.
+
+**Context for severity, from a direct read of the real production code (not the test) in the same pass:** `AudioImportViewModel.importFile(from:)` chains `ImportAudioUseCase`'s asset write and `GenerateWaveformPeaksUseCase`'s peaks write via a plain sequential `await` — not `async let`. Both Use Cases fully `await` their own `persist(...)` call (the complete `ProjectRepositoryImpl.update`, including that write's own barrier-protected snapshot fetch) before yielding their stream's terminal `.completed` event. **The production app can never issue these two writes for the same project concurrently** — `test_manyProjectsImportedConcurrently_assetAndPeaksWritesNeverRace`'s unordered `async let` pair is a genuinely harsher scenario than anything a real import can produce, on two independent axes: it removes the sequential ordering real imports always have for one project, and it does so across 20 simultaneously-importing projects, a scale no realistic session (even accounting for this app's real multi-window support) would produce. This is real, found, defense-in-depth evidence from `ProjectRepositoryImpl`'s own test suite — not a bug a single import, or even a realistic multi-window session, is known to be able to trigger directly today.
+
+**No production code changed in this pass** — reporting the reproduction and its real evidence, per direct instruction, not yet proposing or implementing a fix.
+
+**Consequences:**
+- The crash-diagnostics-collection mechanism (prior entry) is confirmed working end-to-end on a real failure, not just validated in the abstract.
+- `SecondImportCrashReproTests` is confirmed to have a real, non-zero (2.5% in this sample) failure rate on the actual CI runner image — this is now a known, evidenced property of the current `ProjectRepositoryImpl` reader/writer barrier under real concurrent load on `macOS 15.7.9`, not an assumption.
+- Next step (not taken in this pass): a focused audit of `ProjectRepositoryImpl+ReaderWriterBarrier.swift`'s reader-slot semantics against SwiftData's own fault-resolution/merge-timing guarantees (or lack thereof) across concurrent `ModelContext`s on the same `ModelContainer` — this is genuinely SwiftData-internals territory, not a straightforward app-level logic fix, and was intentionally left for a dedicated pass rather than attempted here.
+
+**Full detail:** CI run [37289765756](https://github.com/yanickherzog/autocue/actions/runs/37289765756) and its `second-import-crash-repro-failures` artifact (5 failure logs + 5 `.ips` crash reports); `Packages/ACPersistence/Sources/ACPersistence/ProjectRepositoryImpl+ReaderWriterBarrier.swift`; `Packages/ACFeatures/Sources/ACFeatures/CueSheetEditor/ViewModels/AudioImportViewModel.swift`.
